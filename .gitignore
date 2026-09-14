@@ -1,0 +1,7 @@
+node_modules/
+
+# Raw pty captures and debug logs from dev/drive.py: scratch from one debugging
+# session, regenerated on demand, and full of escape sequences.
+dev/*.raw
+dev/*.log
+dev/latest

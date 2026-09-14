@@ -1,0 +1,46 @@
+{
+  "name": "wfpane",
+  "version": "0.3.0",
+  "description": "A live workflow pane: replaces the default Workflow progress list with a phase-by-phase graph or a timeline beside the transcript, showing each agent's state, timing, live token spend, tool calls, what it is saying, and prompt.",
+  "author": {
+    "name": "mutlupolatcan"
+  },
+  "userConfig": {
+    "orientation": {
+      "type": "string",
+      "title": "Layout",
+      "description": "Which way the phases run: 'flow' across the pane, 'stack' down it, 'time' for a timeline of bars against the clock, or 'auto' to follow the pane's shape.",
+      "default": "auto"
+    },
+    "detailRows": {
+      "type": "number",
+      "title": "Detail height",
+      "description": "Rows the detail strip takes when a node is selected (5 to 32), capped at half the canvas. Asked and Called sit side by side; Said takes a row of its own underneath.",
+      "default": 16
+    },
+    "paneRows": {
+      "type": "number",
+      "title": "Pane height",
+      "description": "Rows the pane asks for while seated inline above the prompt (6 to 80). The dock beside the transcript ignores it; run /tui default to get the inline seat.",
+      "default": 0
+    },
+    "site": {
+      "type": "string",
+      "title": "Where it draws",
+      "description": "'pane' beside the transcript, 'band' full width above the prompt, or 'below' in the hint line under the prompt. The footer button cycles them, '/wf pane|band|below' names one, and the choice is remembered.",
+      "default": "pane"
+    },
+    "bandRows": {
+      "type": "number",
+      "title": "Band height",
+      "description": "Rows the drawing takes in the band above the prompt (8 to 40).",
+      "default": 16
+    },
+    "backdrop": {
+      "type": "string",
+      "title": "Backdrop",
+      "description": "'on' paints the drawing on an opaque dark ground at every seat, which is what the palette is drawn for; 'off' lets the terminal's own background show through.",
+      "default": "on"
+    }
+  }
+}

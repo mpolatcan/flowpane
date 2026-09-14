@@ -1,0 +1,4 @@
+{
+  "description": "The workflow pane: opens on a Workflow launch, tails the run journal, draws phases and agents, and closes with /wf",
+  "modules": ["./register.ts"]
+}
