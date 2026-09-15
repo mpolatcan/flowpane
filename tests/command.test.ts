@@ -182,3 +182,60 @@ test('what the pane says about itself names the run list as a line to type', asy
   expect(row).toContain(`${COMMAND} runs`)
   expect(row).toContain('this session\u2019s runs')
 })
+
+/** The `/flowpane ...` half of a help line, and the description after the gutter. */
+function helpRows(text: string): Array<{ form: string; gutter: string; does: string }> {
+  return text
+    .split('\n')
+    .filter(line => line.trim() !== '')
+    .map(line => line.match(/^(\S+(?: \S+)*)(\s{2,})(\S.*)$/))
+    .filter((match): match is RegExpMatchArray => match !== null)
+    .map(match => ({ form: match[1], gutter: match[2], does: match[3] }))
+}
+
+test('the help lists every form of the command, and no more', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  stubEngine(on)
+
+  const forms = helpRows(await reply($, 'help')).map(row => row.form)
+
+  // The seven are the whole surface: a form missing from here is a feature with
+  // no way in, since this reply is the only place the words are written down.
+  expect(forms.join(' | ')).toBe(
+    [
+      COMMAND,
+      `${COMMAND} runs`,
+      `${COMMAND} <n>`,
+      `${COMMAND} across|down|timeline|fits`,
+      `${COMMAND} detail <n>`,
+      `${COMMAND} theme [name]`,
+      `${COMMAND} about`,
+    ].join(' | '),
+  )
+})
+
+test('every description in the help starts in the same column', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  stubEngine(on)
+
+  const rows = helpRows(await reply($, 'help'))
+  const columns = [...new Set(rows.map(row => row.form.length + row.gutter.length))]
+
+  // The forms are of very different lengths, so a ragged second column is read
+  // as two lists rather than one. The bare `/flowpane` line is the one that
+  // tests this: it is the shortest form, and it lands where the rest do.
+  expect(`${columns.join(',')} :: ${rows.length}`).toBe(`${columns[0]} :: 7`)
+})
+
+test('the widest form of the command is three spaces clear of what it does', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  stubEngine(on)
+
+  const rows = helpRows(await reply($, 'help'))
+  const widest = rows.reduce((a, b) => (b.form.length > a.form.length ? b : a))
+
+  // Three is the gap that reads as a column rather than a wrapped sentence, and
+  // it is measured off the visible text of the longest line: one space here and
+  // the widest row's two halves run together into one phrase.
+  expect(`${widest.form} ::${widest.gutter}::`).toBe(`${COMMAND} across|down|timeline|fits ::   ::`)
+})
