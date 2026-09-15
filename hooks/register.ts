@@ -21,10 +21,12 @@
 
 import type { EngineInterface, On, PluginOptions, Timer } from 'claude-code'
 
-import { Canvas, DEFAULT_COLOR, rgb } from './canvas'
+import { Canvas, cellColor, DEFAULT_COLOR } from './canvas'
 import {
+  applyFileClock,
   applyJournal,
   applyRunFile,
+  readAgentMeta,
   inputPreviewOf,
   noteCallEnd,
   noteCallStart,
@@ -33,14 +35,30 @@ import {
   phasesOfScript,
   readAgentTranscript,
   runFileOf,
+  runOfScriptName,
   tokensOfUsage,
   type RunState,
 } from './journal'
+import { aboutText, NAME, VERSION } from './about'
 import type { Orientation } from './layout'
-import { paint, paintSummary, type DetailView, type Hotspot } from './paint'
-import { rowsOf } from './tree'
+import {
+  ABOUT,
+  paint,
+  paintIdle,
+  quietOf,
+  SETTINGS,
+  useTheme,
+  type DetailView,
+  type Hotspot,
+  type PaintOptions,
+  type RunEntry,
+  type SettingMenu,
+} from './paint'
+import { applyPress, MAX_DETAIL, MIN_DETAIL, ORIENTATIONS, showDetail } from './press'
+import { DEFAULT_THEME, hexOf, paletteOf, themeOf, THEMES } from './theme'
+import { bandsOf, pictureOf, type Band } from './tree'
 
-const PANE_ID = 'wfpane'
+const PANE_ID = 'flowpane'
 const COMMAND = 'wf'
 /** With a Raster, frames are blitted and can run at animation speed. */
 const FRAME_MS = 120
@@ -48,21 +66,36 @@ const FRAME_MS = 120
 const FRAME_MS_REDRAW = 320
 /** Journal reads are cheaper than frames; one every fourth. */
 const READ_EVERY = 4
-/** Fewer rows than this and the band draws the run's top line, not a graph. */
-const MIN_BAND_ROWS = 6
-/** The band's opaque backdrop: dark, since the palette is drawn for a dark ground. */
-const BACKDROP = rgb(0x15, 0x18, 0x1e)
-const BACKDROP_HEX = '#15181e'
+/**
+ * A node's label is an element, not a cell, so a blit does not touch it: its
+ * spinner and its colour only move when the tree is built again. That is the
+ * expensive path, so it runs on every third frame rather than on each one.
+ */
+const REDRAW_EVERY = 3
+/** What the detail dialog's height is allowed to be, at the controls and at `/wf detail`. */
+/** The pane's opaque backdrop: the theme's own ground. */
+function backdropOf(): number {
+  return themeOf(state.theme).bg
+}
+
+/** What a control under the pointer is drawn in: the pane's own selection colour. */
+function accentHex(): string {
+  return paneHex(paletteOf(themeOf(state.theme)).accent)
+}
+
+/**
+ * One color as an element takes it. Rounded to the four bits a channel a Raster
+ * keeps, so a row drawn as elements sits on the same ground as the cells above
+ * and below it rather than a few values off it.
+ */
+function paneHex(color: number): string {
+  return hexOf(cellColor(color))
+}
+
+/** What a surface that draws no Buttons points at instead. */
+const HELP_HINT = '/wf help'
 /** Calls the engine gave no `tool_use_id`; a counter names them instead. */
 let callCounter = 0
-
-/** The three seats: a pane, the band above the prompt, the hint line under the prompt. */
-type Site = 'pane' | 'band' | 'below'
-const SITES: Site[] = ['pane', 'band', 'below']
-
-function isSite(value: unknown): value is Site {
-  return SITES.includes(value as Site)
-}
 
 type Launch = {
   status?: string
@@ -76,13 +109,21 @@ const state: {
   runs: RunState[]
   shown: RunState | null
   canvas: Canvas | null
-  /** The band's own canvas: it is a different width and height from the pane's. */
-  band: Canvas | null
-  bandSize: { columns: number; rows: number } | null
-  bandHotspots: Hotspot[]
-  /** Where the drawing goes: the pane beside the transcript, the band above the prompt, or the hint line under it. */
-  site: Site
-  bandRows: number
+  /** How the last render cut the drawing up, so a frame can blit the same bands. */
+  bands: Band[]
+  /**
+   * What was last written into each band, so a band that has not changed is not
+   * written again.
+   *
+   * Every frame used to send every band. A pane a hundred and twenty columns
+   * by forty is five thousand cells, twelve bytes each, and at eight frames a
+   * second that is most of a megabyte a second crossing the wire to say that
+   * nothing moved — because most of it has not: the cards of the agents that
+   * already landed are the same cells they were a minute ago, and what changes
+   * is the spinner, the clock on the top bar and the rows of whatever is still
+   * running.
+   */
+  sent: Map<string, string>
   timer: Timer | null
   tick: number
   isPaneOpen: boolean
@@ -90,35 +131,47 @@ const state: {
   /** Whether this build's terminal table has a Raster (2.1.271 and after). */
   hasRaster: boolean
   hotspots: Hotspot[]
-  /** The agent whose detail strip is open. */
+  /** The agent whose detail dialog is open. */
   selectedId: string | null
   /** Set by a Button's onPress, acted on by the `ui.press` hook, which has `$`. */
   pressed: string | null
   /** Agents whose transcript has been read, so it is read once. */
   loaded: Set<string>
+  /** Agents whose `.meta.json` has been asked for, so it is asked for once. */
+  models: Set<string>
+  /**
+   * `<agentId>:<state>` for each agent whose clock has been read off its files,
+   * so the pair is read once when the agent appears and once after it stops.
+   */
+  clocks: Set<string>
   orientation: Orientation
   detailRows: number
-  /** True while the footer shows the settings row instead of the run line. */
-  isMenuOpen: boolean
+  /** Which palette the drawing is painted in. */
+  theme: string
   /** Rows the pane asks for while seated inline above the prompt. */
   paneRows: number | null
   /** The last time a frame ran, for hooks that must not await the clock. */
   nowMs: number
-  /** The first line of the detail list on screen. */
-  detailScroll: number
+  /** The first line on screen in each block of the detail dialog. */
+  detailScroll: number[]
   /** What the last paint said about the detail list, for clamping a scroll. */
   detailView: DetailView | null
-  /** True while the band paints on an opaque backdrop rather than the terminal's ground. */
-  backdrop: boolean
+  /** True while the run name's list is unrolled under the top bar. */
+  picking: boolean
+  /** True while the settings dialog is open over the drawing. */
+  settings: boolean
+  /** Which setting's list is unrolled inside that dialog, if any. */
+  menu: SettingMenu | null
+  /** True while the About dialog is open over the drawing. */
+  about: boolean
+  /** Whether this build's table has a Button, so the run's name can be pressed. */
+  canChoose: boolean
 } = {
   runs: [],
   shown: null,
   canvas: null,
-  band: null,
-  bandSize: null,
-  bandHotspots: [],
-  site: 'pane',
-  bandRows: 16,
+  bands: [],
+  sent: new Map(),
   timer: null,
   tick: 0,
   isPaneOpen: false,
@@ -128,14 +181,20 @@ const state: {
   selectedId: null,
   pressed: null,
   loaded: new Set(),
+  models: new Set(),
+  clocks: new Set(),
   orientation: 'auto',
-  detailRows: 16,
-  isMenuOpen: false,
+  detailRows: 24,
+  theme: DEFAULT_THEME,
   paneRows: null,
   nowMs: 0,
-  detailScroll: 0,
+  detailScroll: [],
   detailView: null,
-  backdrop: true,
+  picking: false,
+  settings: false,
+  menu: null,
+  about: false,
+  canChoose: true,
 }
 
 function tryParse(text: string): unknown {
@@ -169,13 +228,14 @@ function stopTimer(): void {
 }
 
 /**
- * Finds the runs this session has already made, by walking the transcripts the
- * engine wrote for it.
+ * Finds the runs this session has already made, by walking the files the engine
+ * wrote for them.
  *
  * A module reload starts with an empty run list while the session's panes and
- * its finished runs are still there, so the pane would claim nothing had run.
- * The engine keeps each run's summary beside the session's transcripts, which is
- * enough to rebuild every run without having watched it happen.
+ * its runs are still there, so the pane would claim nothing had run. Two kinds
+ * of run are on disk and they are found different ways: a run that is over has
+ * a summary, and a run that is still going has only the script it was launched
+ * from.
  */
 async function recoverRuns($: EngineInterface): Promise<void> {
   const home = await $.env.get('HOME')
@@ -197,51 +257,160 @@ async function recoverRuns($: EngineInterface): Promise<void> {
     }
 
     const base = `${projects}/${entry.name}/${sessionId}`
-    const dir = `${base}/workflows`
 
-    if (!(await $.fs.exists(dir))) {
+    if (!(await $.fs.exists(`${base}/workflows`))) {
       continue
     }
 
-    for (const file of await $.fs.list(dir)) {
-      if (!file.name.endsWith('.json')) {
-        continue
-      }
-
-      const runId = file.name.replace(/\.json$/, '')
-
-      if (state.runs.some(r => r.runId === runId)) {
-        continue
-      }
-
-      const run: RunState = {
-        runId,
-        name: runId,
-        summary: '',
-        transcriptDir: `${base}/subagents/workflows/${runId}`,
-        runFile: `${dir}/${file.name}`,
-        startedMs: 0,
-        status: 'running',
-        phases: [],
-        agents: [],
-        consumed: 0,
-      }
-
-      const summary = await $.fs.read(run.runFile)
-
-      applyRunFile(run, summary, await $.clock.now())
-
-      run.name = nameOf(summary) ?? runId
-
-      await readRun($, run, await $.clock.now())
-
-      state.runs.push(run)
-    }
+    await recoverEnded($, base)
+    await recoverLive($, base)
 
     break
   }
 
   state.runs.sort((a, b) => a.startedMs - b.startedMs)
+}
+
+/** The runs of this session that are over, from the summary each one wrote. */
+async function recoverEnded($: EngineInterface, base: string): Promise<void> {
+  const dir = `${base}/workflows`
+
+  for (const file of await $.fs.list(dir)) {
+    // A run's summary is named for the run. The engine keeps its own
+    // bookkeeping in the same directory — `.skipped-runs.json` among it —
+    // and a file that is not a run has no agents, no clock and no status,
+    // so it listed as a run that had just started and never moved.
+    if (!/^wf_.+\.json$/.test(file.name)) {
+      continue
+    }
+
+    const runId = file.name.replace(/\.json$/, '')
+
+    if (state.runs.some(r => r.runId === runId)) {
+      continue
+    }
+
+    const summary = await $.fs.read(`${dir}/${file.name}`)
+    const run = blankRun(base, runId, nameOf(summary) ?? runId)
+
+    // The journal first, then the summary, and never the other way round.
+    // The journal says an agent landed but not when: the reader stamps it
+    // with the moment it read the line, which for a run recovered after the
+    // fact is now. The summary carries the engine's own clock, so it has to
+    // be the one that settles every row — otherwise a run that took two
+    // minutes yesterday draws as having taken until today.
+    await readJournal($, run)
+
+    applyRunFile(run, summary, await $.clock.now())
+
+    state.runs.push(run)
+  }
+}
+
+/**
+ * The runs of this session that are still going.
+ *
+ * A summary is written when a run ends, so the walk above finds only the runs
+ * that are over: a workflow already in flight when the plugin loaded was
+ * missing from the list, and the one run a reader most wants to watch was the
+ * one run the pane could not offer. The engine persists each run's script at
+ * launch, under a name carrying both the workflow's name and the run's id, so
+ * the script is what says a run exists before there is anything to summarise.
+ * Its mtime is the launch, to the second, which the journal does not record
+ * either.
+ */
+async function recoverLive($: EngineInterface, base: string): Promise<void> {
+  const dir = `${base}/workflows/scripts`
+
+  if (!(await $.fs.exists(dir))) {
+    return
+  }
+
+  for (const file of await $.fs.list(dir)) {
+    const named = runOfScriptName(file.name)
+
+    if (!named || state.runs.some(r => r.runId === named.runId)) {
+      continue
+    }
+
+    const path = `${dir}/${file.name}`
+    const run = blankRun(base, named.runId, named.name)
+
+    run.startedMs = Math.round((await $.fs.stat(path)).mtimeMs)
+    run.plan = phasesOfScript(await $.fs.read(path))
+    run.phases = run.plan.map(step => step.title)
+
+    await readJournal($, run)
+    await readClocks($, run)
+
+    state.runs.push(run)
+  }
+}
+
+/** A run with nothing read into it yet, at the paths its files will be at. */
+function blankRun(base: string, runId: string, name: string): RunState {
+  return {
+    runId,
+    name,
+    summary: '',
+    transcriptDir: `${base}/subagents/workflows/${runId}`,
+    runFile: `${base}/workflows/${runId}.json`,
+    startedMs: 0,
+    status: 'running',
+    phases: [],
+    agents: [],
+    consumed: 0,
+    recovered: true,
+  }
+}
+
+/** Folds in whatever the run's journal holds, if it has written one yet. */
+async function readJournal($: EngineInterface, run: RunState): Promise<void> {
+  const path = `${run.transcriptDir}/journal.jsonl`
+
+  if (await $.fs.exists(path)) {
+    applyJournal(run, await $.fs.read(path), await $.clock.now())
+  }
+}
+
+/** When a file was last written, or nothing when it is not there. */
+async function mtimeOf($: EngineInterface, path: string): Promise<number | undefined> {
+  return (await $.fs.exists(path)) ? (await $.fs.stat(path)).mtimeMs : undefined
+}
+
+/**
+ * Stamps the agents of a run rebuilt from disk with the clock its files carry.
+ *
+ * The journal says an agent started and that it landed, but not when, so a
+ * reader that joined late stamps both with the moment it read the line: every
+ * agent of a run adopted mid-flight drew as having started now and taken no
+ * time at all. The summary would settle it, but a run still going has not
+ * written one. Each agent leaves two files that are stamped for it — its
+ * `.meta.json`, written when it is spawned, and its transcript, written to
+ * until it stops — and those two mtimes come within a second of the figures
+ * the summary gives later.
+ */
+async function readClocks($: EngineInterface, run: RunState): Promise<void> {
+  for (const agent of run.agents) {
+    const path = `${run.transcriptDir}/agent-${agent.agentId}`
+    const key = `${agent.agentId}:${agent.state}`
+
+    // Once when the agent is first seen, and once more after it stops: those
+    // are the two moments its files have something new to say.
+    if (!state.clocks.has(key)) {
+      state.clocks.add(key)
+
+      applyFileClock(agent, await mtimeOf($, `${path}.meta.json`), await mtimeOf($, `${path}.jsonl`))
+
+      continue
+    }
+
+    // While it runs, its transcript's mtime keeps moving, and the pane reads
+    // how long ago that was as how long the agent has been quiet.
+    if (agent.state === 'running') {
+      applyFileClock(agent, undefined, await mtimeOf($, `${path}.jsonl`))
+    }
+  }
 }
 
 /** The workflow's own name out of a summary file. */
@@ -264,11 +433,45 @@ async function readRun($: EngineInterface, run: RunState, nowMs: number): Promis
   if (run.status === 'running' && (await $.fs.exists(run.runFile))) {
     applyRunFile(run, await $.fs.read(run.runFile), nowMs)
   }
+
+  // A run the pane was not there for is still being read line by line, and each
+  // new line is stamped `nowMs` again. Until its summary lands, the files are
+  // the only clock it has.
+  if (run.recovered && run.status === 'running') {
+    await readClocks($, run)
+  }
+
+  await readModels($, run)
+}
+
+/**
+ * Fills in the model of any agent the summary has not named yet.
+ *
+ * The summary is the better source — it is one file for the whole run — but the
+ * engine does not write it until there is a run to summarise, so early on there
+ * is nothing to read. Each agent's own `.meta.json` is there from the moment it
+ * is spawned, so the pane asks those instead, once per agent, and stops asking
+ * as soon as one of the two answers.
+ */
+async function readModels($: EngineInterface, run: RunState): Promise<void> {
+  for (const agent of run.agents) {
+    if (agent.model || state.models.has(agent.agentId)) {
+      continue
+    }
+
+    state.models.add(agent.agentId)
+
+    const path = `${run.transcriptDir}/agent-${agent.agentId}.meta.json`
+
+    if (await $.fs.exists(path)) {
+      agent.model = readAgentMeta(await $.fs.read(path))
+    }
+  }
 }
 
 /**
  * Reads one agent's own transcript for the prompt it was given and the text it
- * answered with — read once per agent, when its detail strip is first opened.
+ * answered with — read once per agent, when its detail dialog is first opened.
  */
 async function loadDetail($: EngineInterface, run: RunState, agentId: string): Promise<void> {
   const row = run.agents.find(a => a.agentId === agentId)
@@ -294,6 +497,22 @@ async function loadDetail($: EngineInterface, run: RunState, agentId: string): P
   // that was.
   if (read.calls.length > 0 && (row.calls?.length ?? 0) === 0) {
     row.calls = read.calls
+
+    // The tally the pane counts tools by is filled by the live chain, which was
+    // never running for a replayed run. Recovered from the same calls, so the
+    // figures a reopened run shows are the ones it showed while it ran.
+    if (row.tools.length === 0) {
+      for (const call of read.calls) {
+        const seen = row.tools.find(t => t.name === call.name)
+
+        if (seen) {
+          seen.count++
+          seen.atMs = Math.max(seen.atMs, call.startedMs)
+        } else {
+          row.tools.push({ name: call.name, count: 1, atMs: call.startedMs, isRunning: false })
+        }
+      }
+    }
   }
 
   // A running agent's transcript grows; only a finished one is read for good.
@@ -302,42 +521,107 @@ async function loadDetail($: EngineInterface, run: RunState, agentId: string): P
   }
 }
 
-/** Paints the shown run and pushes the drawing to the pane. */
-function repaint($: EngineInterface, run: RunState, nowMs: number): void {
-  if (state.site !== 'pane') {
-    // The band draws from the render hook itself; a frame only has to ask for
-    // the redraw, since nothing is mounted for it to write into.
-    $.ui.invalidate('ui.render')
-    return
-  }
+/**
+ * Whether the run's name at the top of the pane opens the list of the session's
+ * other runs. One run is not a choice, and a build with no Button has no way to
+ * press the name — there the list stays a chooser of its own under the footer.
+ */
+function canPickRun(): boolean {
+  return state.canChoose && state.runs.length > 1
+}
 
-  if (!state.canvas || !state.isPaneOpen) {
-    return
-  }
-
-  const drawn = paint(state.canvas, run, {
+/**
+ * What every paint of the shown run is drawn with.
+ *
+ * The blit between renders has to produce the same hotspots the render did, so
+ * both paints read their options from here rather than each listing their own.
+ */
+function paintOptions(nowMs: number): PaintOptions {
+  return {
     nowMs,
     tick: state.tick,
     orientation: state.orientation,
     selectedId: state.selectedId ?? undefined,
     detailRows: state.detailRows,
     detailScroll: state.detailScroll,
-  })
+    runPicker: canPickRun() ? (state.picking ? 'open' : 'shut') : undefined,
+    runs: state.picking ? state.runs.map(runEntry) : undefined,
+    settings: state.settings,
+    menu: state.menu ?? undefined,
+    about: state.about,
+  }
+}
+
+/** Paints the shown run and pushes the drawing to the pane. */
+function repaint($: EngineInterface, run: RunState, nowMs: number): void {
+  if (!state.canvas || !state.isPaneOpen) {
+    return
+  }
+
+  const drawn = paint(state.canvas, run, paintOptions(nowMs))
 
   state.hotspots = drawn.hotspots
   state.detailView = drawn.detail ?? null
 
   // Without a Raster there is nothing to blit into: the tree itself carries the
-  // picture, so the redraw has to go through the renderer. (The band returned
-  // above; it never has one, drawing elements rather than a mounted buffer.)
+  // picture, so the redraw has to go through the renderer.
   if (!state.hasRaster) {
     $.ui.invalidate('ui.render')
     return
   }
 
-  void $.ui
-    .blit({ requestId: PANE_ID, key: 'dag', cells: state.canvas.encode() })
-    .catch(() => undefined)
+  // A blit writes into the Rasters the last render mounted. When this frame
+  // puts a node's label on a different row, those Rasters no longer cover the
+  // rows they did, so the tree has to be built again before anything is written
+  // into it.
+  const bands = bandsOf(state.canvas.rows, drawn.hotspots)
+
+  if (!sameBands(bands, state.bands)) {
+    // The Rasters this frame would have written into are about to be replaced,
+    // so what was written into the old ones says nothing about the new.
+    state.sent.clear()
+    $.ui.invalidate('ui.render')
+
+    return
+  }
+
+  for (const band of bands) {
+    if (!band.key) {
+      continue
+    }
+
+    const cells = state.canvas.encode(band.from, band.rows)
+
+    // Byte for byte what this band already holds: sending it again would draw
+    // the same picture over itself.
+    if (state.sent.get(band.key) === cells) {
+      continue
+    }
+
+    state.sent.set(band.key, cells)
+
+    void $.ui
+      .blit({
+        requestId: PANE_ID,
+        key: band.key,
+        cells,
+      })
+      // A write that did not land leaves the band holding whatever it held, so
+      // the note that it was written has to go with it.
+      .catch(() => state.sent.delete(band.key as string))
+  }
+
+  if (state.tick % REDRAW_EVERY === 0 && bands.some(b => !b.key)) {
+    $.ui.invalidate('ui.render')
+  }
+}
+
+/** Whether two cuts name the same Rasters over the same rows. */
+function sameBands(a: Band[], b: Band[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((band, i) => band.key === b[i].key && band.from === b[i].from && band.rows === b[i].rows)
+  )
 }
 
 /** One frame: advance the spinner, read the journal on the slow beat, repaint. */
@@ -375,21 +659,16 @@ function startTimer($: EngineInterface, run: RunState): void {
   })
 }
 
+
 /**
  * Opens the pane with no run on it: the idle view, which says nothing is
  * running and offers the session's earlier runs to look at.
  */
 async function showIdle($: EngineInterface, focus: boolean): Promise<void> {
   state.shown = null
-  state.selectedId = null
+  state.picking = false
+  showDetail(state, null)
   stopTimer()
-
-  if (state.site !== 'pane') {
-    state.isPaneOpen = true
-    $.ui.invalidate('ui.render')
-
-    return
-  }
 
   await $.ui.open(
     focus ? { id: PANE_ID, title: 'workflow', focus: true } : { id: PANE_ID, title: 'workflow' },
@@ -401,24 +680,8 @@ async function showIdle($: EngineInterface, focus: boolean): Promise<void> {
 /** Opens the pane on a run and starts (or, for a finished run, skips) the timer. */
 async function showRun($: EngineInterface, run: RunState, focus: boolean): Promise<void> {
   state.shown = run
-  state.selectedId = null
-
-  if (state.site !== 'pane') {
-    // The band has nothing to open: the render hook draws while this is set,
-    // and without it a launch in the band drew nothing at all.
-    state.isPaneOpen = true
-    state.nowMs = await $.clock.now()
-
-    await readRun($, run, state.nowMs)
-
-    if (run.status === 'running') {
-      startTimer($, run)
-    }
-
-    $.ui.invalidate('ui.render')
-
-    return
-  }
+  state.picking = false
+  showDetail(state, null)
 
   // `rows` is what the pane asks for while the surface seats it inline above the
   // prompt — the full-width seat a session gets outside the fullscreen renderer.
@@ -451,7 +714,7 @@ async function showRun($: EngineInterface, run: RunState, focus: boolean): Promi
 }
 
 /** Acts on whatever a Button's onPress recorded, now that `$` is in hand. */
-async function applyPress($: EngineInterface): Promise<void> {
+async function actOnPress($: EngineInterface): Promise<void> {
   const pressed = state.pressed
 
   state.pressed = null
@@ -460,47 +723,26 @@ async function applyPress($: EngineInterface): Promise<void> {
     return
   }
 
-  // The run picker, the settings and the site button work from the idle view
-  // too: that view exists to pick an earlier run from.
-  if (pressed.startsWith('run:')) {
-    const run = state.runs.find(r => r.runId === pressed.slice(4))
+  // What the press means to the view is decided in `press.ts`, which knows
+  // nothing about the engine; what is left here is the part that needs one.
+  const result = applyPress(state, pressed, { hasRun: state.shown !== null, detail: state.detailView })
+
+  for (const key of result.store ?? []) {
+    await $.store.set(key, state[key])
+  }
+
+  if (result.run !== undefined) {
+    const run = state.runs.find(r => r.runId === result.run)
 
     if (run) {
       // `showRun` retitles the pane, reads the run in, and starts or skips the
       // timer, whichever site the drawing is on.
       await showRun($, run, false)
     }
-  } else if (pressed === 'menu') {
-    state.isMenuOpen = !state.isMenuOpen
-  } else if (pressed === 'site') {
-    await setSite($, SITES[(SITES.indexOf(state.site) + 1) % SITES.length])
-  } else if (!state.shown) {
-    return
-  } else if (pressed === 'detail-taller' || pressed === 'detail-shorter') {
-    const step = pressed === 'detail-taller' ? 2 : -2
+  }
 
-    state.detailRows = Math.max(5, Math.min(32, state.detailRows + step))
-    await $.store.set('detailRows', state.detailRows)
-  } else if (pressed === 'band-taller' || pressed === 'band-shorter') {
-    const step = pressed === 'band-taller' ? 2 : -2
-
-    state.bandRows = Math.max(8, Math.min(40, state.bandRows + step))
-    await $.store.set('bandRows', state.bandRows)
-  } else if (pressed === 'orientation') {
-    state.orientation = nextOrientation(state.orientation)
-
-    await $.store.set('orientation', state.orientation)
-  } else if (pressed === 'clear') {
-    state.selectedId = null
-  } else if (pressed === 'detail-up' || pressed === 'detail-down') {
-    scrollDetail(pressed === 'detail-up' ? -3 : 3)
-  } else {
-    state.selectedId = state.selectedId === pressed ? null : pressed
-    state.detailScroll = 0
-
-    if (state.selectedId) {
-      await loadDetail($, state.shown, state.selectedId)
-    }
+  if (result.opened !== undefined && state.shown) {
+    await loadDetail($, state.shown, result.opened)
   }
 
   state.nowMs = await $.clock.now()
@@ -509,44 +751,9 @@ async function applyPress($: EngineInterface): Promise<void> {
     repaint($, state.shown, state.nowMs)
   }
 
-  // A blit alone would leave the footer's buttons showing the old state, and
-  // the idle view has nothing to blit into.
+  // A blit alone would leave the footer's button and the state beside it showing
+  // what the pane used to be set to, and the idle view has nothing to blit into.
   $.ui.invalidate('ui.render')
-}
-
-/**
- * Moves the drawing to a seat and shows it there.
- *
- * The `site` button and `/wf <seat>` both land here, so the two ways of moving
- * cannot drift apart — and the command is the only one of them that works from
- * the hint line under the prompt, which holds no Buttons.
- */
-async function setSite($: EngineInterface, site: Site): Promise<void> {
-  state.site = site
-  // The settings row is a Button row; a seat that draws none would strand it
-  // open and leave the idle line hidden behind a menu nothing can close.
-  state.isMenuOpen = false
-
-  await $.store.set('site', site)
-
-  if (site !== 'pane') {
-    // The band is the full width above the prompt; the pane would only narrow
-    // the transcript beside it. The band keeps drawing while the view is open,
-    // so `isPaneOpen` stays true across the move.
-    await $.ui.close({ id: PANE_ID }).catch(() => undefined)
-    state.isPaneOpen = true
-  } else if (state.shown) {
-    await showRun($, state.shown, true)
-  } else {
-    await showIdle($, true)
-  }
-}
-
-/** What each seat is called on the command line, and how it reads back. */
-const SEAT_NAMES: Record<Site, string> = {
-  pane: 'beside the transcript',
-  band: 'above the prompt',
-  below: 'under the prompt',
 }
 
 /** The layout words `/wf` takes, against the orientations they name. */
@@ -558,29 +765,72 @@ const LAYOUT_WORDS: Record<string, Orientation> = {
 }
 
 const HELP = [
-  '/wf                toggle the view',
-  '/wf pane|band|below   move it: beside the transcript, above the prompt, under it',
-  '/wf runs           list this session’s runs',
-  '/wf <n>            show run <n>',
+  '/wf                             open the pane, or close it',
+  '/wf runs                        list this session’s runs',
+  '/wf <n>                         show run <n>',
   '/wf across|down|timeline|fits   lay the graph out',
-  '/wf detail <n>     rows the detail strip takes (4–20)',
-  '/wf height <n>     rows the drawing takes off the pane (8–40)',
-  '/wf backdrop on|off   paint on an opaque ground',
+  '/wf detail <n>                  rows the detail dialog takes (5–32)',
+  '/wf theme [name]                list the palettes, or paint in one',
+  '/wf about                       what the pane is, and what presses it',
 ].join('\n')
+
+/**
+ * A run's state as one character.
+ *
+ * The pane already says what the run is doing, in words, on its top line. A
+ * chooser that says it again underneath means the same fact is on screen twice
+ * in two different wordings, and a reader checks both. The mark is the same
+ * vocabulary the nodes use, so it reads without a key.
+ */
+function markOf(run: RunState): string {
+  return run.status === 'running'
+    ? '\u25b8'
+    : run.status === 'completed'
+      ? '\u2714'
+      : run.status === 'failed'
+        ? '\u2716'
+        : '\u2298'
+}
 
 /** One run as the list and the picker both name it. */
 function runLine(run: RunState, index: number): string {
+  return `${index + 1}. ${runLabel(run)}`
+}
+
+/** What a run is called, with what it is and how far it got. */
+function runLabel(run: RunState): string {
+  return `${markOf(run)} ${run.name}  ${tallyOf(run)}`
+}
+
+/** How many of a run's agents have landed, over how many it has. */
+function tallyOf(run: RunState): string {
   const landed = run.agents.filter(a => a.state === 'done' || a.state === 'failed').length
 
-  return `${index + 1}. ${run.name}  ${run.status}  ${landed}/${run.agents.length}`
+  return `${landed}/${run.agents.length}`
+}
+
+/**
+ * One run as the menu lists it. The menu draws the state, the name and the
+ * clock in columns of their own, so it takes the parts rather than the line.
+ */
+function runEntry(run: RunState): RunEntry {
+  return {
+    id: run.runId,
+    mark: markOf(run),
+    name: run.name,
+    tally: tallyOf(run),
+    status: run.status,
+    startedMs: run.startedMs,
+  }
 }
 
 /**
  * `/wf` with something after it.
  *
- * Every control the settings row holds is reachable here too. That is what
+ * Every choice the settings dialog offers is reachable here too. That is what
  * makes the hint line under the prompt a usable seat rather than a trap: it
- * draws no Buttons, so without these words there is no way back off it.
+ * draws no Buttons, so neither the dialog nor the button that opens it exists
+ * there, and without these words there is no way back off it.
  */
 async function applyArgs($: EngineInterface, args: string): Promise<string> {
   const words = args.split(/\s+/)
@@ -591,10 +841,10 @@ async function applyArgs($: EngineInterface, args: string): Promise<string> {
     return HELP
   }
 
-  if (isSite(verb)) {
-    await setSite($, verb)
-
-    return `Drawing ${SEAT_NAMES[verb]}.`
+  // The same words the About dialog draws. This is the seat where a reader
+  // needs them most: no pane, no buttons, and no way to press a name.
+  if (verb === 'about') {
+    return aboutText()
   }
 
   if (verb === 'runs') {
@@ -605,13 +855,22 @@ async function applyArgs($: EngineInterface, args: string): Promise<string> {
     return state.runs.map(runLine).join('\n')
   }
 
-  if (verb === 'backdrop' && (rest === 'on' || rest === 'off')) {
-    state.backdrop = rest === 'on'
+  if (verb === 'theme') {
+    if (!rest) {
+      return `Themes: ${THEMES.map(t => (t.name === state.theme ? `${t.name} (on)` : t.name)).join(', ')}.`
+    }
 
-    await $.store.set('backdrop', state.backdrop)
+    if (!THEMES.some(t => t.name === rest)) {
+      return `No theme "${rest}". Themes: ${THEMES.map(t => t.name).join(', ')}.`
+    }
+
+    state.theme = rest
+    useTheme(state.theme)
+
+    await $.store.set('theme', state.theme)
     $.ui.invalidate('ui.render')
 
-    return `Backdrop ${rest}.`
+    return `Theme ${state.theme}.`
   }
 
   if (verb in LAYOUT_WORDS) {
@@ -626,21 +885,12 @@ async function applyArgs($: EngineInterface, args: string): Promise<string> {
   const count = Number(rest)
 
   if (verb === 'detail' && Number.isFinite(count)) {
-    state.detailRows = Math.max(5, Math.min(32, Math.floor(count)))
+    state.detailRows = Math.max(MIN_DETAIL, Math.min(MAX_DETAIL, Math.floor(count)))
 
     await $.store.set('detailRows', state.detailRows)
     $.ui.invalidate('ui.render')
 
-    return `Detail strip ${state.detailRows} rows.`
-  }
-
-  if (verb === 'height' && Number.isFinite(count)) {
-    state.bandRows = Math.max(8, Math.min(40, Math.floor(count)))
-
-    await $.store.set('bandRows', state.bandRows)
-    $.ui.invalidate('ui.render')
-
-    return `Drawing ${state.bandRows} rows.`
+    return `Detail dialog ${state.detailRows} rows.`
   }
 
   // A bare number, or `run 2`, names a run in the order `/wf runs` listed them.
@@ -655,7 +905,7 @@ async function applyArgs($: EngineInterface, args: string): Promise<string> {
         : `No run ${Math.floor(which)}. There ${state.runs.length === 1 ? 'is 1 run' : `are ${state.runs.length} runs`}; /wf runs lists them.`
     }
 
-    await showRun($, run, state.site === 'pane')
+    await showRun($, run, true)
     $.ui.invalidate('ui.render')
 
     return runLine(run, state.runs.indexOf(run))
@@ -664,21 +914,28 @@ async function applyArgs($: EngineInterface, args: string): Promise<string> {
   return `/wf takes no "${args}". ${HELP}`
 }
 
-/** The layout button's cycle: across, down, the timeline, then whichever fits. */
-const ORIENTATIONS: Orientation[] = ['flow', 'stack', 'time', 'auto']
 
-function isOrientation(value: unknown): value is Orientation {
-  return ORIENTATIONS.includes(value as Orientation)
+/**
+ * A layout by either name. The button and `/wf` say what the layout looks like
+ * — across, down, timeline, fits — and the setting is named after the axis it
+ * uses. One vocabulary would be better; until the stored values can change, both
+ * are read wherever a layout is named.
+ */
+function orientationOf(value: unknown): Orientation | null {
+  if (ORIENTATIONS.includes(value as Orientation)) {
+    return value as Orientation
+  }
+
+  const word = String(value ?? '').toLowerCase()
+
+  return word in LAYOUT_WORDS ? LAYOUT_WORDS[word] : null
 }
 
-function nextOrientation(current: Orientation): Orientation {
-  return ORIENTATIONS[(ORIENTATIONS.indexOf(current) + 1) % ORIENTATIONS.length]
-}
 
 function readOptions(options: PluginOptions): void {
-  const orientation = options.orientation
+  const orientation = orientationOf(options.orientation)
 
-  if (isOrientation(orientation)) {
+  if (orientation) {
     state.orientation = orientation
   }
 
@@ -694,47 +951,19 @@ function readOptions(options: PluginOptions): void {
     state.paneRows = Math.floor(pane)
   }
 
-  if (isSite(options.site)) {
-    state.site = options.site
+  if (typeof options.theme === 'string' && THEMES.some(t => t.name === options.theme)) {
+    state.theme = options.theme
   }
 
-  if (options.backdrop === 'off' || options.backdrop === false) {
-    state.backdrop = false
-  } else if (options.backdrop === 'on' || options.backdrop === true) {
-    state.backdrop = true
-  }
-
-  const band = Number(options.bandRows)
-
-  if (Number.isFinite(band) && band >= 8 && band <= 40) {
-    state.bandRows = Math.floor(band)
-  }
+  useTheme(state.theme)
 }
 
 /** The choices a person made with the buttons, kept across sessions. */
 async function readStore($: EngineInterface): Promise<void> {
-  const site = await $.store.get('site')
+  const orientation = orientationOf(await $.store.get('orientation'))
 
-  if (isSite(site)) {
-    state.site = site
-  }
-
-  const orientation = await $.store.get('orientation')
-
-  if (isOrientation(orientation)) {
+  if (orientation) {
     state.orientation = orientation
-  }
-
-  const bandRows = Number(await $.store.get('bandRows'))
-
-  if (Number.isFinite(bandRows) && bandRows >= 8 && bandRows <= 40) {
-    state.bandRows = Math.floor(bandRows)
-  }
-
-  const backdrop = await $.store.get('backdrop')
-
-  if (typeof backdrop === 'boolean') {
-    state.backdrop = backdrop
   }
 
   const detailRows = Number(await $.store.get('detailRows'))
@@ -742,6 +971,14 @@ async function readStore($: EngineInterface): Promise<void> {
   if (Number.isFinite(detailRows) && detailRows >= 5 && detailRows <= 32) {
     state.detailRows = Math.floor(detailRows)
   }
+
+  const theme = await $.store.get('theme')
+
+  if (typeof theme === 'string' && THEMES.some(t => t.name === theme)) {
+    state.theme = theme
+  }
+
+  useTheme(state.theme)
 }
 
 export function register(on: On, options: PluginOptions) {
@@ -757,6 +994,7 @@ export function register(on: On, options: PluginOptions) {
 
     const script =
       typeof (e as { script?: unknown }).script === 'string' ? (e as { script: string }).script : ''
+    const plan = phasesOfScript(script)
 
     const run: RunState = {
       runId: launch.runId,
@@ -766,7 +1004,8 @@ export function register(on: On, options: PluginOptions) {
       runFile: runFileOf(launch.transcriptDir, launch.runId),
       startedMs: await $.clock.now(),
       status: 'running',
-      phases: phasesOfScript(script),
+      phases: plan.map(step => step.title),
+      plan,
       agents: [],
       consumed: 0,
     }
@@ -794,8 +1033,8 @@ export function register(on: On, options: PluginOptions) {
       return next(e)
     }
 
-    // The frame clock may be stopped (pane closed, run being watched from the
-    // band); the call's own time is what a quiet agent is measured against.
+    // The frame clock may be stopped (the pane closed); the call's own time is
+    // what a quiet agent is measured against.
     const startedMs = await $.clock.now()
     const id = (e as { tool_use_id?: string }).tool_use_id ?? `call-${++callCounter}`
 
@@ -845,6 +1084,7 @@ export function register(on: On, options: PluginOptions) {
           noteStep(run, agentId, nowMs, {
             kind: 'stop',
             tokens: chunk.usage ? tokensOfUsage(chunk.usage) : undefined,
+            output: chunk.usage?.output_tokens,
           })
         }
 
@@ -872,14 +1112,19 @@ export function register(on: On, options: PluginOptions) {
     const { Box, Text, Button, Select, Raster } = table
 
     state.hasRaster = typeof Raster === 'function'
+    state.canChoose = typeof Button === 'function'
     state.isPaneOpen = true
 
     const run = state.shown
     const columns = columnsOf(e.props.bodyColumns, e.viewport?.columns)
-    const chooser = picker(Select, Text, run)
-    // The footer takes a row, and the picker one more where it draws: a canvas
-    // sized to the whole seat would push its own last line out of view.
-    const rows = Math.max(1, Math.max(6, e.props.scroll.bodyRows) - 1 - (chooser ? 1 : 0))
+    const chooser = picker(Select, run)
+    // The footer takes a row, the rule above it one more, and the picker one
+    // more again where it draws: a canvas sized to the whole seat would push
+    // its own last line out of view. The settings cost nothing here — they are
+    // a dialog over the drawing, not a row under it, so opening them takes no
+    // row from the graph.
+    const reserved = 2 + (chooser ? 1 : 0)
+    const rows = Math.max(1, Math.max(6, e.props.scroll.bodyRows) - reserved)
 
     if (!state.canvas || state.size?.columns !== columns || state.size.rows !== rows || state.canvas.background !== groundColor()) {
       state.canvas = new Canvas(columns, rows, groundColor())
@@ -887,68 +1132,43 @@ export function register(on: On, options: PluginOptions) {
     }
 
     if (run) {
-      const drawn = paint(state.canvas, run, {
-        nowMs: await $.clock.now(),
-        tick: state.tick,
-        orientation: state.orientation,
-        selectedId: state.selectedId ?? undefined,
-        detailRows: state.detailRows,
-        detailScroll: state.detailScroll,
-      })
+      const drawn = paint(state.canvas, run, paintOptions(await $.clock.now()))
 
       state.hotspots = drawn.hotspots
       state.detailView = drawn.detail ?? null
     } else {
-      // Idle: the last run's picture must not linger under the idle line.
-      state.canvas.clear()
-      state.hotspots = []
+      // Idle the pane draws what the session has run, so the last run's picture
+      // is cleared and the list takes its place.
+      const nowMs = await $.clock.now()
+
+      state.hotspots = paintIdle(state.canvas, state.runs.map(runEntry), nowMs, paintOptions(nowMs))
+      state.detailView = null
     }
 
-    const picture = Raster
-      ? [
-          Raster({
-            key: 'dag',
-            columns: state.canvas.columns,
-            rows: state.canvas.rows,
-            cells: state.canvas.encode(),
-          }),
-        ]
-      : rowsOf(state.canvas, { Box, Text, Button }, state.hotspots, pressNode)
+    // A Raster is a leaf, so a pane drawn as one whole has nothing to click.
+    // `pictureOf` cuts it at the rows that carry a node's label and draws those
+    // as elements, where the label becomes a Button; the cut comes back with it
+    // so the next frame blits the same Rasters.
+    const picture = pictureOf(state.canvas, { Box, Text, Button, Raster }, state.hotspots, pressNode)
+
+    state.bands = picture.bands
+    // These Rasters are mounted with the cells this paint produced, so what a
+    // later frame has to compare against is what went out here.
+    state.sent = new Map(
+      picture.bands.flatMap(band =>
+        band.key ? [[band.key, (state.canvas as Canvas).encode(band.from, band.rows)] as const] : [],
+      ),
+    )
 
     return Box({
       flexDirection: 'column',
-      children: [...picture, footer(Box, Text, Button, run, false, !!chooser), ...(chooser ? [chooser] : [])],
+      children: [
+        ...picture.children,
+        footerRule(Box, Text),
+        footerRow(Box, Text, Button),
+        ...(chooser ? [chooser] : []),
+      ],
     }) as never
-  })
-
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const drawn = await next(e)
-
-    if (state.site !== 'band' || !state.isPaneOpen || e.surface !== 'terminal' || e.props.hasSurvey) {
-      return drawn
-    }
-
-    const table = (await $.ui.resolve(e)) as unknown as SiteTable
-
-    return siteTree($, table, drawn, columnsOf(e.props.bodyColumns, e.viewport?.columns), e.props.maxRows, true)
-  })
-
-  // The hint line under the prompt is the one site below it a hook may draw a
-  // tree in. It has no measured height and arms no hotkeys, so the drawing
-  // takes `bandRows` and its buttons want a Tab.
-  on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
-    const drawn = await next(e)
-
-    if (state.site !== 'below' || !state.isPaneOpen || e.surface !== 'terminal') {
-      return drawn
-    }
-
-    // Only Pane and AbovePrompt sites hold the keyboard, so nothing here can
-    // be pressed: the tree is text alone, and the pane or band is where the
-    // buttons are.
-    const { Box, Text } = (await $.ui.resolve(e)) as unknown as SiteTable
-
-    return siteTree($, { Box, Text }, drawn, columnsOf(undefined, e.viewport?.columns), state.bandRows + 3, false)
   })
 
   // The element's key names what was pressed, so the press is read off the
@@ -968,7 +1188,7 @@ export function register(on: On, options: PluginOptions) {
       result = { element: e.element }
     }
 
-    await applyPress($)
+    await actOnPress($)
 
     return result
   })
@@ -986,7 +1206,7 @@ export function register(on: On, options: PluginOptions) {
       result = { element: e.element, value: e.value }
     }
 
-    await applyPress($)
+    await actOnPress($)
 
     return result
   })
@@ -1030,113 +1250,42 @@ export function register(on: On, options: PluginOptions) {
 
     await recoverRuns($)
 
-    // A run still going is what the pane opens on. With none, it opens idle:
-    // the session's earlier runs are there to pick from, not pushed on screen.
-    const live =
+    // A run still going is what the pane opens on. With none, the last run of
+    // the session is: the pane opens on a drawing, with its own top bar and the
+    // run's name there to open the list of the others from. It used to open on
+    // the idle line instead, which has no bar to open anything from — so the
+    // only way through to an earlier run was a chooser under the footer, and
+    // the pane opened on a sentence where a run was there to be drawn.
+    const shown =
       (state.shown?.status === 'running' ? state.shown : undefined) ??
-      [...state.runs].reverse().find(r => r.status === 'running')
+      [...state.runs].reverse().find(r => r.status === 'running') ??
+      state.shown ??
+      state.runs[state.runs.length - 1]
 
-    if (!live) {
+    if (!shown) {
       await showIdle($, true)
 
-      return {
-        text:
-          state.runs.length > 0
-            ? `No workflow is running. ${state.runs.length} earlier run${state.runs.length === 1 ? '' : 's'} to look at.`
-            : 'No workflow is running in this session.',
-      }
+      return { text: 'No workflow is running in this session.' }
     }
 
-    await showRun($, live, true)
+    await showRun($, shown, true)
 
-    const landed = live.agents.filter(a => a.state === 'done' || a.state === 'failed').length
+    const landed = shown.agents.filter(a => a.state === 'done' || a.state === 'failed').length
 
     return {
-      text: `${live.name} · ${live.status} · ${landed}/${live.agents.length} agents landed`,
+      text: `${shown.name} · ${shown.status} · ${landed}/${shown.agents.length} agents landed`,
     }
   })
 }
 
-/** One element constructor of a surface's table, read loosely. */
+/** One element constructor of the terminal surface's table, read loosely. */
 type Element = (props: Record<string, unknown>) => unknown
 
-type SiteTable = {
-  Box: Element
-  Text: Element
-  Button?: Element
-  Select?: Element
-}
-
 /**
- * The drawing as a tree for a site the engine seats by itself (the band above
- * the prompt, the hint line under it): the site's own content first, then the
- * canvas as rows, the footer, and the run picker.
- *
- * A site scrolls a tree taller than it in a window, which hides most of a
- * drawing, so the canvas takes what is left after the footer and the picker;
- * with fewer rows than a graph needs (a fullscreen layout's bottom slot) it
- * gets the run's top line instead.
- */
-async function siteTree(
-  $: EngineInterface,
-  table: SiteTable,
-  drawn: unknown,
-  columns: number,
-  maxRows: number,
-  inBand: boolean,
-): Promise<never> {
-  const { Box, Text, Button, Select } = table
-  const run = state.shown
-  const chooser = picker(Select, Text, run)
-
-  const spare = maxRows - 1 - (chooser ? 1 : 0)
-  const wantsGraph = spare >= MIN_BAND_ROWS
-  const rows = wantsGraph ? Math.max(MIN_BAND_ROWS, Math.min(state.bandRows, spare)) : 1
-
-  if (!state.band || state.bandSize?.columns !== columns || state.bandSize.rows !== rows || state.band.background !== groundColor()) {
-    state.band = new Canvas(columns, rows, groundColor())
-    state.bandSize = { columns, rows }
-  }
-
-  if (run) {
-    const options = {
-      nowMs: await $.clock.now(),
-      tick: state.tick,
-      orientation: state.orientation,
-      selectedId: state.selectedId ?? undefined,
-      detailRows: state.detailRows,
-      detailScroll: state.detailScroll,
-    }
-    const painted = wantsGraph ? paint(state.band, run, options) : paintSummary(state.band, run, options)
-
-    state.bandHotspots = painted.hotspots
-    state.detailView = painted.detail ?? null
-  } else {
-    // Idle keeps the seat's height rather than collapsing to the footer: the
-    // pane has always held its room with nothing on it, and a band that shrank
-    // to one line made the same view look like two different things. The last
-    // run's picture must not linger under the idle line either.
-    state.band.clear()
-    state.bandHotspots = []
-    state.detailView = null
-  }
-
-  return Box({
-    flexDirection: 'column',
-    children: [
-      drawn,
-      ...rowsOf(state.band, { Box, Text, Button }, state.bandHotspots, pressNode),
-      footer(Box, Text, Button, run, inBand, !!chooser),
-      ...(chooser ? [chooser] : []),
-    ],
-  }) as never
-}
-
-/**
- * The width a site gives its drawing. 2.1.270's `AbovePrompt` props carry no
- * `bodyColumns` (the declarations that name it are 2.1.271's), and a NaN width
- * made a canvas with no cells: every band row drew empty while its footer drew
- * fine. The viewport's width stands in, and a plain 80 when nothing measured.
+ * The width the pane gives its drawing. `bodyColumns` is not on every build's
+ * props, and a NaN width makes a canvas with no cells — every row draws empty
+ * while the footer draws fine. The viewport's width stands in, and a plain 80
+ * when nothing was measured.
  */
 function columnsOf(bodyColumns: unknown, viewportColumns: unknown): number {
   const body = Number(bodyColumns)
@@ -1150,21 +1299,6 @@ function columnsOf(bodyColumns: unknown, viewportColumns: unknown): number {
   return Number.isFinite(viewport) && viewport > 0 ? Math.max(20, Math.floor(viewport)) : 80
 }
 
-/** Moves the detail list by `by` lines, clamped to what the last paint said it has. */
-function scrollDetail(by: number): void {
-  const view = state.detailView
-  const last = view ? Math.max(0, view.total - view.visible) : 0
-
-  state.detailScroll = Math.max(0, Math.min(last, state.detailScroll + by))
-}
-
-function pressDetailUp(): void {
-  state.pressed = 'detail-up'
-}
-
-function pressDetailDown(): void {
-  state.pressed = 'detail-down'
-}
 
 /** What a Button's key asks for: a node's key names its agent, the rest name themselves. */
 function actionOfKey(key: string): string {
@@ -1179,32 +1313,12 @@ function pressNode(agentId: string): void {
   state.pressed = agentId
 }
 
-function pressOrientation(): void {
-  state.pressed = 'orientation'
+function pressSettings(): void {
+  state.pressed = SETTINGS
 }
 
-function pressSite(): void {
-  state.pressed = 'site'
-}
-
-function pressMenu(): void {
-  state.pressed = 'menu'
-}
-
-function pressDetailTaller(): void {
-  state.pressed = 'detail-taller'
-}
-
-function pressDetailShorter(): void {
-  state.pressed = 'detail-shorter'
-}
-
-function pressBandTaller(): void {
-  state.pressed = 'band-taller'
-}
-
-function pressBandShorter(): void {
-  state.pressed = 'band-shorter'
+function pressAbout(): void {
+  state.pressed = ABOUT
 }
 
 /** A Select keeps its handler in the plugin too; `ui.select` does the work. */
@@ -1212,187 +1326,237 @@ function selectRun(value: string): void {
   state.pressed = `run:${value}`
 }
 
-function pressClear(): void {
-  state.pressed = 'clear'
-}
-
 /**
- * The line under the drawing: which run is on screen, which others there are,
- * and the handful of things that can be done to the view.
+ * The line between the drawing and the row under it.
  *
- * The settings sit behind one button rather than always on the line: the graph
- * is what the pane is for, and a row of six controls under it would compete
- * with it every frame.
+ * The footer is elements where everything above it is canvas, and without a
+ * divider the two ran together: the last line of the graph and the first word
+ * of the state sat one row apart on the same ground, so a node parked at the
+ * bottom of the pane read as though it belonged to the settings.
+ *
+ * It is drawn in the tone the drawing's own rules take — mixed from the ground
+ * rather than fixed — so it reads as the last line of the picture rather than
+ * as a border the surface put there. It spans the drawing, not the seat: a rule
+ * wider than the graph above it steps off the right edge.
  */
-function footer(
-  Box: Element,
-  Text: Element,
-  Button: Element | undefined,
-  run: RunState | null,
-  inBand: boolean,
-  canPick: boolean,
-) {
-  const children: unknown[] = []
+function footerRule(Box: Element, Text: Element): unknown {
+  const columns = state.size?.columns ?? 0
 
-  if (!run && !state.isMenuOpen) {
-    children.push(Text({ dimColor: true, children: idleLine(canPick) }))
-    children.push(Text({ children: '   ' }), settings(Text, Button, inBand))
-
-    return Box({ flexDirection: 'row', ...ground(), children })
-  }
-
-  if (state.isMenuOpen && Button) {
-    children.push(
-      Button({ key: 'menu', label: 'Done', ...key(inBand, '1'), plain: true, dimColor: true, onPress: pressMenu }),
-      Text({ children: '   ' }),
-      Button({
-        key: 'site',
-        label:
-          state.site === 'pane'
-            ? 'Draw at the bottom'
-            : state.site === 'band'
-              ? 'Draw under the prompt'
-              : 'Draw beside the transcript',
-        ...key(inBand, '2'),
-        plain: true,
-        dimColor: true,
-        onPress: pressSite,
-      }),
-      Text({ children: '   ' }),
-      Button({
-        key: 'orientation',
-        label: layoutLabel(),
-        ...key(inBand, '3'),
-        plain: true,
-        dimColor: true,
-        onPress: pressOrientation,
-      }),
-      Text({ children: '   ' }),
-      Text({ dimColor: true, children: `Detail ${state.detailRows}` }),
-      Text({ children: ' ' }),
-      Button({ key: 'detail-shorter', label: '−', plain: true, dimColor: true, onPress: pressDetailShorter }),
-      Text({ children: ' ' }),
-      Button({ key: 'detail-taller', label: '+', plain: true, dimColor: true, onPress: pressDetailTaller }),
-    )
-
-    if (state.site !== 'pane') {
-      children.push(
-        Text({ children: '   ' }),
-        Text({ dimColor: true, children: `Height ${state.bandRows}` }),
-        Text({ children: ' ' }),
-        Button({ key: 'band-shorter', label: '−', plain: true, dimColor: true, onPress: pressBandShorter }),
-        Text({ children: ' ' }),
-        Button({ key: 'band-taller', label: '+', plain: true, dimColor: true, onPress: pressBandTaller }),
-      )
-    }
-
-    return Box({ flexDirection: 'row', ...ground(), children })
-  }
-
-  const landed = run ? run.agents.filter(a => a.state === 'done' || a.state === 'failed').length : 0
-
-  children.push(
-    Text({
-      dimColor: true,
-      wrap: 'truncate-end',
-      children: run ? `${run.status}  ${landed}/${run.agents.length}` : 'idle',
-    }),
-  )
-
-  children.push(Text({ children: '   ' }), settings(Text, Button, inBand))
-
-  if (state.selectedId) {
-    const view = state.detailView
-    const where = view && view.total > view.visible ? `${view.scroll + 1}–${Math.min(view.total, view.scroll + view.visible)}/${view.total}` : ''
-
-    if (Button) {
-      children.push(
-        Text({ children: '   ' }),
-        Button({
-          key: 'clear',
-          label: 'Close detail',
-          ...key(inBand, '4'),
-          plain: true,
-          dimColor: true,
-          onPress: pressClear,
-        }),
-        Text({ children: '   ' }),
-        Button({ key: 'detail-up', label: '▲', ...key(inBand, '5'), plain: true, dimColor: true, onPress: pressDetailUp }),
-        Text({ children: ' ' }),
-        Button({ key: 'detail-down', label: '▼', ...key(inBand, '6'), plain: true, dimColor: true, onPress: pressDetailDown }),
-      )
-    }
-
-    // Where the detail list is scrolled to is a fact about the drawing, not a
-    // control, so it reads the same at a seat that cannot hold the arrows.
-    if (where) {
-      children.push(Text({ children: Button ? ' ' : '   ' }), Text({ dimColor: true, children: where }))
-    }
-  }
-
-  return Box({ flexDirection: 'row', ...ground(), children })
+  return Box({
+    flexDirection: 'row',
+    ...ground(),
+    children: [Text({ color: paneHex(quietOf(groundColor())), children: RULE_ACROSS.repeat(columns) })],
+  })
 }
 
-/**
- * The idle line. A seat that can draw a Select offers the list; one that cannot
- * names the command that does the same thing, rather than pointing at a chooser
- * that is not there.
- */
-function idleLine(canPick: boolean): string {
-  if (state.runs.length === 0) {
-    return 'No workflow is running in this session.'
-  }
-
-  if (canPick) {
-    return 'No workflow is running. Pick an earlier run below, or start one.'
-  }
-
-  return `No workflow is running. ${state.runs.length} earlier run${state.runs.length === 1 ? '' : 's'} — /wf runs to list them.`
-}
+/** The rule above the footer, the same line the pane divides its bars with. */
+const RULE_ACROSS = '\u2500'
 
 /**
- * The settings slot, in the same place on the line at every seat. The hint line
- * under the prompt takes no Buttons, so there it names the command instead of
- * drawing one.
+ * The row under the drawing: the way in, what the pane is set to, and what the
+ * pane is.
+ *
+ * It used to be the settings themselves — four controls and three rules, on
+ * screen in every session whether or not anyone was changing anything, each one
+ * a cycle that could only be read by pressing it. That spent the row's whole
+ * width on the few seconds a reader spends setting the pane up, and still could
+ * not show them what they were choosing: you picked a palette by pressing past
+ * five others and watching the pane change colour.
+ *
+ * The settings are a dialog now, and the row is built like the bar at the top
+ * of the pane, which is the other row a reader reads rather than looks at: the
+ * control in the left gutter, the quiet facts in the middle, and the identity
+ * at the far right.
+ *
+ * Each fact is named and every one is divided from the next by the same rule
+ * the top bar uses — `Layout: across │ Theme: gruvbox` — so a reader who has
+ * never opened the dialog can still tell which word is the setting and which is
+ * the value. Unnamed and spaced, the row read as a list of four words from a
+ * vocabulary nobody has been taught: `fits  gruvbox  24-row detail` is three
+ * answers to three questions that are not on screen.
+ *
+ * The name at the right is the About button. An `i` in a circle is two cells
+ * wide in some terminals and one in others, and the row is a grid; what a
+ * reader presses to find out what this is, is what it is called.
  */
-function settings(Text: Element, Button: Element | undefined, inBand: boolean): unknown {
+function footerRow(Box: Element, Text: Element, Button: Element | undefined): unknown {
+  const stamp = `${NAME} ${VERSION}`
+
   if (!Button) {
-    return Text({ dimColor: true, children: '/wf help' })
+    return Box({
+      flexDirection: 'row',
+      ...ground(),
+      children: [Text({ dimColor: true, children: `${settingsSummary()}   ${HELP_HINT}` })],
+    })
   }
 
-  return Button({ key: 'menu', label: 'Settings', ...key(inBand, '1'), plain: true, dimColor: true, onPress: pressMenu })
+  const label = `${ICON.settings} Settings`
+  const row = footerWidths(state.size?.columns ?? 0, label.length, stamp.length)
+
+  return Box({
+    flexDirection: 'row',
+    ...ground(),
+    children: [
+      control(Button, SETTINGS, label, pressSettings),
+      // The surface's own dim rather than a colour of the pane's, so the state
+      // reads as quiet next to two buttons that are dim at rest and light under
+      // the pointer. A hue here would compete with the things to press.
+      Text({ dimColor: true, children: row.state }),
+      Text({ children: ' '.repeat(row.gap) }),
+      ...(row.stamp ? [control(Button, ABOUT, stamp, pressAbout)] : []),
+    ],
+  })
 }
 
 /**
- * The ground every canvas clears to. One value for all three seats: the palette
- * is drawn for a dark ground, and a pane left on the terminal's own colour made
- * the same graph read differently from seat to seat.
+ * How much of the row fits, and where the right-hand end sits.
+ *
+ * The row never wraps. A footer one cell wider than the pane costs the drawing
+ * a line and puts half of the state under the graph, which is worse than a
+ * footer that says less — so what will not fit is dropped, from the end: the
+ * detail height matters while a node is open, the palette can be read off the
+ * pane itself, and the layout is the one a reader changes most.
+ * The name has first call on the width — a pane that will not say what it is
+ * has nowhere to send the reader who asks — and where even the name will not
+ * fit, the cells go back to the state rather than being left empty.
+ */
+function footerWidths(
+  columns: number,
+  labelW: number,
+  stampW: number,
+): { state: string; gap: number; stamp: boolean } {
+  const facts = settingsFacts()
+
+  if (columns <= 0) {
+    return { state: ` ${RULE} ${facts.join(` ${RULE} `)}`, gap: 3, stamp: true }
+  }
+
+  const stamp = columns - labelW >= stampW + FOOTER_GAP
+  let room = columns - labelW - (stamp ? stampW + FOOTER_GAP : 0)
+  let state = ''
+
+  for (const fact of facts) {
+    const next = ` ${RULE} ${fact}`
+
+    if (next.length > room) {
+      break
+    }
+
+    state += next
+    room -= next.length
+  }
+
+  return {
+    state,
+    gap: Math.max(stamp ? FOOTER_GAP : 0, columns - labelW - state.length - (stamp ? stampW : 0)),
+    stamp,
+  }
+}
+
+/** The rule between the button and the state, the same one the top bar uses. */
+const RULE = '\u2502'
+
+/** The least air between the state and the name at the right-hand end. */
+const FOOTER_GAP = 2
+
+/**
+ * What the pane is set to, in the words the dialog uses for the same things,
+ * and in the order the dialog lists them.
+ *
+ * The row says the state and the dialog changes it, so the two have to agree
+ * word for word: a footer reading `Layout: down` beside a dialog offering
+ * `across down timeline fits` is two names for one setting. They agree on the
+ * order as well, so a reader scanning the row and a reader scanning the dialog
+ * are reading the same list.
+ */
+function settingsFacts(): string[] {
+  return [
+    `Layout: ${layoutWord()}`,
+    `Theme: ${state.theme}`,
+    `Detail height: ${state.detailRows} rows`,
+  ]
+}
+
+/** The same facts as one line, for a seat that draws no buttons to divide them. */
+function settingsSummary(): string {
+  return settingsFacts().join(` ${RULE} `)
+}
+
+/**
+ * The row's one control: the label at rest, and what it does under the pointer.
+ *
+ * A dim label with nothing around it does not read as pressable — the reader
+ * who found out it was found out by clicking it. It lights instead: full
+ * strength, in the colour the pane gives the thing a reader is acting on, while
+ * the state beside it stays quiet. `hover` is the surface's own, so nothing
+ * crosses back to this plugin to do it and the row does not redraw to light a
+ * word.
+ */
+function control(Button: Element, key: string, label: string, onPress: () => void): unknown {
+  return Button({
+    key,
+    label,
+    plain: true,
+    dimColor: true,
+    hover: { scope: `flowpane:${key}`, dimColor: false, color: accentHex(), bold: true },
+    onPress,
+  })
+}
+
+/**
+ * The row's icon.
+ *
+ * A single-width geometric glyph rather than an emoji. The pane itself is a grid
+ * of cells, and an emoji is two of them wide in some terminals and one in
+ * others — a footer that reads well in one terminal and wraps in the next is
+ * worse than one with no icon at all. The same gear the dialog is titled with,
+ * so the button and what it opens are one thing.
+ */
+const ICON = {
+  settings: '\u2699',
+}
+
+/**
+ * The ground the canvas clears to: always the palette's own.
+ *
+ * It was a setting, and a setting is a question — and this one asked the reader
+ * to answer for the pane what only the pane knows. The palette is drawn for a
+ * dark ground, so on a light terminal, or on any terminal whose ground is not
+ * the one these six palettes were picked against, the drawing came out in
+ * colours nobody chose. Off, it was a bug a reader could switch on. On, the
+ * pane is the same picture in every terminal, which is what the setting was
+ * really for.
  */
 function groundColor(): number {
-  return state.backdrop ? BACKDROP : DEFAULT_COLOR
-}
-
-/** The footer sits on the same ground as the drawing above it. */
-function ground(): { backgroundColor?: string } {
-  return state.backdrop ? { backgroundColor: BACKDROP_HEX } : {}
+  return backdropOf()
 }
 
 /**
- * A hotkey only where one is honoured. The band takes a digit from an empty
- * composer; a pane honours none, and would still print `m:` on the label.
+ * The footer sits on the same ground as the drawing above it — and stops where
+ * the drawing stops. A row left to itself takes the pane's width, which is not
+ * always the width the canvas was made at, and a footer band wider than the
+ * graph above it is the same step down the right edge the rows carrying a
+ * node's label used to have.
  */
-function key(inBand: boolean, digit: string): { hotkey?: string } {
-  return inBand ? { hotkey: digit } : {}
+function ground(): { backgroundColor?: string; width?: number } {
+  const columns = state.size?.columns
+
+  return { backgroundColor: paneHex(backdropOf()), ...(columns ? { width: columns } : {}) }
+}
+
+/** What the layout in force is called, in one word, wherever it is named. */
+function layoutWord(): string {
+  return state.orientation === 'auto'
+    ? 'fits'
+    : state.orientation === 'flow'
+      ? 'across'
+      : state.orientation === 'stack'
+        ? 'down'
+        : 'timeline'
 }
 
 function layoutLabel(): string {
-  return state.orientation === 'auto'
-    ? 'Layout: fits'
-    : state.orientation === 'flow'
-      ? 'Layout: across'
-      : state.orientation === 'stack'
-        ? 'Layout: down'
-        : 'Layout: timeline'
+  return `Layout: ${layoutWord()}`
 }
 
 /**
@@ -1401,27 +1565,33 @@ function layoutLabel(): string {
  * Only drawn from the second run on: one run needs no chooser, and the line it
  * would take is a line of graph.
  */
-function picker(Select: Element | undefined, Text: Element, run: RunState | null) {
+function picker(Select: Element | undefined, run: RunState | null) {
+  if (!Select || state.runs.length === 0) {
+    return null
+  }
+
+  // Where there are Buttons the list is not an element at all. Over a run, the
+  // name in the top bar opens it and `paint` unrolls it into the canvas under
+  // that name; idle, the drawing is the list, and every line of it is pressable
+  // already. The chooser is what a build with no Button falls back to.
+  if (state.canChoose) {
+    return null
+  }
+
   // One run needs no chooser while it is on screen; idle, even one is a choice.
-  if (!Select || state.runs.length === 0 || (run && state.runs.length < 2)) {
+  if (run && state.runs.length < 2) {
     return null
   }
 
   return Select({
     key: 'run',
     label: 'Run',
-    // Idle, the picker is the one thing to do, so the focus ring starts on it
-    // when the pane takes the keyboard: Enter opens it without a Tab first.
-    ...(run ? {} : { autoFocus: true as const }),
+    // The list takes the focus ring when it appears, so it can be walked with
+    // the arrow keys without a Tab first. Idle it is the one thing to do; over
+    // a run it has just been asked for by name.
+    ...(!run || state.picking ? { autoFocus: true as const } : {}),
     value: run?.runId,
-    options: state.runs.map(r => {
-      const landed = r.agents.filter(a => a.state === 'done' || a.state === 'failed').length
-
-      return {
-        value: r.runId,
-        label: `${r.name}  ${r.status}  ${landed}/${r.agents.length}`,
-      }
-    }),
+    options: state.runs.map(r => ({ value: r.runId, label: runLabel(r) })),
     onSelect: selectRun,
   })
 }

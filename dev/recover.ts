@@ -1,79 +1,86 @@
 /**
- * Checks the run-recovery walk outside Claude Code: given a session id, find the
- * runs the way `recoverRuns` does, and report what it would rebuild.
+ * Checks the run-recovery walk outside Claude Code: given a session id, ask the
+ * plugin itself what it finds on disk for that session, and print it.
  *
- *   bun dev/recover.ts <sessionId>
+ *   bun dev/recover.ts <sessionId> [homeDir]
+ *
+ * The second argument stands in for `$HOME`, so a copied session tree can be
+ * edited — a summary file taken out of it, say — to see what the walk makes of
+ * a run that has not finished.
+ *
+ * It drives `register()` rather than repeating the walk: a second reader would
+ * drift from the first, and then the harness would report a recovery no session
+ * ever performs. The plugin's `session.start` is what does the walking; `/wf
+ * runs` and a bare `/wf` are what it answers with.
  */
 
-import { applyJournal, applyRunFile, runFileOf, type RunState } from '../hooks/journal'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+
+import { register } from '../hooks/register'
 
 const sessionId = process.argv[2]
-const home = process.env.HOME
-const projects = `${home}/.claude/projects`
-const runs: RunState[] = []
+const home = process.argv[3] ?? process.env.HOME
 
-for (const entry of await Array.fromAsync(new Bun.Glob('*').scan({ cwd: projects, onlyFiles: false }))) {
-  const base = `${projects}/${entry}/${sessionId}`
-  const dir = `${base}/workflows`
+if (!sessionId) {
+  console.error('usage: bun dev/recover.ts <sessionId> [homeDir]')
+  process.exit(1)
+}
 
-  if (!(await Bun.file(`${dir}`).exists()) && !(await Bun.file(`${dir}/.`).exists())) {
-    // Bun.file on a directory is unreliable; try listing instead.
-  }
+type Handler = (engine: unknown, event: unknown, next: (e: unknown) => unknown) => Promise<{ text?: string }>
 
-  let names: string[] = []
+const handlers = new Map<string, Handler>()
 
-  try {
-    names = await Array.fromAsync(new Bun.Glob('*.json').scan({ cwd: dir }))
-  } catch {
-    continue
-  }
+/** The plugin's `on`, keyed the way the plugin's own filters distinguish hooks. */
+function on(event: string, a: unknown, b?: unknown): void {
+  const handler = (typeof a === 'function' ? a : b) as Handler
+  const filter = (typeof a === 'function' ? {} : a) as { command?: string; tool?: string }
+  const key = [event, filter.command, filter.tool].filter(Boolean).join(':')
 
-  for (const name of names) {
-    const runId = name.replace(/\.json$/, '')
-    const run: RunState = {
-      runId,
-      name: runId,
-      summary: '',
-      transcriptDir: `${base}/subagents/workflows/${runId}`,
-      runFile: `${dir}/${name}`,
-      startedMs: 0,
-      status: 'running',
-      phases: [],
-      agents: [],
-      consumed: 0,
-    }
-
-    const text = await Bun.file(run.runFile).text()
-
-    applyRunFile(run, text, Date.now())
-    run.name = JSON.parse(text).workflowName ?? runId
-
-    const journal = Bun.file(`${run.transcriptDir}/journal.jsonl`)
-
-    if (await journal.exists()) {
-      applyJournal(run, await journal.text(), Date.now())
-    }
-
-    runs.push(run)
-  }
-
-  if (names.length > 0) {
-    break
+  if (!handlers.has(key)) {
+    handlers.set(key, handler)
   }
 }
 
-runs.sort((a, b) => a.startedMs - b.startedMs)
+/** Enough of the engine for the walk: the session's id, a clock, and files. */
+const engine = {
+  env: { get: async (name: string) => (name === 'HOME' ? home : undefined) },
+  session: { id: async () => sessionId },
+  clock: { now: async () => Date.now(), every: () => ({ cancel() {} }) },
+  store: { get: async () => undefined, set: async () => undefined },
+  ui: { open: async () => undefined, close: async () => undefined, invalidate: () => undefined },
+  command: { register: async () => undefined },
+  fs: {
+    exists: async (path: string) => {
+      try {
+        statSync(path)
 
-// The plugin brings back only what is still running; the rest is listed here
-// so the walk itself can be checked, marked as what the plugin would skip.
-for (const run of runs) {
-  const landed = run.agents.filter(a => a.state === 'done' || a.state === 'failed').length
+        return true
+      } catch {
+        return false
+      }
+    },
+    list: async (path: string) =>
+      readdirSync(path, { withFileTypes: true }).map(entry => ({
+        name: entry.name,
+        kind: entry.isDirectory() ? 'dir' : 'file',
+        size: 0,
+      })),
+    stat: async (path: string) => {
+      const found = statSync(path)
 
-  console.log(
-    `${run.status === 'running' ? 'recover' : 'skip   '}  ${run.name.padEnd(16)} ${run.runId}  ${run.status.padEnd(9)} ${landed}/${run.agents.length} agents`,
-  )
+      return { kind: found.isDirectory() ? 'dir' : 'file', size: found.size, mtimeMs: found.mtimeMs }
+    },
+    read: async (path: string) => readFileSync(path, 'utf8'),
+  },
 }
 
-const live = runs.filter(r => r.status === 'running').length
+const pass = async (e: unknown) => e
 
-console.log(`\n${live} running run(s) would be recovered; ${runs.length - live} finished or stopped, left alone`)
+register(on as never, {} as never)
+
+await (handlers.get('session.start') as Handler)(engine, {}, pass)
+
+const command = handlers.get('command.run:wf') as Handler
+
+console.log((await command(engine, { args: 'runs' }, pass)).text)
+console.log(`\n/wf opens on: ${(await command(engine, { args: '' }, pass)).text}`)

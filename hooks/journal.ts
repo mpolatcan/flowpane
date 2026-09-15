@@ -33,7 +33,7 @@ export type ToolCall = {
   isError?: boolean
   /** First line of what the tool answered. */
   result?: string
-  /** The model request (1-based) that issued it, and that request's tokens once it stopped. */
+  /** The model request (1-based) that issued it, and what that request wrote. */
   step?: number
   stepTokens?: number
 }
@@ -53,7 +53,7 @@ export type AgentRow = {
   tokens?: number
   /** The tools this agent has called, newest last. Filled live from tool.call. */
   tools: ToolUse[]
-  /** Every call in order, for the detail strip; absent until the first lands. */
+  /** Every call in order, for the detail dialog; absent until the first lands. */
   calls?: ToolCall[]
   /** The prompt the agent was given, read from its transcript on demand. */
   prompt?: string
@@ -93,6 +93,14 @@ export type RunState = {
   status: RunStatus
   /** Phase titles in script order, from `meta.phases`. */
   phases: string[]
+  /**
+   * What the script said each phase was for, where it said anything.
+   *
+   * Titles alone are what the pane needs for a phase with work in it — the
+   * agents say the rest. A phase the run never entered has no agents, so this
+   * is everything it has: see `Step`.
+   */
+  plan?: Step[]
   /** Agent rows in the order the journal announced them. */
   agents: AgentRow[]
   /** The run's return value, once it has one. */
@@ -102,6 +110,14 @@ export type RunState = {
   logs?: string[]
   /** Every agent's tokens, from the run summary. */
   totalTokens?: number
+  /** The model the run resolved to, for an agent whose own is not recorded. */
+  defaultModel?: string
+  /**
+   * True when the run was rebuilt from the files on disk rather than watched
+   * from its launch. Those files carry no clock of their own, so such a run
+   * has its times read off the files instead.
+   */
+  recovered?: boolean
   /**
    * Journal lines already folded in. It lives on the run, not on the reader:
    * the pane can be closed and reopened on the same run, and a reader that
@@ -120,27 +136,101 @@ type JournalLine = {
 }
 
 /**
- * Pulls the phase titles out of a workflow script's `meta` block.
+ * What a workflow declared about one of its phases, before anything ran in it.
  *
- * `meta` is required to be a pure literal, so a scan for the `title:` strings
- * inside `phases: [...]` is enough and costs no evaluation. A script that
- * declares no phases returns none, and the pane falls back to the phase names
- * the journal reports.
+ * A phase the run never entered has no agents to draw and, until now, nothing
+ * else either — so the pane drew it as an empty box. The script says more than
+ * its name: what the phase is for, and what it would have run on. Both are
+ * written at launch and neither depends on the run reaching the phase, so they
+ * are what a phase that never ran can still say for itself.
  */
-export function phasesOfScript(script: string): string[] {
+export type Step = {
+  title: string
+  /** The one-line description `meta.phases` carries beside the title. */
+  detail?: string
+  /** The model the phase declared, where it declared one. */
+  model?: string
+}
+
+/**
+ * Pulls the declared phases out of a workflow script's `meta` block.
+ *
+ * `meta` is required to be a pure literal, so a scan of the entries inside
+ * `phases: [...]` is enough and costs no evaluation. A script that declares no
+ * phases returns none, and the pane falls back to the phase names the journal
+ * reports.
+ *
+ * The entries are split on the braces rather than scanned field by field
+ * across the whole block: a single pass for `title:` and another for `detail:`
+ * would pair the first title with the first detail wherever a phase in between
+ * declared one and not the other.
+ */
+export function phasesOfScript(script: string): Step[] {
   const block = /phases\s*:\s*\[([\s\S]*?)\]/.exec(script)
 
   if (!block) {
     return []
   }
 
-  const titles: string[] = []
+  const steps: Step[] = []
+  const field = (entry: string, name: string) =>
+    new RegExp(`${name}\\s*:\\s*['"\`]([^'"\`]*)['"\`]`).exec(entry)?.[1] || undefined
 
-  for (const m of block[1].matchAll(/title\s*:\s*['"`]([^'"`]+)['"`]/g)) {
-    titles.push(m[1])
+  for (const entry of block[1].matchAll(/\{([^{}]*)\}/g)) {
+    const title = field(entry[1] as string, 'title')
+
+    if (title) {
+      steps.push({ title, detail: field(entry[1] as string, 'detail'), model: field(entry[1] as string, 'model') })
+    }
   }
 
-  return titles
+  return steps
+}
+
+/**
+ * The workflow's name and the run's id out of a persisted script's file name.
+ *
+ * The engine writes every run's script to `workflows/scripts` at launch, named
+ * `<workflowName>-<runId>.js`. It is the only file a run has before it ends, so
+ * it is what says a run exists while it is still going — and a run id starts
+ * `wf_`, which a workflow name is free to as well, so the split is taken at the
+ * last `wf_` in the name rather than the first.
+ */
+export function runOfScriptName(fileName: string): { name: string; runId: string } | null {
+  const parts = /^(.+)-(wf_.+)\.js$/.exec(fileName)
+
+  return parts ? { name: parts[1], runId: parts[2] } : null
+}
+
+/**
+ * Times one agent of a recovered run by the files the engine stamped for it:
+ * its `.meta.json`, written when it was spawned, and its own transcript,
+ * written to until it stopped. Either may be missing, and the row keeps what it
+ * had when one is.
+ */
+export function applyFileClock(row: AgentRow, spawnedMs?: number, lastWroteMs?: number): void {
+  if (spawnedMs !== undefined) {
+    row.startedMs = Math.round(spawnedMs)
+  }
+
+  if (lastWroteMs !== undefined) {
+    // A running agent is still writing, so its transcript's mtime is when it
+    // last said something rather than when it stopped — and how long ago that
+    // was is what the pane calls an agent quiet by. Read as an end instead, a
+    // busy agent would have been drawn as having stopped minutes ago.
+    if (row.state === 'running') {
+      row.activeMs = Math.max(row.activeMs ?? 0, Math.round(lastWroteMs))
+    } else {
+      row.endedMs = Math.round(lastWroteMs)
+    }
+  }
+
+  // The two files are stamped a moment apart from each other as well as from
+  // the engine's own clock, and an agent that answered at once can have them
+  // land out of order. A bar drawn from a negative duration runs backwards.
+  if (row.endedMs !== undefined && row.startedMs > row.endedMs) {
+    row.startedMs = row.endedMs
+  }
 }
 
 /** The `workflows/<runId>.json` path that pairs with a transcript directory. */
@@ -149,6 +239,24 @@ export function runFileOf(transcriptDir: string, runId: string): string {
   const session = transcriptDir.replace(/\/subagents\/workflows\/[^/]+$/, '')
 
   return `${session}/workflows/${runId}.json`
+}
+
+/**
+ * The whole of what an agent answered, as text.
+ *
+ * An agent given a schema answers with an object, and returns it through a tool
+ * call rather than as text — so its transcript holds no answer at all and the
+ * journal line is the only place the value exists. Capped, because a run that
+ * answered with a megabyte would otherwise be held in memory a frame at a time.
+ */
+function answerOfLine(value: unknown): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined
+  }
+
+  const text = typeof value === 'string' ? value : JSON.stringify(value) ?? ''
+
+  return text.length > 20_000 ? text.slice(0, 20_000) : text
 }
 
 function previewOf(value: unknown): string {
@@ -212,10 +320,18 @@ export function applyJournal(run: RunState, text: string, nowMs: number): boolea
 
       if (row) {
         row.state = line.type === 'error' ? 'failed' : 'done'
-        row.endedMs = nowMs
-        row.resultPreview = previewOf(
-          line.type === 'error' ? line.error : line.result,
-        )
+        // When it landed is the reading, not the landing — the journal line
+        // carries no clock. A row the summary has already timed keeps that
+        // time; this only covers the gap before the summary is written.
+        row.endedMs = row.endedMs ?? nowMs
+
+        const said = line.type === 'error' ? line.error : line.result
+
+        row.resultPreview = previewOf(said)
+        // The preview is one line cut to fit a node's tail; the dialog wants the
+        // whole answer, and for an agent that answered through a schema this
+        // line is the only place the whole answer is written down.
+        row.result = row.result ?? answerOfLine(said)
         changed = true
       }
 
@@ -235,8 +351,9 @@ type RunSummary = {
   startTime?: number
   logs?: unknown[]
   totalTokens?: number
+  defaultModel?: string
   /** Present per agent below; declared here for the row fields that use it. */
-  phases?: { title?: string }[]
+  phases?: { title?: string; detail?: string; model?: string }[]
   workflowProgress?: {
     type?: string
     agentId?: string
@@ -296,6 +413,10 @@ export function applyRunFile(run: RunState, text: string, nowMs: number): void {
     run.totalTokens = summary.totalTokens
   }
 
+  if (typeof summary.defaultModel === 'string') {
+    run.defaultModel = summary.defaultModel
+  }
+
   if (run.status === 'running') {
     return applyProgress(run, summary, nowMs)
   }
@@ -324,9 +445,26 @@ export function applyRunFile(run: RunState, text: string, nowMs: number): void {
 
 /** The per-agent rows of a summary, live or final. */
 function applyProgress(run: RunState, summary: RunSummary, nowMs: number): void {
-  for (const title of summary.phases ?? []) {
-    if (title.title && !run.phases.includes(title.title)) {
-      run.phases.push(title.title)
+  for (const step of summary.phases ?? []) {
+    if (!step.title) {
+      continue
+    }
+
+    if (!run.phases.includes(step.title)) {
+      run.phases.push(step.title)
+    }
+
+    // The file is the fuller source: it is written from the engine's own copy
+    // of `meta`, where the script the pane scans at launch is text. Where both
+    // have something to say about a phase, this is the one that is right.
+    const plan = (run.plan ??= [])
+    const at = plan.findIndex(s => s.title === step.title)
+    const said = { title: step.title, detail: step.detail, model: step.model }
+
+    if (at < 0) {
+      plan.push(said)
+    } else {
+      plan[at] = said
     }
   }
 
@@ -524,7 +662,7 @@ export function noteCallEnd(
 export type StepPart =
   | { kind: 'start' }
   | { kind: 'text'; text: string }
-  | { kind: 'stop'; tokens?: number }
+  | { kind: 'stop'; tokens?: number; output?: number }
   | { kind: 'end' }
 
 /** How much of what the model says the row keeps, for the tail and the detail. */
@@ -561,11 +699,19 @@ export function noteStep(run: RunState, agentId: string, nowMs: number, part: St
     if (part.tokens !== undefined) {
       row.liveTokens = (row.liveTokens ?? 0) + part.tokens
 
-      // The calls this request issued are stamped with what it cost: tokens
+      // The calls this request issued are stamped with what it wrote: tokens
       // belong to a request, not a call, so the same figure stands on each.
+      //
+      // What it wrote, not what it cost. A request's full cost is mostly the
+      // context it read back, which is all but the same figure on every request
+      // an agent makes — a column of `∑ 28k` twenty-five deep says nothing
+      // about any one call. What the model produced to make the call is the
+      // part that moves.
+      const issued = part.output ?? part.tokens
+
       for (const call of row.calls ?? []) {
-        if (call.step === row.steps) {
-          call.stepTokens = part.tokens
+        if (call.step === row.steps && issued !== undefined) {
+          call.stepTokens = issued
         }
       }
     }
@@ -649,6 +795,25 @@ function answerOf(content: unknown): string {
  * and a count, so without reading these the detail could say `1 call, last
  * Bash` and nothing about what the call actually did.
  */
+/**
+ * The model an agent was spawned on, from the `.meta.json` the engine writes
+ * beside its transcript.
+ *
+ * The run summary carries the same fact and more, but it is not written until
+ * the run has something to summarise — for the first minute of a run there is
+ * no file at all, which is exactly the minute a reader is watching hardest.
+ * This one exists from the moment the agent is spawned.
+ */
+export function readAgentMeta(text: string): string | undefined {
+  try {
+    const meta = JSON.parse(text) as { model?: unknown }
+
+    return typeof meta.model === 'string' && meta.model.length > 0 ? meta.model : undefined
+  } catch {
+    return undefined
+  }
+}
+
 export function readAgentTranscript(text: string): {
   prompt?: string
   result?: string
@@ -682,13 +847,28 @@ export function readAgentTranscript(text: string): {
       continue
     }
 
+    // Both ends of a call are stamped in the recording: the request that issued
+    // it carries the moment it was written, and the row carrying the answer the
+    // moment it came back. Read off those, a call that ran while nothing was
+    // watching states its own duration and cost like one that did.
+    const stamp = Date.parse(String(row?.timestamp ?? ''))
+    const at = Number.isFinite(stamp) ? stamp : 0
+    const issued = Number(row?.message?.usage?.output_tokens)
+
     for (const part of content) {
       if (part?.type === 'tool_use' && typeof part.name === 'string') {
         const call: ToolCall = {
           id: typeof part.id === 'string' ? part.id : `call-${calls.length + 1}`,
           name: part.name,
           input: payloadOf(part.input),
-          startedMs: 0,
+          startedMs: at,
+        }
+
+        // Tokens belong to a request, not to a call, so every call the same
+        // request issued carries the same figure — the way the live reader
+        // stamps them.
+        if (Number.isFinite(issued) && issued > 0) {
+          call.stepTokens = issued
         }
 
         calls.push(call)
@@ -701,6 +881,10 @@ export function readAgentTranscript(text: string): {
         if (call) {
           call.result = answerOf(part.content)
           call.isError = part.is_error === true
+
+          if (at > 0 && call.startedMs > 0 && at >= call.startedMs) {
+            call.endedMs = at
+          }
         }
       }
     }

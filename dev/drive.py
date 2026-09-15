@@ -7,7 +7,7 @@ everything it writes, and leaves the raw bytes on disk for inspection. Run it
 with `--debug` in the args to get the engine's own log of what it refused.
 
   python3 dev/drive.py --cols 150 --rows 45 --seconds 90 --out /tmp/cap.raw \
-      --prompt 'Run the workflow named wfpane-probe ...' -- --debug
+      --prompt 'Run the workflow named audit ...' -- --debug
 
 Keys can be typed later in the run, at offsets from the prompt:
 

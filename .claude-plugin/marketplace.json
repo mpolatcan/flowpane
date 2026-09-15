@@ -1,0 +1,15 @@
+{
+  "name": "flowpane",
+  "owner": {
+    "name": "Mutlu Polatcan",
+    "url": "https://github.com/mpolatcan"
+  },
+  "description": "FlowPane on its own: install the plugin straight from its repository.",
+  "plugins": [
+    {
+      "name": "flowpane",
+      "source": "./",
+      "description": "A live workflow pane: replaces the default Workflow progress list with a phase-by-phase graph or a timeline beside the transcript, showing each agent's state, timing, live token spend, tool calls, what it is saying, and prompt."
+    }
+  ]
+}
