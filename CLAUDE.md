@@ -62,7 +62,7 @@ Before calling any of this done: `bunx tsc --noEmit`, `claude plugin test .`,
 | `hooks/canvas.ts` | The grid: cells, colour mixing, line drawing, joints |
 | `hooks/theme.ts` | Twelve themes, each ten colours, and the thirteen roles derived |
 | `hooks/press.ts` | Keys and clicks |
-| `hooks/about.ts` | What the pane says about itself: the dialog and `/wf about` |
+| `hooks/about.ts` | What the pane says about itself: the dialog and `/flowpane about` |
 | `tests/` | What the pane draws, read back off the canvas |
 | `dev/` | The tools above |
 | `docs/` | The design record: every decision, and what it replaced |

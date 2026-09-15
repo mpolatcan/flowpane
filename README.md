@@ -1,52 +1,14 @@
 # flowpane — a live graph of a Claude Code workflow run
 
-Claude Code runs a workflow as a list of agents ticking over. flowpane draws it
-instead: one column per phase, an agent as a node, the barriers and carries
-between them as edges, repainted about eight times a second while the run is
-live.
+**Claude Code** runs a workflow as a list of agents ticking over. **flowpane**
+draws it instead: one column per phase, an agent as a node, the barriers and
+carries between them as edges, repainted about eight times a second while the
+run is live.
 
-```
-                                        FlowPane - Dynamic Workflow Visualizer
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-▮ wf_65ed0255-65c │ stopped 9/13     ⧖ 2m56s │ ∑ 489.3k tkns │ ⚙ 151  13×Bash  11×Read │ ⧉ 13  7×Haiku 4.5  6×Sonnet 5
-──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Survey 5/5 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-
-              ╭── ✔ paint ───╮   ╭── ✔ layout ──╮   ╭─ ✔ journal ──╮   ╭── ✔ README ──╮   ╭── ✔ plugin ──╮
-              │⧖ 10.3s  ∑17k │   │⧖ 11.9s  ∑17k │   │⧖ 10.9s  ∑17k │   │⧖ 10.2s  ∑17k │   │⧖ 15.8s  ∑17k │
-              ╰─ Haiku 4.5 ──╯   ╰─ Haiku 4.5 ──╯   ╰─ Haiku 4.5 ──╯   ╰─ Haiku 4.5 ──╯   ╰─ Haiku 4.5 ──╯
-            ╭┄┄┄┄┄┄┄┄┄╯        ╭┄┄┄┄┄┄┄┄┄╯                  ╰┄┄┄┄┄┄┄┄╮         •
-━━━━━━━━━━━━◠━━━━━━━━━━━━━━━━━━◠━━━━━━━━━━━━━━━━━━━ Review 3/6 ↻3 ───◠─────────◠──────────────────────────────────────
-            │                  │                           ╭┄┄┄┄┄┄┄┄┄│┄┄┄┄┄┄┄┄┄╯
-            ▾                  ▾                           ┆         ▾
-    ╭─ ⊘ paint:c… ─╮   ╭─ ✔ layout:… ─╮   ╭─ ⊘ layout:… ─╮ × ╭─ ✔ journal… ─╮   ╭─ ✔ journal… ─╮   ╭─ ⊘ journal… ─╮
-    │⧖ 2m45s  ∑91k │   │⧖ 1m42s  ∑45k │•─▸│⧖ 1m00s  ∑45k │ 2 │⧖ 1m45s  ∑54k │•┄▸│⧖ 35.1s  ∑42k │•┄▸│⧖ 24.0s  ∑40k │
-    ╰── Sonnet 5 ──╯   ╰── Sonnet 5 ──╯   ╰─ Sonnet 5 ↻2─╯ ┆ ╰── Sonnet 5 ──╯   ╰─ Sonnet 5 ↻2─╯   ╰─ Sonnet 5 ↻3─╯
-                                                           ┆
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Check 1/2 ◠──────────────────────────────────────────────────────────
-                                                  ╭┄┄┄┄┄┄┄┄╯
-                                                  ▾
-                                          ╭── ⊘ README ──╮   ╭── ✔ plugin ──╮
-                                          │⧖ 2m45s  ∑48k │   │⧖ 1m54s  ∑38k │
-                                          ╰─ Haiku 4.5 ──╯   ╰─ Haiku 4.5 ──╯
-
-
-╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ Skipped ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
-                  ▌⊘ Verify  one agent per finding, told to refute it                         Sonnet
-                  ▌⊘ Escalate  only what survived as blocking — usually nothing, so usually…    Opus
-                  ▌⊘ Report  one agent joins the survey and the verdicts                        Opus
-```
-
-Built on Claude Code **function hooks** (Claude Mods), the early-access plugin
-API from [anthropics/claude-code#91870](https://github.com/anthropics/claude-code/issues/91870).
+Built on Claude Code **function hooks** (**Claude Mods**), the early-access
+plugin API from [anthropics/claude-code#91870](https://github.com/anthropics/claude-code/issues/91870).
 
 ## Screenshots
-
-<!--
-  Placeholders. Drop the four captures into docs/images/ under these names and
-  they appear here — docs/images/README.md says what each one should show.
--->
 
 | Phases across | Phases down |
 | --- | --- |
@@ -59,8 +21,8 @@ API from [anthropics/claude-code#91870](https://github.com/anthropics/claude-cod
 ## What it draws
 
 - **Every agent as a node**, framed in its own state — green for done, yellow
-  for running, red for failed — with its name, how long it took, what it spent
-  and the model it ran on.
+  for running, red for failed, grey for one the run cut off — with its name,
+  how long it took, what it spent and the model it ran on.
 - **The shape of the run**: phases as columns or bands, fan-outs folded to fit,
   loops marked with the number of passes, chains that stopped early left short,
   and a phase the run never entered drawn as skipped rather than as failed.
@@ -72,12 +34,13 @@ API from [anthropics/claude-code#91870](https://github.com/anthropics/claude-cod
 - **The session's other runs**: press the run's name for a menu of them,
   grouped by state; with nothing running the pane lists them in place of the
   graph.
-- **Three layouts** — phases across, phases down, or a timeline of bars against
-  the clock — and **twelve palettes**, nine dark and three light.
+- **Three layouts** — **across**, **down**, or **timeline**: phases laid across
+  the pane, stacked down it, or drawn as bars against the clock — and **twelve
+  palettes**, nine dark and three light.
 
 ## Install
 
-From the marketplace, inside Claude Code:
+From the marketplace, inside **Claude Code**:
 
 ```
 /plugin marketplace add mpolatcan/cc-plugins
@@ -91,7 +54,8 @@ git clone https://github.com/mpolatcan/flowpane.git
 CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude --plugin-dir ./flowpane
 ```
 
-Then run any workflow. The pane opens on launch; `/flowpane` toggles it afterwards.
+Then run any workflow. The pane opens on launch; **`/flowpane`** toggles it
+afterwards.
 
 **Two things to know before it draws anything:**
 
@@ -112,7 +76,7 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | `flowpane 0.3.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
 | A setting's value | unrolls that setting's list where it stands; press it again to roll the list up |
 | The graph, with any dialog open | takes no presses — it is pushed back behind the dialog until the dialog shuts |
-| Layout | across, down, timeline, or fits the shape — picked by name |
+| Layout | **across**, **down**, **timeline**, or **fits** the shape — picked by name |
 | Detail height `−` `+` | rows the detail dialog takes, 5 to 32; grey at either end of the range |
 | Theme | twelve palettes, nine dark and three light — each listed beside three cells of its own |
 | ✕ (in a dialog) | closes it, from the dialog's own top corner |
@@ -121,8 +85,6 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | A run on the idle pane | draws it. With nothing running the pane lists the session's runs in place of the graph, grouped and timed the same way |
 
 ## Settings
-
-`/plugin configure flowpane`, or `pluginConfigs` in settings.json:
 
 `/plugin configure flowpane`, or `pluginConfigs` in settings.json:
 
@@ -137,9 +99,9 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 
 The repository keeps one run, `dev/audit.workflow.js`, so there is something to
 watch while working on the pane. It is a development tool rather than part of
-the plugin: it is not installed with flowpane and it is not offered as a skill.
-Run it from a checkout with `bun dev/dryrun.ts` for the stubbed pass, or hand
-the script to the Workflow tool for the real one.
+the plugin: it is not installed with **flowpane** and it is not offered as a
+skill. Run it from a checkout with `bun dev/dryrun.ts` for the stubbed pass, or
+hand the script to the **Workflow** tool for the real one.
 
 It is a read-only audit of the repository it is run in: two to five minutes,
 twenty to thirty agents, nothing written to disk. It is shaped to put every case
@@ -185,7 +147,7 @@ it changed:
 
 ## Status
 
-Loads and runs on Claude Code 2.1.272: hooks register, `/flowpane` lists, the launch
+Loads and runs on **Claude Code 2.1.272**: hooks register, `/flowpane` lists, the launch
 hook fires and reads the journal. 99 tests run over the engine with `claude
 plugin test .`; `dev/lines.ts` checks every line of every run on disk at twelve
 widths and ten heights. Nothing the pane reads leaves the machine.
