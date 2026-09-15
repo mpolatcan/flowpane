@@ -22,9 +22,25 @@ type Opts = {
 
 type Call = { label: string; phase: string; model: string; effort: string }
 
-const path = process.argv[2] ?? 'dev/audit.workflow.js'
+/** The demo run, which is what this is nearly always pointed at. */
+const DEMO = 'dev/audit.workflow.js'
+
+const path = process.argv[2] ?? DEMO
 const jsonAt = process.argv.indexOf('--json')
 const scriptArgs = jsonAt > 0 ? JSON.parse(process.argv[jsonAt + 1]!) : undefined
+
+// The default is a path, and a path in a tool nobody imports is the kind of
+// thing a file move leaves behind: the demo run has moved once already. Said
+// plainly here, because the failure otherwise is whatever `Bun.file` throws
+// several frames in, which does not mention the default at all.
+if (!(await Bun.file(path).exists())) {
+  console.error(
+    path === DEMO
+      ? `no workflow at ${DEMO} — the demo run has moved, and dev/dryrun.ts still points here`
+      : `no workflow at ${path}`,
+  )
+  process.exit(1)
+}
 
 const source = await Bun.file(path).text()
 

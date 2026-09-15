@@ -59,7 +59,12 @@ import { DEFAULT_THEME, hexOf, paletteOf, themeOf, THEMES } from './theme'
 import { bandsOf, pictureOf, type Band } from './tree'
 
 const PANE_ID = 'flowpane'
-const COMMAND = 'flowpane'
+/**
+ * The command the pane answers to, exported because `dev/recover.ts` keys its
+ * handler table by it: a second spelling of the name in the tools is a rename
+ * that typechecks, passes the suite, and breaks the tool at call time.
+ */
+export const COMMAND = 'flowpane'
 /** With a Raster, frames are blitted and can run at animation speed. */
 const FRAME_MS = 120
 /** Without one, every frame is a re-render, so they come slower. */
@@ -92,8 +97,15 @@ function paneHex(color: number): string {
   return hexOf(cellColor(color))
 }
 
-/** What a surface that draws no Buttons points at instead. */
-const HELP_HINT = '/flowpane help'
+/**
+ * What a surface that draws no Buttons points at instead.
+ *
+ * Spelled from `COMMAND` rather than written out, because this string is drawn
+ * in exactly one seat — the footer of a surface with no Button in its table —
+ * and a seat nothing renders is a seat a rename can leave behind pointing at a
+ * command that no longer answers.
+ */
+const HELP_HINT = `/${COMMAND} help`
 /** Calls the engine gave no `tool_use_id`; a counter names them instead. */
 let callCounter = 0
 
@@ -764,15 +776,26 @@ const LAYOUT_WORDS: Record<string, Orientation> = {
   fits: 'auto',
 }
 
-const HELP = [
-  '/flowpane                             open the pane, or close it',
-  '/flowpane runs                        list this session’s runs',
-  '/flowpane <n>                         show run <n>',
-  '/flowpane across|down|timeline|fits   lay the graph out',
-  '/flowpane detail <n>                  rows the detail dialog takes (5–32)',
-  '/flowpane theme [name]                list the palettes, or paint in one',
-  '/flowpane about                       what the pane is, and what presses it',
-].join('\n')
+/**
+ * Every form of the command, against what it does.
+ *
+ * The lines are built from `COMMAND` and padded to the widest of them rather
+ * than laid out by hand: the name was written out seven times here once, and a
+ * rename that missed one produced a help page that taught the wrong word.
+ */
+const HELP = ((forms: [string, string][]) => {
+  const width = Math.max(...forms.map(([args]) => `/${COMMAND} ${args}`.trimEnd().length)) + 3
+
+  return forms.map(([args, does]) => `${`/${COMMAND} ${args}`.trimEnd().padEnd(width)}${does}`).join('\n')
+})([
+  ['', 'open the pane, or close it'],
+  ['runs', 'list this session’s runs'],
+  ['<n>', 'show run <n>'],
+  ['across|down|timeline|fits', 'lay the graph out'],
+  ['detail <n>', 'rows the detail dialog takes (5–32)'],
+  ['theme [name]', 'list the palettes, or paint in one'],
+  ['about', 'what the pane is, and what presses it'],
+])
 
 /**
  * A run's state as one character.
@@ -1224,7 +1247,7 @@ export function register(on: On, options: PluginOptions) {
 
     await $.command.register({
       name: COMMAND,
-      description: 'Toggle the workflow view; /flowpane help lists what else it takes',
+      description: `Toggle the workflow view; ${HELP_HINT} lists what else it takes`,
     })
 
     return next(e)

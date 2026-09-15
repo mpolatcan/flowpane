@@ -16,7 +16,7 @@
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 
-import { register } from '../hooks/register'
+import { COMMAND, register } from '../hooks/register'
 
 const sessionId = process.argv[2]
 const home = process.argv[3] ?? process.env.HOME
@@ -80,7 +80,7 @@ register(on as never, {} as never)
 
 await (handlers.get('session.start') as Handler)(engine, {}, pass)
 
-const command = handlers.get('command.run:flowpane') as Handler
+const command = handlers.get(`command.run:${COMMAND}`) as Handler
 
 console.log((await command(engine, { args: 'runs' }, pass)).text)
-console.log(`\n/flowpane opens on: ${(await command(engine, { args: '' }, pass)).text}`)
+console.log(`\n/${COMMAND} opens on: ${(await command(engine, { args: '' }, pass)).text}`)

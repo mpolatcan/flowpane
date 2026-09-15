@@ -99,6 +99,23 @@ test('every theme draws the cut-off state in a tone with no failure in it', () =
   }
 })
 
+test('every theme keeps the cut-off state clear of the words themselves', () => {
+  // The other end of the same mix. Carried far enough toward the text and the
+  // cut-off tone lands on the text tone itself, so a cut-off card is framed in
+  // the colour of the words inside it and the frame stops saying anything. The
+  // margin is measured as a share of the whole span from the words to the
+  // ground, because that span is a different size in every palette: three
+  // tenths of the way puts it a ninth of the span clear at the worst theme, and
+  // nine tenths puts every theme inside a sixteenth.
+  for (const theme of THEMES) {
+    const palette = paletteOf(theme)
+    const span = Math.abs(light(palette.text) - light(theme.bg)) || 1
+    const clear = Math.abs(light(palette.stopped) - light(palette.text)) / span
+
+    expect(`${theme.name} ${clear >= 0.08}`).toBe(`${theme.name} true`)
+  }
+})
+
 test('every theme puts the cut-off state on the words side of the ground', () => {
   // The other half of neutral: the tone the boundaries are drawn in sits near
   // the ground, so a cut-off card whose frame landed there would read as a rule
