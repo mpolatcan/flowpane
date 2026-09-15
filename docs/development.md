@@ -67,7 +67,7 @@ are read from disk rather than from the hook chain. Everything else is the code
 that ships.
 
 And with a session, without watching it: `dev/drive.py` gives Claude Code a pty,
-types a prompt, then keys at offsets (`--after '30:/wf\r'`), and keeps the raw
+types a prompt, then keys at offsets (`--after '30:/flowpane\r'`), and keeps the raw
 screen and (with `--debug-file`) the engine's log. Loading the plugin with
 `--plugin-dir` and disabling the skills-dir copy keeps the test's `$.store`
 apart from the one the real session writes:
@@ -76,13 +76,13 @@ apart from the one the real session writes:
 python3 dev/drive.py --cols 140 --rows 40 --seconds 45 --cwd "$PWD" \
   --out dev/cap.raw --plugin-dir "$PWD" \
   --prompt 'Call the Workflow tool now with name "audit".' \
-  --after '34:/wf\r' -- --model haiku --debug-file dev/cap-debug.log \
+  --after '34:/flowpane\r' -- --model haiku --debug-file dev/cap-debug.log \
   --settings '{"enabledPlugins":{"flowpane@skills-dir":false}}'
 ```
 
 ## What is tested
 
-Loads and runs on Claude Code 2.1.272: hooks register, `/wf` lists, the launch
+Loads and runs on Claude Code 2.1.272: hooks register, `/flowpane` lists, the launch
 hook fires and reads the journal. `tests/pane.test.ts` drives the whole thing
 over the engine with `claude plugin test` — a launch opens the pane, a journal
 fills it, the drawing comes back as bands, pressing a node's Button opens its

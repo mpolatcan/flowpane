@@ -1,12 +1,15 @@
-# The bundled workflow
+# The demo workflow
 
-The one run the plugin ships, and every case of the drawing it exercises.
+The one run the repository keeps, and every case of the drawing it exercises.
 
-The plugin ships one run, `workflows/audit.workflow.js`, so there is
-something to watch the moment it is installed — and something to measure the
-pane against, since a benchmark is only useful if every run of it draws the same
-shape. Ask for it by name — "run the `audit` workflow" — or call the
-Workflow tool with that `name`.
+`dev/audit.workflow.js` is there to give the pane something to draw while it is
+being worked on, and to measure it against: a benchmark is only useful if every
+run of it draws the same shape. It sits under `dev/` with the other tools rather
+than in the installed plugin — flowpane draws whatever workflows a project
+already runs, and shipping a repository audit of its own as a skill would put a
+second, unrelated thing in front of everyone who installs the pane. Run it from
+a checkout: hand the script to the Workflow tool for a real run, or use
+`dev/dryrun.ts` below for the stubbed pass.
 
 It is a read-only audit of the repository it is run in. It surveys a handful of
 files, branches code from prose on what the surveying agent answers, keeps
@@ -31,7 +34,7 @@ One run puts every case the pane can draw in front of it:
 Every skip is `log()`ged as it happens, so the narrator line says what was
 dropped rather than leaving the gap unexplained.
 
-`bun dev/dryrun.ts workflows/audit.workflow.js` runs the same control flow
+`bun dev/dryrun.ts dev/audit.workflow.js` runs the same control flow
 against stubbed agents in under a second. Use it to check what a change to the
 script will draw before paying for a real run:
 

@@ -1,7 +1,7 @@
 /**
  * What the pane says about itself, in one place.
  *
- * The About dialog draws these rows on the canvas and `/wf about` prints the
+ * The About dialog draws these rows on the canvas and `/flowpane about` prints the
  * same ones as text, because the seat without Buttons is the seat where a
  * reader most needs to be told what the pane is and how to drive it. Two
  * copies of that answer drift: the dialog would gain a line the command never
@@ -60,8 +60,8 @@ export function aboutRows(): AboutRow[] {
     { kind: 'field', left: 'Tab, Enter', right: 'moves, presses' },
     { kind: 'field', left: '✕', right: 'closes what is open' },
     { kind: 'gap' },
-    { kind: 'field', left: '/wf help', right: 'every command' },
-    { kind: 'field', left: '/wf runs', right: 'this session’s runs' },
+    { kind: 'field', left: '/flowpane help', right: 'every command' },
+    { kind: 'field', left: '/flowpane runs', right: 'this session’s runs' },
     { kind: 'gap' },
     { kind: 'text', text: 'Reads the workflow journals under ~/.claude/projects.' },
     { kind: 'text', text: 'Nothing leaves this machine.' },
@@ -71,7 +71,7 @@ export function aboutRows(): AboutRow[] {
   ]
 }
 
-/** The same rows as text, for `/wf about` and any seat that draws no canvas. */
+/** The same rows as text, for `/flowpane about` and any seat that draws no canvas. */
 export function aboutText(): string {
   const rows = aboutRows()
   const pad = rows.reduce((w, r) => (r.kind === 'field' ? Math.max(w, r.left.length) : w), 0)

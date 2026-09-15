@@ -155,18 +155,23 @@ whole job is to be followed. What a line is — structure, or a wire — is the 
 thing its colour says.
 
 **A card's frame is the exception, and it is drawn in its agent's state.** Done
-is green, running is yellow, failed is red, and an agent the run cut off takes
-the same red pulled back toward the grey. It is a tint rather than the state's
-full colour: a little over half the way there from the tone every other border
-is drawn in, which is enough to be read as green or red or yellow across a pane
-of twenty cards and not enough to make the frame louder than the name it frames.
+is green, running is yellow, failed is red, and an agent the run cut off is a
+grey carried toward the text tone. It is a tint rather than the state's full
+colour: four fifths of the way there from the tone every other border is drawn
+in, which is enough to be read as green or red or yellow across a pane of twenty
+cards and not enough to make the frame louder than the name it frames. Just over
+half was the first setting and it was too little — a border is one cell of ink
+where a word of the same colour is several, so a hue that reads in a label came
+out as grey in a line glyph.
 
 The frame was drawn this way once before and taken out, for three reasons that
 have since been answered. It was the full state colour and it breathed while the
 agent ran, so the border was the first thing read on a card whose contents were
 the point. The stopped state was a grey, so a cut-off card's frame came out the
-same grey as the phase boundary behind it — `stopped` is now a red mixed toward
-the grey, and reads as the state it is. And the wires were free to be drawn in a
+same grey as the phase boundary behind it — `stopped` is still a grey, because
+an agent the run never let finish did nothing wrong and a red says it did, but
+it is the grey carried toward the text tone: the boundaries sit near the ground,
+this sits near the words, and the two are never read as each other. And the wires were free to be drawn in a
 hue a state was also drawn in, so a frame and the line landing on it could agree
 in colour while meaning different things — `edgeOf` now holds every theme's wire
 at least 45 degrees off all three state hues.
@@ -215,7 +220,7 @@ by node, by the narrowest node that has to hold them:
   has no room to say it. The cells counted are the cells the model is written
   in, which is the bottom edge on a card and the facts on a list row — counting
   the facts in both said a card had no space for a name while half its bottom
-  edge sat empty, which is what `/wf layout fits` used to show.
+  edge sat empty, which is what `/flowpane layout fits` used to show.
 - **the gap between the figures**, so a one-character-longer clock in one lane
   does not close the spacing in that lane alone.
 

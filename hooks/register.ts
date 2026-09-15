@@ -59,7 +59,7 @@ import { DEFAULT_THEME, hexOf, paletteOf, themeOf, THEMES } from './theme'
 import { bandsOf, pictureOf, type Band } from './tree'
 
 const PANE_ID = 'flowpane'
-const COMMAND = 'wf'
+const COMMAND = 'flowpane'
 /** With a Raster, frames are blitted and can run at animation speed. */
 const FRAME_MS = 120
 /** Without one, every frame is a re-render, so they come slower. */
@@ -72,7 +72,7 @@ const READ_EVERY = 4
  * expensive path, so it runs on every third frame rather than on each one.
  */
 const REDRAW_EVERY = 3
-/** What the detail dialog's height is allowed to be, at the controls and at `/wf detail`. */
+/** What the detail dialog's height is allowed to be, at the controls and at `/flowpane detail`. */
 /** The pane's opaque backdrop: the theme's own ground. */
 function backdropOf(): number {
   return themeOf(state.theme).bg
@@ -93,7 +93,7 @@ function paneHex(color: number): string {
 }
 
 /** What a surface that draws no Buttons points at instead. */
-const HELP_HINT = '/wf help'
+const HELP_HINT = '/flowpane help'
 /** Calls the engine gave no `tool_use_id`; a counter names them instead. */
 let callCounter = 0
 
@@ -756,7 +756,7 @@ async function actOnPress($: EngineInterface): Promise<void> {
   $.ui.invalidate('ui.render')
 }
 
-/** The layout words `/wf` takes, against the orientations they name. */
+/** The layout words `/flowpane` takes, against the orientations they name. */
 const LAYOUT_WORDS: Record<string, Orientation> = {
   across: 'flow',
   down: 'stack',
@@ -765,13 +765,13 @@ const LAYOUT_WORDS: Record<string, Orientation> = {
 }
 
 const HELP = [
-  '/wf                             open the pane, or close it',
-  '/wf runs                        list this session’s runs',
-  '/wf <n>                         show run <n>',
-  '/wf across|down|timeline|fits   lay the graph out',
-  '/wf detail <n>                  rows the detail dialog takes (5–32)',
-  '/wf theme [name]                list the palettes, or paint in one',
-  '/wf about                       what the pane is, and what presses it',
+  '/flowpane                             open the pane, or close it',
+  '/flowpane runs                        list this session’s runs',
+  '/flowpane <n>                         show run <n>',
+  '/flowpane across|down|timeline|fits   lay the graph out',
+  '/flowpane detail <n>                  rows the detail dialog takes (5–32)',
+  '/flowpane theme [name]                list the palettes, or paint in one',
+  '/flowpane about                       what the pane is, and what presses it',
 ].join('\n')
 
 /**
@@ -825,7 +825,7 @@ function runEntry(run: RunState): RunEntry {
 }
 
 /**
- * `/wf` with something after it.
+ * `/flowpane` with something after it.
  *
  * Every choice the settings dialog offers is reachable here too. That is what
  * makes the hint line under the prompt a usable seat rather than a trap: it
@@ -893,7 +893,7 @@ async function applyArgs($: EngineInterface, args: string): Promise<string> {
     return `Detail dialog ${state.detailRows} rows.`
   }
 
-  // A bare number, or `run 2`, names a run in the order `/wf runs` listed them.
+  // A bare number, or `run 2`, names a run in the order `/flowpane runs` listed them.
   const which = Number(verb === 'run' ? rest : verb)
 
   if (Number.isFinite(which)) {
@@ -902,7 +902,7 @@ async function applyArgs($: EngineInterface, args: string): Promise<string> {
     if (!run) {
       return state.runs.length === 0
         ? 'No runs in this session yet.'
-        : `No run ${Math.floor(which)}. There ${state.runs.length === 1 ? 'is 1 run' : `are ${state.runs.length} runs`}; /wf runs lists them.`
+        : `No run ${Math.floor(which)}. There ${state.runs.length === 1 ? 'is 1 run' : `are ${state.runs.length} runs`}; /flowpane runs lists them.`
     }
 
     await showRun($, run, true)
@@ -911,12 +911,12 @@ async function applyArgs($: EngineInterface, args: string): Promise<string> {
     return runLine(run, state.runs.indexOf(run))
   }
 
-  return `/wf takes no "${args}". ${HELP}`
+  return `/flowpane takes no "${args}". ${HELP}`
 }
 
 
 /**
- * A layout by either name. The button and `/wf` say what the layout looks like
+ * A layout by either name. The button and `/flowpane` say what the layout looks like
  * — across, down, timeline, fits — and the setting is named after the axis it
  * uses. One vocabulary would be better; until the stored values can change, both
  * are read wherever a layout is named.
@@ -1224,7 +1224,7 @@ export function register(on: On, options: PluginOptions) {
 
     await $.command.register({
       name: COMMAND,
-      description: 'Toggle the workflow view; /wf help lists what else it takes',
+      description: 'Toggle the workflow view; /flowpane help lists what else it takes',
     })
 
     return next(e)

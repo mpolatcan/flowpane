@@ -47,7 +47,7 @@ function stubEngine(on: any): void {
   on('ui.close', () => ({ value: undefined }))
   on('ui.blit', () => ({ value: { requestId: 'flowpane' } }))
   on('ui.invalidate', () => ({ value: undefined }))
-  on('command.register', () => ({ value: { command: 'wf' } }))
+  on('command.register', () => ({ value: { command: 'flowpane' } }))
   on('session.id', () => ({ value: 'test-session' }))
   on('store.get', () => ({ value: undefined }))
   on('store.set', () => ({ value: undefined }))

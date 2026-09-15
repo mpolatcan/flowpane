@@ -11,7 +11,7 @@ with `--debug` in the args to get the engine's own log of what it refused.
 
 Keys can be typed later in the run, at offsets from the prompt:
 
-  python3 dev/drive.py --prompt 'say ok' --after '10:/wf\r' --after '14:\r' ...
+  python3 dev/drive.py --prompt 'say ok' --after '10:/flowpane\r' --after '14:\r' ...
 """
 
 import argparse
@@ -40,7 +40,7 @@ parser.add_argument(
     default=[],
     metavar="SECONDS:TEXT",
     help="type TEXT that many seconds after the prompt; repeatable, in order. "
-    r"Escapes: \r Enter, \e Escape, \t Tab, \x18 ctrl+x. Example: --after 20:/wf\r",
+    r"Escapes: \r Enter, \e Escape, \t Tab, \x18 ctrl+x. Example: --after 20:/flowpane\r",
 )
 parser.add_argument("extra", nargs="*", help="extra claude args after --")
 args = parser.parse_args()

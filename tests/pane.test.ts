@@ -191,7 +191,7 @@ function stubEngine(on: any, opened: { id: string; title?: string }[] = []) {
   on('ui.close', () => ({ value: undefined }))
   on('ui.blit', () => ({ value: { requestId: 'flowpane' } }))
   on('ui.invalidate', () => ({ value: undefined }))
-  on('command.register', () => ({ value: { command: 'wf' } }))
+  on('command.register', () => ({ value: { command: 'flowpane' } }))
   on('command.run', () => ({ text: '' }))
   on('session.id', () => ({ value: 'test-session' }))
   on('store.get', () => ({ value: undefined }))
@@ -324,7 +324,7 @@ test('the pane says so when no workflow has run', async ($, on) => {
   mock.clock(on, { now: 0 })
   stubEngine(on)
 
-  const result = await $.command.run({ command: 'wf', args: '' })
+  const result = await $.command.run({ command: 'flowpane', args: '' })
 
   expect(JSON.stringify(result)).toContain('No workflow is running')
 

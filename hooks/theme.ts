@@ -409,12 +409,13 @@ export function paletteOf(theme: Theme): Palette {
     running: lift(theme.yellow, READ),
     done: lift(theme.green, READ),
     failed: lift(theme.red, READ),
-    // Cut off is a kind of red: a run someone killed did not do what it was
-    // asked, and a reader scanning a list of runs for the ones that need
-    // looking at needs to see it from across the room. It is the red pulled
-    // back toward the grey, though, so a run that broke still reads as the
-    // worse of the two where both are on screen.
-    stopped: lift(mix(theme.red, theme.grey, 0.4), READ),
+    // Cut off is neutral, not a failure: an agent the run never let finish did
+    // nothing wrong, and a pane that draws it in a red says two different
+    // things in one hue. It is the grey carried toward the text tone rather
+    // than the plain grey, which keeps it clear of the boundary the phases and
+    // the card rules are drawn in — that tone sits near the ground, and this
+    // one sits near the words, so the two are never read as each other.
+    stopped: lift(mix(theme.grey, theme.fg, 0.3), READ),
     // Between the ground and the grey: a state that says nothing happened
     // should sit under the text that says what did. It stays clear of the tone
     // the borders and rules are drawn in, though — a node a reader has to look

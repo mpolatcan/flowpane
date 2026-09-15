@@ -210,7 +210,7 @@ reader nothing to pick by. A run from another day carries the day as well, since
 
 The headings cost a row each, and a pane too short to hold every run as well as
 its headings drops the headings and keeps the order they described. Shorter
-still and the last row says how many runs did not fit, and `/wf runs` lists
+still and the last row says how many runs did not fit, and `/flowpane runs` lists
 them all.
 
 Only files named for a run are read. The engine keeps its own bookkeeping in
@@ -230,7 +230,7 @@ It opens below the bar rather than inside it. Its top edge used to land on the
 run line, which cut the bar's closing rule in half and took the name the menu
 drops from with it.
 
-`/wf` opens on the run that is going; with none going it opens on the last run
+`/flowpane` opens on the run that is going; with none going it opens on the last run
 of the session, so the bar is there and the name on it opens the list of the
 rest.
 

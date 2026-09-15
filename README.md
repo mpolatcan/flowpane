@@ -91,7 +91,7 @@ git clone https://github.com/mpolatcan/flowpane.git
 CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude --plugin-dir ./flowpane
 ```
 
-Then run any workflow. The pane opens on launch; `/wf` toggles it afterwards.
+Then run any workflow. The pane opens on launch; `/flowpane` toggles it afterwards.
 
 **Two things to know before it draws anything:**
 
@@ -128,16 +128,18 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 
 | Field | Values | What it does |
 | --- | --- | --- |
-| `orientation` | `auto` (default), `flow`, `stack`, `time` — or the words `/wf` uses: `fits`, `across`, `down`, `timeline` | `flow` runs the phases across the pane, `stack` runs them down it, `auto` follows the pane's proportions. Below the depth a stacked band needs for cards, a node becomes a single row and the band keeps its wires; below the width one needs for legible boxes at all, `stack` becomes a flat list: one agent per row under each phase, no edges drawn. `time` swaps the graph for a timeline: one bar per agent against the clock, grouped by phase, with a marker where now is. |
+| `orientation` | `auto` (default), `flow`, `stack`, `time` — or the words `/flowpane` uses: `fits`, `across`, `down`, `timeline` | `flow` runs the phases across the pane, `stack` runs them down it, `auto` follows the pane's proportions. Below the depth a stacked band needs for cards, a node becomes a single row and the band keeps its wires; below the width one needs for legible boxes at all, `stack` becomes a flat list: one agent per row under each phase, no edges drawn. `time` swaps the graph for a timeline: one bar per agent against the clock, grouped by phase, with a marker where now is. |
 | `detailRows` | 5–32 (default 24) | Rows the detail dialog takes when a node is selected, capped at what the pane can inset. |
 | `paneRows` | 6–80 (0 = let the surface decide) | Rows the pane asks for. A dock beside the transcript usually picks its own height. |
 | `theme` | `tokyo-night` (default), `catppuccin`, `gruvbox`, `nord`, `dracula`, `solarized`, `monokai`, `vscode-dark`, `insider-one`, `github-light`, `solarized-light`, `insider-one-light` | The palette everything is drawn in, its ground included. The pane always paints on that ground, footer and all, so the drawing reads the same in every terminal rather than against whatever the terminal happens to be; the ground stops at the drawing's own right edge — see the note under the tree below. |
 
-## The bundled workflow
+## The demo workflow
 
-The plugin ships one run, `workflows/audit.workflow.js`, so there is something
-to watch the moment it is installed. Ask for it by name — "run the `audit`
-workflow" — or call the Workflow tool with that `name`.
+The repository keeps one run, `dev/audit.workflow.js`, so there is something to
+watch while working on the pane. It is a development tool rather than part of
+the plugin: it is not installed with flowpane and it is not offered as a skill.
+Run it from a checkout with `bun dev/dryrun.ts` for the stubbed pass, or hand
+the script to the Workflow tool for the real one.
 
 It is a read-only audit of the repository it is run in: two to five minutes,
 twenty to thirty agents, nothing written to disk. It is shaped to put every case
@@ -177,13 +179,13 @@ it changed:
 | [docs/graph.md](docs/graph.md) | What the files state, what the pane infers, and how each is drawn |
 | [docs/detail.md](docs/detail.md) | The dialog a node opens |
 | [docs/data.md](docs/data.md) | The files a run writes, and recovering a run already going |
-| [docs/demo-workflow.md](docs/demo-workflow.md) | The bundled audit run |
+| [docs/demo-workflow.md](docs/demo-workflow.md) | The audit run under dev/ |
 | [docs/engine.md](docs/engine.md) | What the function-hooks API allows, and what it does not |
 | [docs/development.md](docs/development.md) | The dev tools, and what the tests measure |
 
 ## Status
 
-Loads and runs on Claude Code 2.1.272: hooks register, `/wf` lists, the launch
+Loads and runs on Claude Code 2.1.272: hooks register, `/flowpane` lists, the launch
 hook fires and reads the journal. 99 tests run over the engine with `claude
 plugin test .`; `dev/lines.ts` checks every line of every run on disk at twelve
 widths and ten heights. Nothing the pane reads leaves the machine.

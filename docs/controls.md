@@ -109,12 +109,12 @@ reader presses to find out what this is, is what it is called.
 │ A live picture of the agents a workflow runs: what each    │
 │ one is doing, what it has spent, and what it answered.     │
 │                                                            │
-│ A node       opens its detail                              │
-│ Tab, Enter   moves, presses                                │
-│ ✕            closes what is open                           │
+│ A node           opens its detail                          │
+│ Tab, Enter       moves, presses                            │
+│ ✕                closes what is open                       │
 │                                                            │
-│ /wf help     every command                                 │
-│ /wf runs     this session’s runs                           │
+│ /flowpane help   every command                             │
+│ /flowpane runs   this session’s runs                       │
 │                                                            │
 │ Reads the workflow journals under ~/.claude/projects.      │
 │ Nothing leaves this machine.                               │
@@ -135,7 +135,7 @@ What the commands are, for the seat that draws no buttons at all. And where the
 drawing is read from, since a graph with nothing in it is either a quiet session
 or a path this plugin cannot see, and nothing else on screen tells those apart.
 
-`/wf about` prints the same lines. They are written once, in `hooks/about.ts`,
+`/flowpane about` prints the same lines. They are written once, in `hooks/about.ts`,
 because two copies drift: the dialog gains a line the command never learned, and
 the reader with the fewest ways to find out is told the least. The version comes
 from there too, and `bun dev/checkmeta.ts` fails if it has drifted from
@@ -251,7 +251,7 @@ A list drops below the control it belongs to, and above it where there is no
 room below. What it covers is its own while it is open: the setting under a
 palette list takes no press aimed at the palette. Where the pane cannot hold
 every entry, the ones that did not fit are counted on the last line rather than
-dropped in silence — `/wf theme` reaches the same palettes from the prompt.
+dropped in silence — `/flowpane theme` reaches the same palettes from the prompt.
 
 A pane too short to hold the dialog under the bar draws it over the bar instead.
 A button that opens nothing is worse than a bar covered for as long as it takes
@@ -263,20 +263,20 @@ back to:
 
 | Command | What it does |
 | --- | --- |
-| `/wf` | opens the pane, or closes it if it is already open |
-| `/wf runs` | lists this session's runs, numbered |
-| `/wf <n>` | shows run `<n>` from that list |
-| `/wf across` \| `down` \| `timeline` \| `fits` | lays the graph out |
-| `/wf detail <n>` | rows the detail dialog takes (5–32) |
-| `/wf about` | what the pane is, and what presses it — the About dialog's own lines |
-| `/wf theme` \| `/wf theme <name>` | lists the palettes, or paints in one |
-| `/wf help` | prints the above |
+| `/flowpane` | opens the pane, or closes it if it is already open |
+| `/flowpane runs` | lists this session's runs, numbered |
+| `/flowpane <n>` | shows run `<n>` from that list |
+| `/flowpane across` \| `down` \| `timeline` \| `fits` | lays the graph out |
+| `/flowpane detail <n>` | rows the detail dialog takes (5–32) |
+| `/flowpane about` | what the pane is, and what presses it — the About dialog's own lines |
+| `/flowpane theme` \| `/flowpane theme <name>` | lists the palettes, or paints in one |
+| `/flowpane help` | prints the above |
 
 A run the plugin never watched is picked back up: the mod walks the session's
-own transcripts on `session.start` and on a `/wf` that finds nothing running, so
-`/wf` works on a run that started before the module loaded, finished ones
+own transcripts on `session.start` and on a `/flowpane` that finds nothing running, so
+`/flowpane` works on a run that started before the module loaded, finished ones
 included — those are what the run list is for. A run still going is picked back
-up too, and `/wf` opens on it: reload the plugin mid-workflow and the pane joins
+up too, and `/flowpane` opens on it: reload the plugin mid-workflow and the pane joins
 the run in progress, with every agent timed from when it actually started. With
-nothing to show at all, `/wf` closes the pane rather than leaving an empty one
+nothing to show at all, `/flowpane` closes the pane rather than leaving an empty one
 open.

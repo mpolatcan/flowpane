@@ -35,6 +35,10 @@ bun dev/dryrun.ts <workflow>                       # a workflow's control flow, 
 bun dev/checkmeta.ts                               # the version the pane shows is the one the manifest ships
 ```
 
+`dev/audit.workflow.js` is the demo run: a workflow shaped to exercise every
+case the pane draws. It lives under `dev/` because it is a development tool, not
+part of the installed plugin. `bun dev/dryrun.ts` defaults to it.
+
 `dev/load.ts` is not a command — it is the run-building library the others share.
 `dev/drive.py` gives Claude Code a pty and captures a real session (`python3`,
 not `python`).

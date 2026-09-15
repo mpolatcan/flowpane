@@ -6,7 +6,7 @@ The four settings, how they are configured, and how a theme becomes a palette.
 
 | Field | Values | What it does |
 | --- | --- | --- |
-| `orientation` | `auto` (default), `flow`, `stack`, `time` — or the words `/wf` uses: `fits`, `across`, `down`, `timeline` | `flow` runs the phases across the pane, `stack` runs them down it, `auto` follows the pane's proportions. Below the depth a stacked band needs for cards, a node becomes a single row and the band keeps its wires; below the width one needs for legible boxes at all, `stack` becomes a flat list: one agent per row under each phase, no edges drawn. `time` swaps the graph for a timeline: one bar per agent against the clock, grouped by phase, with a marker where now is. |
+| `orientation` | `auto` (default), `flow`, `stack`, `time` — or the words `/flowpane` uses: `fits`, `across`, `down`, `timeline` | `flow` runs the phases across the pane, `stack` runs them down it, `auto` follows the pane's proportions. Below the depth a stacked band needs for cards, a node becomes a single row and the band keeps its wires; below the width one needs for legible boxes at all, `stack` becomes a flat list: one agent per row under each phase, no edges drawn. `time` swaps the graph for a timeline: one bar per agent against the clock, grouped by phase, with a marker where now is. |
 | `detailRows` | 5–32 (default 24) | Rows the detail dialog takes when a node is selected, capped at what the pane can inset. |
 | `paneRows` | 6–80 (0 = let the surface decide) | Rows the pane asks for. A dock beside the transcript usually picks its own height. |
 | `theme` | `tokyo-night` (default), `catppuccin`, `gruvbox`, `nord`, `dracula`, `solarized`, `monokai`, `vscode-dark`, `insider-one`, `github-light`, `solarized-light`, `insider-one-light` | The palette everything is drawn in, its ground included. The pane always paints on that ground, footer and all, so the drawing reads the same in every terminal rather than against whatever the terminal happens to be; the ground stops at the drawing's own right edge — see [engine.md](engine.md). |
@@ -21,15 +21,15 @@ mix of its grey and its surface. Declaring all thirteen roles per theme would be
 eighty values to keep in step, and the first one to drift would make the pane
 read as a different theme in one corner.
 
-Stopped is a role of its own: the theme's red pulled two fifths of the way to
-its grey. A run someone killed did not do what it was asked, and a reader
-scanning a list of runs for the ones worth opening needs to see that from across
-the room — it was drawn in the idle grey, which is the tone the pane uses for
-*nothing happened here*, and a killed run and a phase nobody has reached are not
-the same news. Pulled back toward the grey rather than left at full red, so a
-run that broke still reads as the worse of the two where both are on screen. The
-run line, the mark on a node, the word on a timeline row and the heading in the
-run menu all take it, so the state is one colour wherever it is said.
+Stopped is a role of its own: the theme's grey pulled three tenths of the way to
+its foreground. An agent the run never let finish did nothing wrong, so it is
+neutral — the red belongs to the one state that means something broke, and two
+states in one hue make a reader check which is which. It is not the idle grey
+either, which is the tone the pane uses for *nothing happened here*: a killed
+run and a phase nobody reached are not the same news, and this grey sits up near
+the words while that one sits down near the ground. The run line, the mark on a
+node, the word on a timeline row and the heading in the run menu all take it, so
+the state is one colour wherever it is said.
 
 Every derived role is then held to a contrast floor. Terminal themes are not
 designed against one: on nord, dracula and solarized the theme's own grey sits
@@ -109,4 +109,4 @@ mixes toward whichever of them the ground is further from. What changes on a
 light ground is only which way that lift runs.
 
 The choice is remembered per session in the plugin's own store, and the ◐ button
-walks the list. `/wf theme` prints it with `(on)` against the current one.
+walks the list. `/flowpane theme` prints it with `(on)` against the current one.

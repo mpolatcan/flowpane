@@ -7,7 +7,7 @@
  * what the models would actually say. The stub's answers come from the script's
  * own schema, so a script that branches on a field gets a field to branch on.
  *
- *   bun dev/dryrun.ts workflows/audit.workflow.js [--json '<args>']
+ *   bun dev/dryrun.ts dev/audit.workflow.js [--json '<args>']
  */
 
 export {}
@@ -22,7 +22,7 @@ type Opts = {
 
 type Call = { label: string; phase: string; model: string; effort: string }
 
-const path = process.argv[2] ?? 'workflows/audit.workflow.js'
+const path = process.argv[2] ?? 'dev/audit.workflow.js'
 const jsonAt = process.argv.indexOf('--json')
 const scriptArgs = jsonAt > 0 ? JSON.parse(process.argv[jsonAt + 1]!) : undefined
 

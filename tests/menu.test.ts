@@ -165,7 +165,7 @@ test('a menu too tall for the pane drops its headings before it drops a run', ()
 
   expect(captionsOf(lines)).toEqual([])
   expect(lines[0]).toContain(MARK.running)
-  expect(lines[lines.length - 1]).toMatch(/more — \/wf runs/)
+  expect(lines[lines.length - 1]).toMatch(/more — \/flowpane runs/)
 })
 
 /** The idle pane's own lines, trailing blanks trimmed. */
@@ -230,6 +230,6 @@ test('a short idle pane keeps the runs and drops what it can', () => {
   const { lines, pressable } = idleOf(many, 60, 10)
 
   expect(pressable.length).toBeGreaterThan(0)
-  expect(lines.join('\n')).toMatch(/more — \/wf runs/)
+  expect(lines.join('\n')).toMatch(/more — \/flowpane runs/)
   expect(lines.length).toBe(10)
 })

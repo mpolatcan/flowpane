@@ -413,13 +413,17 @@ function colorOf(state: AgentRow['state']): Rgb {
 /**
  * How far a card's frame is carried toward the state of the agent inside it.
  *
- * Just over half: far enough that green, red and yellow are each read as
- * themselves from across a pane of twenty cards, and not so far that the
- * boundary layer competes with the mark and the figures drawn inside it. A
- * frame at full strength is a coloured box, and a coloured box is read before
- * its own contents are.
+ * Four fifths. Just over half was the first setting, and on a dark ground it
+ * was not enough: `done` landed on a muted teal and `running` on an olive, and
+ * a pane of twenty cards read as a pane of grey boxes with coloured ticks in
+ * them. The hue has to survive being drawn one cell wide in a line glyph, which
+ * is a fraction of the ink a word of the same colour puts down.
+ *
+ * It stops short of the state colour itself so the frame stays a boundary: at
+ * full strength the border is the brightest thing on the card and is read
+ * before the name and the figures it encloses.
  */
-const STATE_EDGE = 0.55
+const STATE_EDGE = 0.8
 
 /**
  * A card's frame, tinted by the state of the agent it encloses.
@@ -432,8 +436,9 @@ const STATE_EDGE = 0.55
  * state was also drawn in, so a border and the line crossing it could agree in
  * colour while meaning different things.
  *
- * All three are now settled. `stopped` is a red pulled back toward the grey
- * rather than a grey, so it reads as the state it is. `edgeOf` picks a wire hue
+ * All three are now settled. `stopped` is a grey carried toward the text tone,
+ * well clear of the near-ground tone the boundaries are drawn in, so a cut-off
+ * card is read as cut off rather than as a rule. `edgeOf` picks a wire hue
  * at least 45 degrees off every state hue, so no card's frame can be mistaken
  * for the wire that lands on it. And the tint stops at `STATE_EDGE`, so the
  * frame is a boundary that also says something rather than a slab of colour.
@@ -3870,7 +3875,7 @@ function paintRunMenu(c: Canvas, run: RunState, options: PaintOptions, hotspots:
   // What the menu can show is what stands below the bar — and it leaves the
   // last row alone, where the graph says how much of itself it had to leave
   // out. A pane with no room for one entry and its frame gets no menu;
-  // `/wf runs` is the list that needs no room at all.
+  // `/flowpane runs` is the list that needs no room at all.
   const room = c.rows - top - 3
   const across = c.columns - 4
 
@@ -3886,7 +3891,7 @@ function paintRunMenu(c: Canvas, run: RunState, options: PaintOptions, hotspots:
   const shown = rows.length <= room ? rows.length : room - 1
   const cut = rows.slice(0, Math.max(1, shown))
   const more = rows.filter(r => r.id !== undefined).length - cut.filter(r => r.id !== undefined).length
-  const drawn: MenuRow[] = [...cut, ...(more > 0 ? [{ text: `\u2026 ${more} more \u2014 /wf runs` }] : [])].slice(0, room)
+  const drawn: MenuRow[] = [...cut, ...(more > 0 ? [{ text: `\u2026 ${more} more \u2014 /flowpane runs` }] : [])].slice(0, room)
 
   // Every clock ends in the same column, so the times can be read down the
   // menu rather than hunted for at the end of each name.
@@ -4238,7 +4243,7 @@ function paintSettingList(
 
   const width = lead + label + 2
   // Every entry, wherever the pane holds them. Where it does not, the ones that
-  // did not fit are counted rather than dropped in silence — `/wf theme` and
+  // did not fit are counted rather than dropped in silence — `/flowpane theme` and
   // the layout words reach the same settings from the prompt.
   const room = Math.max(1, c.rows - 2)
   const shown = row.options.length <= room ? row.options.length : Math.max(1, room - 1)
@@ -4839,7 +4844,7 @@ function idleRuns(c: Canvas, runs: RunEntry[], nowMs: number): Hotspot[] {
   const hidden = list.filter(r => r.id !== undefined).length - cut.filter(r => r.id !== undefined).length
   const drawn: MenuRow[] = [
     ...cut,
-    ...(hidden > 0 ? [{ text: `\u2026 ${hidden} more \u2014 /wf runs` }] : []),
+    ...(hidden > 0 ? [{ text: `\u2026 ${hidden} more \u2014 /flowpane runs` }] : []),
   ].slice(0, listRoom)
 
   const clockW = drawn.reduce((w, r) => Math.max(w, r.clock?.length ?? 0), 0)

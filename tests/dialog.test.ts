@@ -604,7 +604,7 @@ test('the pane says what it is, and nothing behind it takes a press', () => {
   // What it draws, what presses it, and where it reads from — the three
   // questions a reader has about a live diagram with no key.
   expect(text).toContain('opens its detail')
-  expect(text).toContain('/wf help')
+  expect(text).toContain('/flowpane help')
   expect(text).toContain('~/.claude/projects')
 
   // Modal, as the settings are: a press aimed at a line of this landing on a

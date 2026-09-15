@@ -10,8 +10,8 @@
  *
  * It drives `register()` rather than repeating the walk: a second reader would
  * drift from the first, and then the harness would report a recovery no session
- * ever performs. The plugin's `session.start` is what does the walking; `/wf
- * runs` and a bare `/wf` are what it answers with.
+ * ever performs. The plugin's `session.start` is what does the walking; `/flowpane
+ * runs` and a bare `/flowpane` are what it answers with.
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
@@ -80,7 +80,7 @@ register(on as never, {} as never)
 
 await (handlers.get('session.start') as Handler)(engine, {}, pass)
 
-const command = handlers.get('command.run:wf') as Handler
+const command = handlers.get('command.run:flowpane') as Handler
 
 console.log((await command(engine, { args: 'runs' }, pass)).text)
-console.log(`\n/wf opens on: ${(await command(engine, { args: '' }, pass)).text}`)
+console.log(`\n/flowpane opens on: ${(await command(engine, { args: '' }, pass)).text}`)
