@@ -43,13 +43,24 @@ const JOURNAL = [
   .map(line => JSON.stringify(line))
   .join('\n')
 
-function stubEngine(on: any): void {
+/**
+ * `seen` catches what the plugin sent, for the tests that read a payload rather
+ * than a reply: the registration is the one line of the command a reader meets
+ * before typing anything, and nothing renders it back.
+ */
+function stubEngine(on: any, seen?: { register?: { name?: string; description?: string } }): void {
   on('env.get', () => ({ value: '/home/test' }))
   on('ui.open', () => ({ value: undefined }))
   on('ui.close', () => ({ value: undefined }))
   on('ui.blit', () => ({ value: { requestId: 'flowpane' } }))
   on('ui.invalidate', () => ({ value: undefined }))
-  on('command.register', () => ({ value: { command: 'flowpane' } }))
+  on('command.register', ($$: unknown, e: { name?: string; description?: string }) => {
+    if (seen) {
+      seen.register = e
+    }
+
+    return { value: { command: 'flowpane' } }
+  })
   on('session.id', () => ({ value: 'test-session' }))
   on('store.get', () => ({ value: undefined }))
   on('store.set', () => ({ value: undefined }))
@@ -125,4 +136,49 @@ test('the reply to a run number there is no run for names the live command', asy
   // form that can be typed.
   expect(text).toContain(`${COMMAND} runs`)
   expect(commandsIn(text).every(named => named === COMMAND)).toBe(true)
+})
+
+test('the command is registered described by what typing it does', async ($, on) => {
+  mock.clock(on, { now: 0 })
+
+  const seen: { register?: { name?: string; description?: string } } = {}
+
+  on('session.start', ($$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
+  stubEngine(on, seen)
+
+  await $.session.start({ cwd: '/home/test', surface: 'terminal', isInteractive: true })
+
+  // The description is read in the command list, where there is no pane to look
+  // at: it has to say what pressing it does and where the rest of it is, and it
+  // names the live command while doing so.
+  expect(seen.register?.description).toBe(
+    'Toggle the workflow view; /flowpane help lists what else it takes',
+  )
+})
+
+test('the command is registered under the name the plugin answers to', async ($, on) => {
+  mock.clock(on, { now: 0 })
+
+  const seen: { register?: { name?: string; description?: string } } = {}
+
+  on('session.start', ($$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
+  stubEngine(on, seen)
+
+  await $.session.start({ cwd: '/home/test', surface: 'terminal', isInteractive: true })
+
+  expect(seen.register?.name).toBe(COMMAND.slice(1))
+})
+
+test('what the pane says about itself names the run list as a line to type', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  stubEngine(on)
+
+  const text = await reply($, 'about')
+  const row = text.split('\n').find(line => line.includes(`${COMMAND} runs`)) ?? ''
+
+  // The seat that prints this draws no Buttons, so every way on from it is a
+  // line a reader types. The row has to carry both halves: the command, and
+  // what it answers with.
+  expect(row).toContain(`${COMMAND} runs`)
+  expect(row).toContain('this session\u2019s runs')
 })
