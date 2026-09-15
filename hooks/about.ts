@@ -33,7 +33,7 @@ export const RELEASED = '15-09-2026'
  * the reader is told, and a pane claiming 0.3.0 while the marketplace serves
  * 0.4.0 is worse than a pane that names no version at all.
  */
-export const VERSION = '0.3.0'
+export const VERSION = '0.3.1'
 
 /** One line of the About dialog: a pair, a sentence, or the air between them. */
 export type AboutRow =
