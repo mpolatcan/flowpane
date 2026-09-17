@@ -8,7 +8,8 @@
 
 import { expect, test } from 'claude-code/testing'
 
-import { applyPress, drew, MAX_DETAIL, MIN_DETAIL, wheel, type PaneView } from '../hooks/press'
+import type { Orientation } from '../hooks/layout'
+import { applyPress, drew, MAX_DETAIL, MIN_DETAIL, nextOrientation, wheel, type PaneView } from '../hooks/press'
 
 function view(): PaneView {
   return {
@@ -475,4 +476,20 @@ test('the wheel over a nested run moves its list, not the tab an agent was left 
 
   // And the drawing behind the dialog takes no wheel, as it takes no press.
   expect(v.bodyScroll).toEqual({ x: 0, y: 0 })
+})
+
+test('the layout control walks the four orientations in one fixed order', () => {
+  const walk: Orientation[] = ['horizontal']
+
+  while (walk.length < 5) {
+    walk.push(nextOrientation(walk[walk.length - 1]))
+  }
+
+  // Written out here rather than read off `ORIENTATIONS`. The footer's control
+  // and the settings dialog's list both take their order from that one array,
+  // so every check of the agreement so far has been the array agreeing with
+  // itself: swapped, both move together and nothing notices. The order is a
+  // decision — the two layouts a reader switches between most, then the two
+  // they set once — and this is the only place it is written down twice.
+  expect(walk).toEqual(['horizontal', 'vertical', 'timeline', 'auto', 'horizontal'])
 })

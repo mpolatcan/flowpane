@@ -392,3 +392,19 @@ test('the settings open with no run to draw', () => {
 
   expect(v.theme).toBe('gruvbox')
 })
+
+test('the layout list unrolls in the order the control walks', () => {
+  const layouts = open({ menu: 'layout' })
+
+  // The same order written out in `tests/press.test.ts`, checked here on the
+  // other surface that draws it. A reader who has learnt the footer's walk
+  // reads this list top to bottom expecting it; the two are documented as
+  // having to agree, and until both were pinned against a written-out order
+  // they agreed by both reading one array.
+  expect(layouts.pressable.filter(id => id.startsWith('set:orientation:'))).toEqual([
+    'set:orientation:horizontal',
+    'set:orientation:vertical',
+    'set:orientation:timeline',
+    'set:orientation:auto',
+  ])
+})
