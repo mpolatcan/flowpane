@@ -103,3 +103,17 @@ test('an agent that started while a longer one was still going joins its wave', 
   expect(waves.length).toBe(1)
   expect(waves[0].map(a => a.agentId).join(',')).toBe('survey,quick,late')
 })
+
+test('an agent still running holds open a wave it joined rather than started', () => {
+  const waves = wavesOf({
+    agents: [agentOf('claim', 0, 1_000), agentOf('watch', 100), agentOf('report', 2_000, 1_000)],
+  })
+
+  // The agent that has not landed arrived second, so it extends the wave rather
+  // than opening one — and it extends it to the end of the run, the same as it
+  // would have at the head. Closed at the last clock that finished instead, the
+  // wave ends while one of its own agents is still working, and every agent
+  // that started after that is drawn as a wave of its own.
+  expect(waves.length).toBe(1)
+  expect(waves[0].map(a => a.agentId).join(',')).toBe('claim,watch,report')
+})
