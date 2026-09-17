@@ -15,10 +15,12 @@ import { expect, test } from 'claude-code/testing'
 
 import { Canvas } from '../hooks/canvas'
 import type { AgentRow, RunState } from '../hooks/journal'
-import { CARD_H, layout } from '../hooks/layout'
+import { CARD_H, extentOf, layout, scrolled } from '../hooks/layout'
 import { paint } from '../hooks/paint'
 
 const STARTED = 1_700_000_000_000
+/** The gutter between two columns, which is the widest a cut edge may leave. */
+const GUTTER_MAX = 7
 
 function agentsOf(phase: string, names: string[]): AgentRow[] {
   return names.map((name, i) => ({
@@ -71,9 +73,9 @@ function rowsOf(canvas: Canvas): string[] {
 }
 
 test('every band is the same depth, whatever ran in it', () => {
-  const view = layout(RUN, 110, 34, 'stack')
+  const view = layout(RUN, 110, 34, 'vertical')
 
-  expect(view.orientation).toBe('stack')
+  expect(view.orientation).toBe('vertical')
 
   const rules = view.lanes.map(lane => lane.captionRow ?? -1)
   const bands = rules.slice(1).map((row, i) => row - rules[i])
@@ -83,7 +85,7 @@ test('every band is the same depth, whatever ran in it', () => {
 })
 
 test('a band keeps its cards clear of the rule above and the rule below', () => {
-  const view = layout(RUN, 110, 34, 'stack')
+  const view = layout(RUN, 110, 34, 'vertical')
 
   for (const lane of view.lanes) {
     const rule = lane.captionRow ?? 0
@@ -97,10 +99,59 @@ test('a band keeps its cards clear of the rule above and the rule below', () => 
   }
 })
 
-test('across, every column is the same size and the nodes centre in the body', () => {
-  const view = layout(RUN, 150, 32, 'flow')
+test('a band stands its node in the middle, with room either side of it', () => {
+  const view = layout(RUN, 110, 34, 'vertical')
 
-  expect(view.orientation).toBe('flow')
+  expect(view.orientation).toBe('vertical')
+  expect(view.density).toBe('card')
+
+  const rules = view.lanes.map(lane => lane.captionRow ?? 0)
+
+  for (const [place, lane] of view.lanes.entries()) {
+    const card = lane.nodes[0]!
+    const rule = rules[place]!
+    // The band runs to the rule opening the band below it, and the last band to
+    // the foot of the drawing — one band deeper than the last rule.
+    const next = rules[place + 1] ?? rule + (rules[1]! - rules[0]!)
+    const above = card.y - rule - 1
+    const below = next - (card.y + card.h)
+
+    // Three rows above — one the wires arriving gather on, one the arrowheads
+    // land on, and between them the row a card fed from further back writes
+    // that phase's name on — and two below: the row a card's own exit points
+    // stand on, and one of air. A band that stopped at its card put all of its
+    // room above, which stood every node in the drawing hard against the line
+    // under it and left the exit point to land on that line, where the caption
+    // clears its own cells and rubs the point out.
+    expect(above).toBeGreaterThanOrEqual(3)
+    expect(below).toBeGreaterThanOrEqual(2)
+    expect(Math.abs(above - below)).toBeLessThanOrEqual(1)
+  }
+})
+
+test('a band keeps the row its cards name what fed them on clear of the arrowheads', () => {
+  // The row against a card is the one the arrowheads land on, and an arrowhead
+  // stands in the middle of it — so a label written there had half a card's
+  // width, gave up its word for its name, and on a narrow pane said nothing at
+  // all. The band keeps the row above that one for it, the bundle every wire
+  // turns on stays above them both, and the wire running between gives way for
+  // the label the way it gives way for a band's own caption.
+  const view = layout(RUN, 110, 34, 'vertical')
+
+  for (const lane of view.lanes) {
+    const card = lane.nodes[0]!
+
+    // The bundle is clear of the label's row and of the arrowheads' row under it.
+    expect(lane.busAt).toBeLessThanOrEqual(card.y - 3)
+    // And the band's own rule is clear of the bundle.
+    expect(lane.captionRow ?? 0).toBeLessThan(lane.busAt)
+  }
+})
+
+test('across, every column is the same size and the nodes centre in the body', () => {
+  const view = layout(RUN, 150, 32, 'horizontal')
+
+  expect(view.orientation).toBe('horizontal')
   expect(new Set(view.lanes.map(l => l.w)).size).toBe(1)
   expect(new Set(view.lanes.map(l => l.h)).size).toBe(1)
 
@@ -126,7 +177,7 @@ test('a phase the pane cannot fit is named, not dropped in silence', () => {
     ['Report', []],
   ])
 
-  const view = layout(run, 110, 34, 'stack')
+  const view = layout(run, 110, 34, 'vertical')
 
   expect(view.lanes.map(l => l.phase)).toEqual(['Survey', 'Review', 'Check'])
   expect(view.pending).toEqual(['Verify', 'Escalate', 'Report'])
@@ -136,7 +187,7 @@ test('a phase the pane cannot fit is named, not dropped in silence', () => {
   // of its own is a rule with blank rows under it — three of those down a tall
   // pane read as three bands that failed to draw rather than as the rest of the
   // run. One list of them says it once.
-  const roomy = layout(run, 110, 60, 'stack')
+  const roomy = layout(run, 110, 60, 'vertical')
 
   expect(roomy.pending).toEqual(['Verify', 'Escalate', 'Report'])
   expect(roomy.lanes.map(l => l.phase)).toEqual(['Survey', 'Review', 'Check'])
@@ -158,7 +209,7 @@ test('a phase the run passed over keeps its section, and draws the same row in i
 
   // Later phases ran, so this one cannot go to the foot: named down there it
   // would stand after work it came before.
-  const view = layout(run, 96, 40, 'stack')
+  const view = layout(run, 96, 40, 'vertical')
 
   expect(view.pending).toEqual([])
   expect(view.lanes.map(l => l.phase)).toEqual(['Survey', 'Review', 'Escalate', 'Report'])
@@ -172,7 +223,7 @@ test('a phase the run passed over keeps its section, and draws the same row in i
 
   const canvas = new Canvas(96, 40)
 
-  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'stack' })
+  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical' })
 
   const lines = rowsOf(canvas)
   const at = lines.findIndex(line => line.includes('\u258c') && line.includes('Escalate'))
@@ -201,7 +252,7 @@ test('the phases it could not fit open a band of their own at the foot', () => {
   ])
   const canvas = new Canvas(110, 34)
 
-  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'stack' })
+  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical' })
 
   const lines = rowsOf(canvas)
   const at = lines.findIndex(line => /^\u254c+ Ahead \u254c+$/.test(line.trimEnd()))
@@ -255,7 +306,7 @@ test('a pane with no rows to spare names them in one rule instead', () => {
   ])
   const canvas = new Canvas(90, 10)
 
-  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'stack' })
+  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical' })
 
   const lines = rowsOf(canvas)
   const row = lines.find(line => /^\u254c+ .+ \u254c+$/.test(line)) ?? ''
@@ -281,7 +332,7 @@ test('down a timeline the phases still ahead take one band, not an empty band ea
   ])
   const canvas = new Canvas(96, 24)
 
-  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'time' })
+  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'timeline' })
 
   const lines = rowsOf(canvas)
 
@@ -309,10 +360,10 @@ test('down a timeline the phases still ahead take one band, not an empty band ea
 })
 
 test('across, a phase stands in the middle of the section it owns', () => {
-  const view = layout(RUN, 150, 32, 'flow')
+  const view = layout(RUN, 150, 32, 'horizontal')
   const edges = view.lanes.map(lane => lane.edgeAt)
 
-  expect(view.orientation).toBe('flow')
+  expect(view.orientation).toBe('horizontal')
   expect(edges[0]).toBe(-1)
 
   view.lanes.forEach((lane, i) => {
@@ -341,6 +392,90 @@ test('across, a phase stands in the middle of the section it owns', () => {
   })
 })
 
+test('across, a run of more phases than the pane can name draws fewer of them, wider', () => {
+  const run = runOf(
+    Array.from({ length: 17 }, (_, i) => [`Phase ${i + 1}`, ['work']] as [string, string[]]),
+  )
+  const view = layout(run, 110, 30, 'horizontal')
+
+  expect(view.lanes.length).toBe(17)
+  expect(view.density).toBe('card')
+
+  // Divided seventeen ways a column was twelve cells, eight of which a card
+  // spends on its own frame and mark — so every card on the pane read `Pha…`,
+  // and the drawing overran the pane at that width anyway. The columns that
+  // are drawn now carry a name; the body scrolls to the rest.
+  for (const lane of view.lanes) {
+    expect(lane.w).toBeGreaterThanOrEqual(20)
+  }
+
+  expect(extentOf(view).w).toBeGreaterThan(110)
+
+  // Cut between two columns rather than through one: a fifth column showing
+  // three cells of its frame at the edge is a card a reader can neither read
+  // nor tell is there.
+  const whole = view.lanes.filter(lane => lane.x >= 0 && lane.x + lane.w <= 110)
+
+  expect(whole.length).toBeGreaterThanOrEqual(3)
+  expect(110 - (whole[whole.length - 1].x + whole[whole.length - 1].w)).toBeLessThan(GUTTER_MAX)
+})
+
+test('across, a wider pane names more phases rather than fatter ones', () => {
+  const run = runOf(
+    Array.from({ length: 17 }, (_, i) => [`Phase ${i + 1}`, ['work']] as [string, string[]]),
+  )
+  const shown = (columns: number) =>
+    layout(run, columns, 30, 'horizontal').lanes.filter(lane => lane.x + lane.w <= columns).length
+
+  // The width a column is given stops at what its card can carry, so the room
+  // a wider pane brings goes into columns rather than into stroke.
+  expect(shown(160)).toBeGreaterThan(shown(110))
+  expect(shown(200)).toBeGreaterThan(shown(160))
+})
+
+test('a phase whose slice is already legible keeps every phase on the pane', () => {
+  const run = runOf([
+    ['Survey', ['paint', 'layout', 'journal', 'README', 'plugin']],
+    ['Review', ['paint', 'layout', 'journal', 'plugin']],
+    ['Check', ['README']],
+  ])
+  const view = layout(run, 110, 34, 'horizontal')
+
+  // Nineteen cells is a card with eleven of name, which is every label here.
+  // Widening it to twenty would have spent a scroll to buy cells nobody asked
+  // for, so the pane gives up dividing well below the width it widens to.
+  expect(view.lanes.length).toBe(3)
+  expect(extentOf(view).w).toBeLessThanOrEqual(110)
+})
+
+test('down, a band of more agents than the pane can name stands fewer of them, wider', () => {
+  const eight = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight']
+  const run = runOf([
+    ['Survey', eight],
+    ['Review', ['paint', 'layout']],
+    ['Check', ['README']],
+  ])
+  const view = layout(run, 110, 34, 'vertical')
+
+  expect(view.density).toBe('card')
+
+  const nodes = view.lanes.flatMap(lane => lane.nodes)
+
+  for (const node of nodes) {
+    expect(node.w).toBeGreaterThanOrEqual(20)
+  }
+
+  expect(extentOf(view).w).toBeGreaterThan(110)
+
+  // Every band opens at the left rather than centring. Centred, a band of two
+  // would stand in the middle of a drawing whose own first column is off at
+  // the left, and a reader scrolling to the wide band's tail would lose the
+  // narrow bands on the way there.
+  const opens = view.lanes.map(lane => lane.nodes[0]?.x).filter(x => x !== undefined)
+
+  expect(new Set(opens).size).toBe(1)
+})
+
 test('across, the phases still ahead take a strip at the end, not a row under it', () => {
   const run = runOf([
     ['Survey', ['paint', 'layout', 'journal', 'README', 'plugin']],
@@ -351,7 +486,7 @@ test('across, the phases still ahead take a strip at the end, not a row under it
     ['Report', []],
   ])
 
-  const view = layout(run, 150, 32, 'flow')
+  const view = layout(run, 150, 32, 'horizontal')
   const last = view.lanes[view.lanes.length - 1]
 
   expect(view.pending).toEqual(['Verify', 'Escalate', 'Report'])
@@ -359,11 +494,11 @@ test('across, the phases still ahead take a strip at the end, not a row under it
 
   // The drawing keeps the row the rule under it used to take: a run with three
   // phases ahead of it is as deep as the same run with none declared.
-  expect(view.lanes[0].h).toBe(layout(RUN, 150, 32, 'flow').lanes[0].h)
+  expect(view.lanes[0].h).toBe(layout(RUN, 150, 32, 'horizontal').lanes[0].h)
 
   const canvas = new Canvas(150, 32)
 
-  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'flow' })
+  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'horizontal' })
 
   const lines: string[] = []
 
@@ -401,7 +536,7 @@ test('across, the phases still ahead take a strip at the end, not a row under it
   expect(Math.abs(above - below)).toBeLessThanOrEqual(1)
 })
 
-test('down the pane, a run too tall for cards keeps its wires', () => {
+test('down the pane, a run too tall for cards keeps its cards and scrolls to the rest', () => {
   const run = runOf([
     ['Gather', ['rivers', 'mountains', 'deserts', 'reefs', 'forests']],
     ['Draft', ['rivers', 'mountains', 'deserts', 'reefs', 'forests']],
@@ -411,33 +546,104 @@ test('down the pane, a run too tall for cards keeps its wires', () => {
     ['Assemble', ['joined']],
   ])
 
-  const view = layout(run, 110, 34, 'stack')
+  const view = layout(run, 110, 34, 'vertical')
+  const reach = extentOf(view)
 
-  // A band of four rows cannot hold a card, so the node becomes one row — the
-  // step the phases-across layout has always taken. What it must not do is fall
-  // straight to the flat list, which draws no edges at all: the same run under
-  // `flow` on the same seat keeps every wire, and a pane whose lines appear and
-  // disappear with the setting reads as two different drawings of one run.
-  expect(view.density).toBe('row')
+  // Six bands divided into a body of twenty-eight used to leave four rows each,
+  // which cannot hold a card — so every node in the drawing became a row, and
+  // the same run laid out across kept its cards and scrolled sideways to the
+  // rest. One run on one seat was a graph under one setting and a table under
+  // the other.
+  //
+  // The height keeps the bargain the width keeps: the bands take the depth
+  // their cards need, the drawing runs past the foot, and the body scrolls.
+  expect(view.density).toBe('card')
   expect(view.list).toBeUndefined()
   expect(view.lanes.length).toBe(6)
+  expect(reach.h).toBeGreaterThan(34)
 
   const canvas = new Canvas(110, 34)
+  const drawn = paint(canvas, run, {
+    nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical', follow: false,
+  })
 
-  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'stack' })
+  // What does not fit is a place to scroll to, not a count of what is missing.
+  expect(drawn.body?.spanY ?? 0).toBeGreaterThan(0)
+  expect(rowsOf(canvas).join('\n')).not.toContain('more')
 
+  // And the wires are drawn, which is what the flat list gives up: arrowheads
+  // where they land, and a stroke down from every phase to the one under it —
+  // solid where the text proved the edge, dashed where only the labels suggest
+  // it, which is what these are.
   const lines = rowsOf(canvas)
-  const text = lines.join('\n')
 
-  // Arrowheads where the wires land, and a stroke running down from every phase
-  // to the one under it — solid where the text proved the edge, dashed where
-  // only the labels suggest it, which is what these are.
-  expect(text).toContain('\u25be')
+  expect(lines.join('\n')).toContain('\u25be')
   expect(lines.filter(line => /[\u2502\u2506]/.test(line)).length).toBeGreaterThan(4)
 
-  // And the whole run drawn: a list of twenty-six rows did not fit and said so.
-  expect(text).not.toContain('more')
-  expect(text).toContain('joined')
+  // The last phase is past the foot of the pane, and scrolling reaches it.
+  const scrolled = new Canvas(110, 34)
+
+  paint(scrolled, run, {
+    nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical', follow: false,
+    bodyScroll: { x: 0, y: drawn.body?.spanY ?? 0 },
+  })
+
+  expect(rowsOf(scrolled).join('\n')).toContain('joined')
+})
+
+test('across, a lane too tall for the pane keeps its cards and scrolls to the rest', () => {
+  const run = runOf([
+    ['Gather', ['rivers', 'reefs']],
+    ['Draft', ['rivers', 'reefs', 'dunes', 'forests', 'ridges', 'marshes', 'lochs', 'fens',
+               'cliffs', 'steppes', 'atolls', 'moors']],
+    ['Assemble', ['joined']],
+  ])
+
+  const view = layout(run, 110, 30, 'horizontal')
+  const reach = extentOf(view)
+
+  // One lane of twelve used to turn every card in the drawing into a row, so a
+  // fan-out cost the reader the frames, the models and the clocks on the phases
+  // either side of it. The width has never made that trade — past the point
+  // where a column can carry a name the columns take the width they need and
+  // the body scrolls sideways — and the height does not make it either.
+  expect(view.density).toBe('card')
+  expect(reach.h).toBeGreaterThan(30)
+
+  const canvas = new Canvas(110, 30)
+  const drawn = paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'horizontal', follow: false })
+
+  // What does not fit is a place to scroll to, not a count of what is missing.
+  expect(drawn.body?.spanY ?? 0).toBeGreaterThan(0)
+  expect(rowsOf(canvas).join('\n')).not.toContain('more')
+
+  // The phase names are column heads, and a column head does not scroll: a card
+  // carried far enough up used to land on the row they are written on.
+  const heads = (canvas: Canvas) => rowsOf(canvas)[view.headerRows - 2] ?? ''
+  const scrolled = new Canvas(110, 30)
+
+  paint(scrolled, run, {
+    nowMs: STARTED + 20_000, tick: 0, orientation: 'horizontal', follow: false,
+    bodyScroll: { x: 0, y: drawn.body?.spanY ?? 0 },
+  })
+
+  expect(heads(scrolled)).toBe(heads(canvas))
+  expect(heads(scrolled)).toContain('Draft')
+})
+
+test('across, a pane too short for two cards falls back to a row each', () => {
+  const run = runOf([
+    ['Gather', ['rivers', 'reefs']],
+    ['Draft', ['rivers', 'reefs', 'dunes', 'forests', 'ridges', 'marshes']],
+    ['Assemble', ['joined']],
+  ])
+
+  // Two cards and the gap between them is what it takes to have anything to
+  // scroll between. Below that a card and a sliver of the next says less than
+  // six rows do.
+  expect(layout(run, 110, 8, 'horizontal').density).toBe('row')
+  // And two of them is enough to keep them.
+  expect(layout(run, 110, 14, 'horizontal').density).toBe('card')
 })
 
 test('a band too short even for a row falls to the list, which says so', () => {
@@ -447,14 +653,14 @@ test('a band too short even for a row falls to the list, which says so', () => {
     ['Check', ['README']],
   ])
 
-  const view = layout(run, 60, 20, 'stack')
+  const view = layout(run, 60, 20, 'vertical')
 
   expect(view.density).toBe('row')
   expect(view.list).toBe(true)
 
   const canvas = new Canvas(60, 20)
 
-  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'stack' })
+  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical' })
 
   // The order down the page is what says what fed what, so nothing is drawn
   // between the rows.
@@ -472,22 +678,164 @@ test('a column too narrow to close a card draws rows instead', () => {
   ])
   // Room enough down the pane for cards, and nothing like enough across it:
   // six phases and their gutters in twenty columns.
-  const tight = layout(six, 20, 28, 'flow')
+  const tight = layout(six, 20, 28, 'horizontal')
 
   expect(tight.density).toBe('row')
   expect(Math.max(...tight.lanes.map(l => l.w))).toBeLessThan(8)
 
   const canvas = new Canvas(20, 28)
 
-  paint(canvas, six, { nowMs: STARTED + 20_000, tick: 0, orientation: 'flow' })
+  paint(canvas, six, { nowMs: STARTED + 20_000, tick: 0, orientation: 'horizontal' })
 
   // A card that narrow was drawn with its name over its own top-right corner,
   // so the box had three sides and the name stood outside it.
   expect(rowsOf(canvas).some(row => row.includes('╭'))).toBe(false)
 
   // Wide enough for a card, and the card closes.
-  const roomy = layout(six, 120, 28, 'flow')
+  const roomy = layout(six, 120, 28, 'horizontal')
 
   expect(roomy.density).toBe('card')
   expect(Math.min(...roomy.lanes.map(l => l.w))).toBeGreaterThanOrEqual(8)
+})
+
+/**
+ * One agent a phase, each begun once the one before it landed, and no two of
+ * them named after the same thing — so nothing infers a carry and the phases
+ * are joined by the barrier, which is the line drawn on a band's own spine.
+ */
+function handedOn(phases: string[]): RunState {
+  const agents = phases.map((phase, i) => ({
+    agentId: `${phase}-0`,
+    label: phase.toLowerCase(),
+    phase,
+    state: 'done' as const,
+    startedMs: STARTED + i * 6_000,
+    endedMs: STARTED + i * 6_000 + 5_000,
+    tools: [],
+  }))
+
+  return {
+    runId: 'wf_test',
+    name: 'audit',
+    summary: '',
+    transcriptDir: '/session/subagents/workflows/wf_test',
+    runFile: '/session/workflows/wf_test.json',
+    startedMs: STARTED,
+    status: 'running',
+    phases,
+    agents,
+    consumed: 0,
+  }
+}
+
+test('down the pane, a band scrolled away takes its spine with it', () => {
+  const run = handedOn(['Gather', 'Draft', 'Critique', 'Revise', 'Measure', 'Assemble'])
+  const down = layout(run, 70, 30, 'vertical')
+  const across = layout(run, 130, 30, 'horizontal')
+
+  // The spine every wire into a band turns on is a column across the pane and a
+  // row down it, so which way it moves with the drawing is which way the
+  // drawing runs. Moved by the sideways scroll in both, a band scrolled down
+  // the pane kept its spine on the row it was laid out at while its cards went
+  // with the scroll — and the wire between them ran from a card at the top of
+  // the drawing to a spine forty rows below it, through every card in between.
+  // Nothing caught it while the stacked layout could not scroll at all.
+  // A lane with no bus of its own keeps its -1 whichever way the drawing moves.
+  const moved = (view: ReturnType<typeof layout>, by: number) =>
+    view.lanes.map(lane => (lane.busAt < 0 ? lane.busAt : lane.busAt + by))
+
+  expect(scrolled(down, 0, -8).lanes.map(lane => lane.busAt)).toEqual(moved(down, -8))
+  expect(scrolled(down, -4, 0).lanes.map(lane => lane.busAt)).toEqual(moved(down, 0))
+
+  // Across, it is the column, and the sideways scroll is the one that moves it.
+  expect(scrolled(across, -6, 0).lanes.map(lane => lane.busAt)).toEqual(moved(across, -6))
+  expect(scrolled(across, 0, -6).lanes.map(lane => lane.busAt)).toEqual(moved(across, 0))
+})
+
+/** A run whose agents took visibly different times, spread across five minutes. */
+function traced(): RunState {
+  const at = (label: string, from: number, ms: number): AgentRow => ({
+    agentId: label,
+    label,
+    phase: label.split(':')[0] as string,
+    state: 'done',
+    startedMs: STARTED + from,
+    endedMs: STARTED + from + ms,
+    tools: [],
+    tokens: 12_000,
+    result: 'done',
+  })
+
+  const agents = [
+    at('gather:rivers', 0, 40_000),
+    at('gather:reefs', 1_000, 90_000),
+    at('draft:rivers', 95_000, 1_000),
+    at('draft:reefs', 96_000, 120_000),
+    at('review:whole', 220_000, 60_000),
+  ]
+
+  return {
+    runId: 'wf_test',
+    name: 'atlas',
+    summary: '',
+    transcriptDir: '/session/subagents/workflows/wf_test',
+    runFile: '/session/workflows/wf_test.json',
+    startedMs: STARTED,
+    endedMs: STARTED + 280_000,
+    status: 'completed',
+    phases: ['gather', 'draft', 'review'],
+    agents,
+    consumed: 60_000,
+  }
+}
+
+test('the timeline rules a time axis, and carries its ticks down the rows', () => {
+  const run = traced()
+  const canvas = new Canvas(110, 24)
+
+  paint(canvas, run, { nowMs: STARTED + 280_000, tick: -1, orientation: 'timeline', follow: false })
+
+  const rows = rowsOf(canvas)
+  const ruler = rows.findIndex(row => row.includes('┬0s'))
+
+  // A bar scaled to the run's own span says how long the agent took and nothing
+  // about when it ran, which is half of what a trace is opened to answer. The
+  // ruler is the other half: a round step of time between ticks, each one named.
+  expect(ruler).toBeGreaterThan(0)
+  expect((rows[ruler] ?? '').split('┬').length).toBeGreaterThan(2)
+
+  const tick = (rows[ruler] ?? '').lastIndexOf('┬')
+
+  // And the tick carried down the rows, in the cells no bar claimed: otherwise
+  // a bar is read against the scale by looking straight up at it, and across
+  // thirty rows of a trace the row is lost by the time the eye is back.
+  expect(rows.slice(ruler + 1).some(row => row[tick] === '┆')).toBe(true)
+})
+
+test('a timeline too fine for the pane scrolls sideways along its own scale', () => {
+  const run = traced()
+  const canvas = new Canvas(110, 24)
+  const drawn = paint(canvas, run, {
+    nowMs: STARTED + 280_000, tick: -1, orientation: 'timeline', follow: false,
+  })
+
+  // Squeezed into whatever the pane had left, an agent that took a second and
+  // one that took two minutes were the same two cells. The axis takes the cells
+  // the run needs instead, and the body scrolls to the rest of it.
+  expect(drawn.body?.spanX ?? 0).toBeGreaterThan(0)
+  expect(rowsOf(canvas)[canvas.rows - 1]).toContain('▸')
+
+  const moved = new Canvas(110, 24)
+
+  paint(moved, run, {
+    nowMs: STARTED + 280_000, tick: -1, orientation: 'timeline', follow: false,
+    bodyScroll: { x: drawn.body?.spanX ?? 0, y: 0 },
+  })
+
+  // The scale is fixed, so scrolling moves the window along it rather than
+  // redrawing the run at a new size: the ruler says a later time than it did.
+  const originOf = (c: Canvas) => rowsOf(c).findIndex(row => row.includes('┬0s'))
+
+  expect(originOf(canvas)).toBeGreaterThan(0)
+  expect(originOf(moved)).toBe(-1)
 })

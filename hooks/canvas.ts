@@ -195,7 +195,33 @@ export class Canvas {
     this.clear()
   }
 
+  /**
+   * The rectangle drawing lands in. Everything outside it is dropped.
+   *
+   * A drawing larger than the pane used to be cut down until it fitted, which
+   * meant the run had to be made smaller to be seen at all. With a window, the
+   * layout is done whole and moved under a header that stays put: the cells
+   * that fall outside simply do not land, so a lane shifted half off the top
+   * draws the half that is still in the body and nothing over the header.
+   */
+  private clip = { x: 0, y: 0, w: 0, h: 0 }
+
+  /**
+   * Sets the window, or clears it when called with nothing. Drawing between
+   * the two calls is clipped to the rectangle; drawing outside them is not.
+   */
+  window(x?: number, y?: number, w?: number, h?: number): void {
+    this.clip =
+      x === undefined
+        ? { x: 0, y: 0, w: this.columns, h: this.rows }
+        : { x, y: y ?? 0, w: w ?? this.columns, h: h ?? this.rows }
+  }
+
   clear(background: Rgb = this.background): void {
+    // Each frame starts with the whole pane open, so a painter that set a
+    // window and threw cannot leave the next frame clipped to it.
+    this.window()
+
     for (let i = 0; i < this.columns * this.rows; i++) {
       this.words[i * 3] = 0x20
       this.words[i * 3 + 1] = DEFAULT_COLOR
@@ -206,6 +232,12 @@ export class Canvas {
   /** Writes one cell, ignoring anything outside the buffer. */
   put(x: number, y: number, codePoint: number, fg: Rgb, bg?: Rgb): void {
     if (x < 0 || y < 0 || x >= this.columns || y >= this.rows) {
+      return
+    }
+
+    const clip = this.clip
+
+    if (x < clip.x || y < clip.y || x >= clip.x + clip.w || y >= clip.y + clip.h) {
       return
     }
 
@@ -229,6 +261,14 @@ export class Canvas {
   /** The code point at a cell, or a space for one off the buffer. */
   at(x: number, y: number): number {
     if (x < 0 || y < 0 || x >= this.columns || y >= this.rows) {
+      return 0x20
+    }
+
+    // A cell outside the window reads blank, so a line drawn up to the edge of
+    // the body joins nothing on the other side of it.
+    const clip = this.clip
+
+    if (x < clip.x || y < clip.y || x >= clip.x + clip.w || y >= clip.y + clip.h) {
       return 0x20
     }
 

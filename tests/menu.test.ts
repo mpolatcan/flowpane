@@ -67,7 +67,7 @@ function menuOf(runs: RunEntry[], shownId = 'wf_a', rows = 26): string[] {
   paint(canvas, shownRun(shownId), {
     nowMs: NOW,
     tick: 0,
-    orientation: 'flow',
+    orientation: 'horizontal',
     runPicker: 'open',
     runs,
   })

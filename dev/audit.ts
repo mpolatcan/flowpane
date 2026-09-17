@@ -24,7 +24,7 @@ import { journalRun, runDirs } from './load'
 const COLUMNS = [20, 26, 34, 46, 60, 74, 88, 102, 120, 148, 180, 220]
 /** The heights, from a pane squeezed under a long transcript to a tall window. */
 const ROWS = [6, 9, 12, 16, 22, 28, 34, 44, 60, 80]
-const LAYOUTS: Orientation[] = ['flow', 'stack', 'time']
+const LAYOUTS: Orientation[] = ['horizontal', 'vertical', 'timeline']
 
 type Case = { run: RunState; name: string }
 

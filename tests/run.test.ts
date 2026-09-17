@@ -112,7 +112,7 @@ test('every node carries its tokens and its model', () => {
   expect(run.agents[1]?.model).toBeUndefined()
   expect(run.defaultModel).toBe('claude-opus-5[1m]')
 
-  for (const orientation of ['flow', 'stack', 'time'] as const) {
+  for (const orientation of ['horizontal', 'vertical', 'timeline'] as const) {
     const canvas = new Canvas(90, 24)
 
     paint(canvas, run, { nowMs: READ_AT, tick: 0, orientation })

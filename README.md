@@ -34,6 +34,10 @@ plugin API from [anthropics/claude-code#91870](https://github.com/anthropics/cla
 - **The session's other runs**: press the run's name for a menu of them,
   grouped by state; with nothing running the pane lists them in place of the
   graph.
+- **A nested workflow as a run of its own**: a phase whose agents belong to a
+  workflow this one called is drawn in the dashed register every layout uses for
+  work that is not this run's, folded to one node with a mark per trip. Press its
+  ▸ and every agent inside stands separately, each with its own detail.
 - **Three layouts** — **across**, **down**, or **timeline**: phases laid across
   the pane, stacked down it, or drawn as bars against the clock — and **twelve
   palettes**, nine dark and three light.
@@ -73,14 +77,20 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | --- | --- |
 | A node's label | opens that agent's detail dialog; click again to close |
 | ⚙ Settings | opens the settings dialog over the drawing |
-| `flowpane 0.3.1` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
+| `flowpane 0.5.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
 | A setting's value | unrolls that setting's list where it stands; press it again to roll the list up |
 | The graph, with any dialog open | takes no presses — it is pushed back behind the dialog until the dialog shuts |
 | Layout | **across**, **down**, **timeline**, or **fits** the shape — picked by name |
 | Detail height `−` `+` | rows the detail dialog takes, 5 to 32; grey at either end of the range |
 | Theme | twelve palettes, nine dark and three light — each listed beside three cells of its own |
 | ✕ (in a dialog) | closes it, from the dialog's own top corner |
-| ▴ / ▾ | scrolls one block of the detail dialog three lines. Each block has its own pair, at the ends of its own bar. Grey at either end |
+| A tab in the detail dialog | shows that pane across the dialog's whole width; which tab is open is kept from node to node |
+| A pass number on a node's row | opens that attempt's detail: `✔ 1  ✔ 2  ✖ 3` is one row and three presses |
+| The ▸ on a nested run's name, or its `▸ 23 agents` | unfolds that run into its own agents, each one pressable — in any layout. The count on the run's own card takes the same press as the mark on its band. The mark turns ▾ while it is open |
+| ▴ / ▾ (in a dialog) | scrolls the open pane three lines. Grey at either end |
+| ▴ / ▾ ◂ / ▸ (at the pane's edges) | scrolls the drawing, where it is larger than the pane. A live run is drawn with the window on the phase it is working in, so scrolling away is a peek: it goes back when the run enters a new phase |
+| The wheel, over the pane | moves the drawing, or the open dialog while one is open |
+| The wheel, over the rail along the foot | moves the drawing sideways — as does the wheel anywhere over a drawing that only goes that way |
 | The run's name | opens the session's other runs as a menu under it, once there is more than one; grouped by state, most recent first, each with the second it started on. Picking one moves the drawing to it, live or finished |
 | A run on the idle pane | draws it. With nothing running the pane lists the session's runs in place of the graph, grouped and timed the same way |
 
@@ -90,7 +100,7 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 
 | Field | Values | What it does |
 | --- | --- | --- |
-| `orientation` | `auto` (default), `flow`, `stack`, `time` — or the words `/flowpane` uses: `fits`, `across`, `down`, `timeline` | `flow` runs the phases across the pane, `stack` runs them down it, `auto` follows the pane's proportions. Below the depth a stacked band needs for cards, a node becomes a single row and the band keeps its wires; below the width one needs for legible boxes at all, `stack` becomes a flat list: one agent per row under each phase, no edges drawn. `time` swaps the graph for a timeline: one bar per agent against the clock, grouped by phase, with a marker where now is. |
+| `orientation` | `horizontal`, `vertical`, `timeline`, or `auto` (default) — the last spelled `fits` in `/flowpane` and in the settings | `horizontal` runs the phases across the pane, `vertical` runs them down it, `auto` follows the pane's proportions. Both keep the same bargain in both directions: while a section can carry a name and stand two of its cards, the pane divides itself between the phases; past that the sections take the room they need, the drawing runs past the pane's edge and the body scrolls to the rest. Below the width a band needs for legible boxes at all, `vertical` becomes a flat list: one agent per row under each phase, no edges drawn. `timeline` swaps the graph for a trace view: a ruled time axis, one bar per agent on it, grouped by phase and indented under the nested runs they belong to, with a marker where now is. |
 | `detailRows` | 5–32 (default 24) | Rows the detail dialog takes when a node is selected, capped at what the pane can inset. |
 | `paneRows` | 6–80 (0 = let the surface decide) | Rows the pane asks for. A dock beside the transcript usually picks its own height. |
 | `theme` | `tokyo-night` (default), `catppuccin`, `gruvbox`, `nord`, `dracula`, `solarized`, `monokai`, `vscode-dark`, `insider-one`, `github-light`, `solarized-light`, `insider-one-light` | The palette everything is drawn in, its ground included. The pane always paints on that ground, footer and all, so the drawing reads the same in every terminal rather than against whatever the terminal happens to be; the ground stops at the drawing's own right edge — see the note under the tree below. |
@@ -148,7 +158,7 @@ it changed:
 ## Status
 
 Loads and runs on **Claude Code 2.1.272**: hooks register, `/flowpane` lists, the launch
-hook fires and reads the journal. 99 tests run over the engine with `claude
+hook fires and reads the journal. 192 tests run over the engine with `claude
 plugin test .`; `dev/lines.ts` checks every line of every run on disk at twelve
 widths and ten heights. Nothing the pane reads leaves the machine.
 

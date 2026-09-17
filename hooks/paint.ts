@@ -34,24 +34,28 @@ import {
   barRowsOf,
   entryOf,
   exitOf,
+  extentOf,
+  INSET_W,
   layout,
   type LaneBox,
   type Layout,
   type NodeBox,
   type Orientation,
+  scrolled,
   titledPane,
 } from './layout'
 import {
   chainOf,
+  wavesOf,
   edgesOf,
   follows,
   isPipelineLike,
   orderedLanes,
   passesOf,
-  skipsOf,
+  sourcesOf,
   type Carry,
+  type FoldedLane,
   type Pass,
-  type Skip,
 } from './shape'
 
 /**
@@ -158,6 +162,7 @@ const SWATCH = 0x25ae
 const ARROW_RIGHT = 0x25b8
 const ARROW_DOWN = 0x25be
 const ARROW_UP = 0x25b4
+const ARROW_LEFT = 0x25c2
 /** The rule down a node's left edge, in place of a frame around it. */
 /**
  * The two weights a card's frame is drawn in: light for a node, heavy for the
@@ -165,6 +170,9 @@ const ARROW_UP = 0x25b4
  * is still the open card in a terminal that renders the palette differently.
  */
 const LIGHT = { across: 0x2500, down: 0x2502, tl: 0x256d, tr: 0x256e, bl: 0x2570, br: 0x256f }
+/** Where a crossbar meets the wall of the box it is inside: `├` and `┤`. */
+const SHELF_L = 0x251c
+const SHELF_R = 0x2524
 const HEAVY = { across: 0x2501, down: 0x2503, tl: 0x250f, tr: 0x2513, bl: 0x2517, br: 0x251b }
 
 /**
@@ -200,6 +208,28 @@ const SEP_V = 0x2502
 /** The header's closing rule: run through, filled where work has landed. */
 const RULE_DONE = 0x2501
 const RULE_LEFT = 0x2500
+/** The same two strokes, dashed: a band that is another workflow's run. */
+const SEAM_DONE = 0x254d
+const SEAM_LEFT = 0x254c
+
+/**
+ * The stroke a phase's rule is drawn in.
+ *
+ * Dashed where the phase is a nested run. The pane already spends that stroke
+ * on work which is not this run's own — the phases it skipped, the strip
+ * naming the ones still ahead — and a nested run is the third of those: its
+ * agents belong to a workflow this one called, and they are on the pane
+ * because the call happened here, not because this run ran them.
+ *
+ * It costs no cells, it reads at a glance down a column of seventeen rules,
+ * and it is the same fact in every layout, because every layout draws a phase
+ * as a rule with a name in it. The alternative was a bracket in the margin,
+ * which needs two columns the narrow panes do not have and cannot be drawn at
+ * all beside a band laid out across.
+ */
+function ruleOf(nested: boolean, landed: boolean): number {
+  return nested ? (landed ? SEAM_DONE : SEAM_LEFT) : landed ? RULE_DONE : RULE_LEFT
+}
 /** The run name's caret: shut it points down at the list, open it points back. */
 const CARET_DOWN = 0x25be
 const CARET_UP = 0x25b4
@@ -228,16 +258,6 @@ const CLOSE_MARK = 0x2715
  */
 const CLOCK_MARK = '\u29d6'
 const SPEND_MARK = '\u2211'
-/**
- * The marks the detail dialog's own blocks and figures carry.
- *
- * `\u276f` and `\u276e` are the same mark turned around: what went in, what came
- * back. The rest name what they count — model requests, tool calls — where the
- * word would have taken five times the cells to say the same thing beside a
- * number that is already unambiguous.
- */
-const ASK_MARK = '\u276f'
-const ANSWER_MARK = '\u276e'
 const TOOL_MARK = '\u2699'
 const THINK_MARK = '\u25cc'
 const REQUEST_MARK = '\u21c4'
@@ -247,6 +267,7 @@ const FLEET_MARK = '\u29c9'
 /** Where a phase seam hangs off that rule. */
 const TEE_DONE = 0x252f
 const TEE_LEFT = 0x252c
+const TEE_RIGHT = 0x251c
 /** The cells the surface's own close control takes, top right. */
 const CLOSE_W = 2
 /**
@@ -326,6 +347,38 @@ export type PaintOptions = {
   detailRows?: number
   /** The first line to show in each block of the dialog; clamped to each list. */
   detailScroll?: number[]
+  /** Which of the dialog's tabs is open; clamped to the ones the agent has. */
+  detailTab?: number
+  /**
+   * The tool call opened out of the Calls list, by its own id.
+   *
+   * It takes the dialog the agent had, so the agent's tab and scroll are left
+   * where they were and the way back returns to them.
+   */
+  openCall?: string
+  /** The first line to show in the opened call's argument; clamped to what it holds. */
+  callScroll?: number
+  /** The first line to show in the opened call's output; clamped the same way. */
+  callOutScroll?: number
+  /**
+   * The nested run an open agent was reached from, by its phase.
+   *
+   * Only for the way back: the agent is drawn exactly as it would be had it
+   * been pressed in the graph, with `◂ Back` added to its corner.
+   */
+  fromRun?: string
+  /**
+   * How far the drawing is scrolled inside the body, in cells; clamped to what
+   * the drawing actually overruns by, so a pane that grew scrolls back on its
+   * own rather than leaving the reader on a blank field.
+   */
+  bodyScroll?: { x: number; y: number }
+  /**
+   * Whether the window follows the phase the run is working in. On by default,
+   * and off only while a reader is looking somewhere else. `bodyScroll` is what
+   * the pane shows when it is off.
+   */
+  follow?: boolean
   /**
    * Whether the run's name opens the list of the session's other runs, and
    * whether that list is open. Absent where there is nothing to choose between.
@@ -348,6 +401,12 @@ export type PaintOptions = {
   menu?: SettingMenu
   /** True while the About dialog is open over the drawing. */
   about?: boolean
+  /**
+   * The nested runs the reader has unfolded, by phase name. A nested run left
+   * shut is one row saying how many agents it held; opened it is the phase every
+   * other phase is.
+   */
+  opened?: string[]
 }
 
 /**
@@ -370,11 +429,43 @@ export type RunEntry = {
   startedMs: number
 }
 
+/**
+ * How much of the drawing the body is showing, and how much of it is off the
+ * edges. The pane keeps the offset; this is what it clamps the offset against,
+ * so the scroll follows the drawing when the drawing or the pane changes size.
+ */
+export type BodyScroll = {
+  /** Where the body is, in cells from the drawing's own origin. */
+  x: number
+  y: number
+  /** The furthest either can go: the drawing's extent less the body's own. */
+  spanX: number
+  spanY: number
+}
+
 export type PaintResult = {
   hotspots: Hotspot[]
-  orientation: 'flow' | 'stack' | 'time'
+  orientation: 'horizontal' | 'vertical' | 'timeline'
   /** The detail list's extent and window, when one is drawn. */
   detail?: DetailView
+  /** Where the drawing sits in the body, when it is larger than the body. */
+  body?: BodyScroll
+  /**
+   * The phase the run is working in, while it is running.
+   *
+   * What the window follows, and what says when it should stop following: a
+   * reader who scrolled away is left alone until this changes, which is the
+   * run moving on rather than the run merely ticking.
+   */
+  front?: string
+  /**
+   * The layout the drawing was actually made from, scroll and all.
+   *
+   * A rail costs the drawing a column, so the painter's own layout is not
+   * always the one a bare `layout()` at the same size returns — and anything
+   * asking where a box ended up has to ask the painter.
+   */
+  view?: Layout
 }
 
 /**
@@ -709,6 +800,72 @@ function truncate(s: string, max: number): string {
   return `${kept}…`
 }
 
+/**
+ * The marker a workflow engine writes in front of a nested run's name, and the
+ * one this pane writes when that run is open.
+ */
+const FOLD_SHUT = '\u25b8 '
+const FOLD_OPEN = '\u25be '
+
+/**
+ * A nested run's name, in the cells it has, and whatever the cells could not
+ * take.
+ *
+ * `code-review:ai-review-agentic` is not one name. It is a plugin and a
+ * workflow, and cutting it from the right — which is all `truncate` can do —
+ * spends the half that varies to keep the half that does not. Every nested run
+ * of one plugin shares its plugin half, so `code-review:ai-review-age…` and
+ * `code-review:ai-review-quick…` are two runs a reader cannot tell apart at any
+ * width where either is cut at all.
+ *
+ * So the name gives way in a fixed order, as the header's own fields do:
+ *
+ * 1. **A half that repeats the other goes first**, at every width. The pipeline
+ *    runs `test-coverage:test-coverage` and `security-reviewer:security-review`;
+ *    the second word of each is the first one again, and a name written twice is
+ *    a name a reader reads twice and learns nothing by. The longer half is kept,
+ *    because it is the one carrying the extra letters.
+ * 2. **Then the plugin half.** It is repeated down the run wherever that plugin
+ *    appears, and it is the half a reader can infer from the one that is left.
+ * 3. **Only then is the workflow half cut**, from the right, as any other name
+ *    is.
+ *
+ * A name with no halves to it — `Base Branch Health`, most agent labels — skips
+ * to step 3, which is the plain truncation it always had.
+ */
+export function runName(s: string, width: number): string {
+  const mark = s.startsWith(FOLD_SHUT) || s.startsWith(FOLD_OPEN) ? s.slice(0, 2) : ''
+  const name = s.slice(mark.length)
+  const at = name.indexOf(':')
+  const room = Math.max(1, width - cells(mark))
+
+  if (at <= 0 || at === name.length - 1) {
+    return mark + truncate(name, room)
+  }
+
+  const plugin = name.slice(0, at)
+  const workflow = name.slice(at + 1)
+  // One half saying the other over again: `test-coverage:test-coverage`, and
+  // `security-reviewer:security-review`, which is the same word with its ending
+  // filed off. Either way the longer of the two is the whole of what the pair
+  // had to say.
+  const doubled = plugin.startsWith(workflow) || workflow.startsWith(plugin)
+  const said = doubled ? (plugin.length >= workflow.length ? plugin : workflow) : name
+
+  if (cells(said) <= room) {
+    return mark + said
+  }
+
+  if (!doubled && cells(workflow) <= room) {
+    return mark + workflow
+  }
+
+  // Room for neither half whole. The plugin half has already gone by this
+  // point, so what is cut is the workflow half — cutting the pair would spend
+  // the last cells on the half step 2 decided was the one to lose.
+  return mark + truncate(doubled ? said : workflow, room)
+}
+
 /** Wraps text to a width, breaking at spaces where it can. */
 /** Frames each end of a moving label is held at, and frames between steps. */
 const SLIDE_HOLD = 9
@@ -813,60 +970,49 @@ function wrapAfter(s: string, first: number, rest: number, lines: number): strin
 }
 
 /**
- * The cells an absolute path may take before it is worth cutting one.
+ * Somebody else's text, wrapped the way they wrote it.
  *
- * About what a project's own root costs: long enough that `/etc/hosts` and
- * `hooks/paint.ts` are left alone, short enough that the home directory and the
- * three folders under it are not.
+ * Every other wrap on the pane flattens whitespace, which is right for a node's
+ * tail and wrong for a document: a heredoc, a `gh api` call with a flag per
+ * line, a markdown brief with headings and lists, or a patch argument is
+ * *structured* by its line breaks, and run together it becomes one unreadable
+ * paragraph that happens to contain the right characters. So the source's own
+ * lines are kept and each is wrapped inside itself.
+ *
+ * Past `cap` the remaining lines are counted rather than drawn, so the block
+ * still says how much there was.
  */
-const PATH_MAX = 28
-
-/**
- * An absolute path cut to the part that tells it from the next one.
- *
- * Every call an agent makes in a repository names a file inside that repository,
- * so every line of the call list opened with the same forty cells of
- * `/Users/<name>/<somewhere>/<project>/` — and in a column wide enough for
- * fifty, the part saying which file it was is the part that fell off the end. A
- * reader who opened the detail to see what the agent did got a column of
- * identical prefixes.
- *
- * The last two segments are what is being read for. The rest is the same for
- * every call in the run, and is already said by which repository the pane is
- * open in.
- */
-function briefPath(token: string): string {
-  const trail = token.match(/[),.:;]+$/)?.[0] ?? ''
-  const path = trail ? token.slice(0, -trail.length) : token
-
-  if (!path.startsWith('/') && !path.startsWith('~/')) {
-    return token
+function written(text: string, first: number, rest: number, cap: number): string[] {
+  if (!text) {
+    return []
   }
 
-  const parts = path.split('/').filter(Boolean)
+  const out: string[] = []
 
-  if (path.length <= PATH_MAX || parts.length < 3) {
-    return token
+  for (const line of text.split('\n')) {
+    if (out.length >= cap) {
+      break
+    }
+
+    if (!line.trim()) {
+      // A blank line in the middle of an argument is the writer's own spacing
+      // and is kept; one before the first drawn line is not, since it would
+      // leave the call's name on a row with nothing beside it.
+      if (out.length > 0) {
+        out.push('')
+      }
+
+      continue
+    }
+
+    out.push(...wrapAfter(line, out.length === 0 ? first : rest, rest, cap - out.length))
   }
 
-  const short = `\u2026/${parts.slice(-2).join('/')}`
+  const over = text.split('\n').length - out.length
 
-  // Cut only where the cut is worth making: an elision that saves four cells
-  // has spent a glyph of the reader's attention to buy nothing.
-  return short.length + 8 <= path.length ? short + trail : token
+  return over > 0 && out.length >= cap ? [...out, `… ${over} more lines`] : out
 }
 
-/** Every absolute path in a piece of text, cut to what tells it apart. */
-function briefPaths(text: string): string {
-  return text.split(/\s+/).map(briefPath).join(' ')
-}
-
-/**
- * A running node's border carries a highlight that travels it, which is the
- * only honest progress a running agent has: it says *alive*, and its speed is
- * the same for every node, so a stalled one is told from a busy one by its
- * elapsed time, never by a bar that pretends to know.
- */
 /**
  * A light travelling along a wire into work that is running.
  *
@@ -1334,6 +1480,39 @@ function edgeRoom(node: NodeBox): number {
  * pushed a cell or two off centre is still the title, and a close mark moved in
  * off the corner is a second place to look for the way out.
  */
+/**
+ * A rule across the inside of a dialog, tied into the frame at both ends.
+ *
+ * Drawn from the first cell inside the frame to the last, it left a `│` at each
+ * end with a stroke running up to it and no joint, so a dialog with two of them
+ * read as three strips stacked up rather than as one box with shelves in it. A
+ * tee costs nothing and says which of the two lines is the wall.
+ */
+function paintCrossbar(c: Canvas, rect: Rect, y: number, edge: Rgb, word?: string): void {
+  for (let dx = 1; dx < rect.w - 1; dx++) {
+    c.put(rect.x + dx, y, LIGHT.across, quietOf(c.background))
+  }
+
+  c.put(rect.x, y, SHELF_L, edge)
+  c.put(rect.x + rect.w - 1, y, SHELF_R, edge)
+
+  if (word === undefined) {
+    return
+  }
+
+  // Set into the shelf from the left rather than centred on it. A shelf names
+  // the compartment under it, and a name in the middle of a rule reads as a
+  // heading for the whole box — which is what the dialog's own title is.
+  const said = truncate(word, Math.max(0, rect.w - 10))
+  const at = rect.x + 4
+
+  for (let dx = -1; dx <= cells(said); dx++) {
+    c.put(at + dx, y, 0x20, edge)
+  }
+
+  c.text(at, y, said, quietOf(c.background))
+}
+
 function paintDialogTitle(
   c: Canvas,
   x: number,
@@ -1412,6 +1591,78 @@ function drawFields(
  * mark already say; those cells now carry the model and the token count, which
  * nothing else on the graph does.
  */
+/**
+ * Every trip the run made through one piece of work, as a mark apiece.
+ *
+ * This is what the fold buys. A pipeline that rewinds twice used to draw three
+ * rows reading `Develop`, `Develop`, `Develop`, told apart only by their clocks
+ * — and on the run this was built against, seventy-eight rows for nineteen
+ * pieces of work, forty of them below the fold of a pane that showed twenty-eight.
+ * One row with `✔ 1  ✔ 2  ✖ 3` beside it says which trip failed without the
+ * reader counting rows, and says it in the width the rows were wasting anyway.
+ *
+ * Each pass is its own press, so the trip a reader wants is one click rather
+ * than a hunt: the mark is a coloured cell outside the target and the number is
+ * the target, which is the spacing every other mark-and-name on the pane keeps,
+ * and the only spacing a Button allows.
+ */
+function paintPasses(
+  c: Canvas,
+  x: number,
+  y: number,
+  room: number,
+  box: NodeBox,
+  tick: number,
+  hotspots: Hotspot[],
+): number {
+  const passes = box.passes
+
+  if (!passes || passes.length < 2 || room < PASS_W) {
+    return 0
+  }
+
+  // What will not fit is counted rather than cut. The last passes are the ones
+  // kept: a loop is read for how it ended, and the run's earliest attempt is the
+  // one whose outcome has already been overtaken.
+  const fits = Math.floor((room + PASS_GAP) / PASS_W)
+  const over = passes.length - fits
+  const shown = over > 0 ? passes.slice(passes.length - (fits - 1)) : passes
+  let at = x
+
+  if (over > 0) {
+    const said = `+${over + 1}`
+
+    c.text(at, y, said, COLORS.dim)
+    at += cells(said) + 1
+  }
+
+  for (const pass of shown) {
+    const digit = String(pass.index)
+
+    c.put(at, y, markOf(pass.agent.state, tick), colorOf(pass.agent.state))
+    c.text(at + 2, y, digit, COLORS.dim)
+    hotspots.push({ agentId: pass.agent.agentId, x: at + 2, y, w: cells(digit) })
+    at += 2 + cells(digit) + PASS_GAP
+  }
+
+  return at - x - PASS_GAP
+}
+
+/** A pass: its state mark, a cell of air, its number — then the gap to the next. */
+const PASS_GAP = 2
+const PASS_W = 3 + PASS_GAP
+
+/**
+ * The press a node's name answers to.
+ *
+ * A node standing for a whole nested run answers to the run, not to the agent
+ * whose figures it happens to be drawn from — see `RUN_OPEN`. Everything else
+ * is one agent and answers to it.
+ */
+function pressOf(box: Pick<NodeBox, 'agent' | 'inside'>): string {
+  return box.inside ? `${RUN_OPEN}${box.inside.phase}` : box.agent.agentId
+}
+
 function paintNode(
   c: Canvas,
   box: NodeBox,
@@ -1433,7 +1684,9 @@ function paintNode(
   const running = agent.state === 'running'
   const took = (agent.endedMs ?? nowMs) - agent.startedMs
   const mark = markOf(agent.state, tick)
-  const label = nodeLabel(agent)
+  // A box that stands for a whole nested run carries that run's name, not the
+  // name of whichever of its agents happened to decide it.
+  const label = box.name ?? nodeLabel(agent)
   // A card's own name carries its state where the state is the exception. The
   // frame is one tone for every card, so what is left to say `stopped` is the
   // mark in the corner, one cell wide and — for a stopped agent — grey on grey.
@@ -1487,17 +1740,40 @@ function paintNode(
     c.put(box.x, box.y, RULE, isSelected ? COLORS.accent : mix(color, COLORS.track, agent.state === 'done' ? 0.25 : 0))
     c.put(box.x + 1, box.y, mark, color)
 
-    const shown = Math.min(room, label.length)
+    // A name that slides shows the whole of itself frame by frame, so it is
+    // handed the whole of itself; a name that stands still is handed the ladder.
+    const drawn = moving ? slide(label, room, tick) : runName(label, room)
+    const shown = cells(drawn)
 
-    c.text(labelX, box.y, moving ? slide(label, room, tick) : truncate(label, room), labelColor)
-    hotspots.push({ agentId: agent.agentId, x: labelX, y: box.y, w: shown })
+    c.text(labelX, box.y, drawn, labelColor)
+    hotspots.push({ agentId: pressOf(box), x: labelX, y: box.y, w: shown })
 
-    const tail = tailOf(agent, nowMs)
-    const tailX = labelX + shown + 2
+    // The passes, then whatever room is left for what the agent is saying. A
+    // row that stands for three trips round a loop has to say which of them
+    // failed before it says what the last one answered.
+    const marksX = labelX + shown + 2
+    const marked = paintPasses(c, marksX, box.y, Math.max(0, factsX - marksX - 2), box, tick, hotspots)
+    // A row standing for a whole nested run says what it is saying, the way any
+    // other row does. It used to carry `▸ 23 agents` here whenever it stood for
+    // a folded run at all — a second copy of the handle the band's own caption
+    // carries, set among the row's measurements, where it displaced the one
+    // thing the row had to say about its state.
+    //
+    // A wave folded back inside an opened run is the exception, and `alone`
+    // marks it: it is a row in the middle of a band rather than a band of its
+    // own, so it has no rule with a caption on it and the row is the only place
+    // the way back out can go.
+    const alone = box.inside?.alone === true
+    const tail = alone && box.inside ? `${FOLD_SHUT}${box.inside.agents} agents` : tailOf(agent, nowMs)
+    const tailX = marksX + marked + (marked > 0 ? PASS_GAP : 0)
     const tailRoom = factsX - tailX - 2
 
     if (tail && tailRoom > 4) {
-      c.text(tailX, box.y, truncate(tail, tailRoom), tailColorOf(agent, nowMs, color))
+      const wrote = c.text(tailX, box.y, truncate(tail, tailRoom), alone ? COLORS.dim : tailColorOf(agent, nowMs, color))
+
+      if (alone && box.inside) {
+        hotspots.push({ agentId: `${BAND_OPEN}${box.inside.phase}`, x: tailX, y: box.y, w: wrote })
+      }
     }
 
     drawFields(c, factsX, box.y, factsW, facts.fields, facts.gap)
@@ -1554,7 +1830,10 @@ function paintNode(
   // label's own plain text.
   const inner = Math.max(1, box.w - 2)
   const titleRoom = Math.max(1, inner - 6)
-  const shown = moving ? slide(label, titleRoom, tick) : truncate(label, titleRoom)
+  // The same ladder the row uses, and for the same reason: a card is where a
+  // name has fewest cells of all, so `Base Branch Health` set into a twelve-cell
+  // top edge comes out `Bas…` and the card says nothing about which agent it is.
+  const shown = moving ? slide(label, titleRoom, tick) : runName(label, titleRoom)
   const titled = cells(shown) + 2
   const markX = Math.max(box.x + 2, box.x + 2 + Math.floor((inner - 2 - titled) / 2))
   const labelX = markX + 2
@@ -1570,7 +1849,7 @@ function paintNode(
 
   c.put(labelX + drawn, box.y, 0x20, frame)
 
-  hotspots.push({ agentId: agent.agentId, x: labelX, y: box.y, w: drawn })
+  hotspots.push({ agentId: pressOf(box), x: labelX, y: box.y, w: drawn })
 
   // Which go at this piece of work this agent was, set into the bottom edge
   // opposite the name. The first pass goes unmarked — it reads as the ordinary
@@ -1596,7 +1875,21 @@ function paintNode(
   const edgeEnd = right - 1 - (repeat.length > 0 ? repeat.length + 1 : 0)
   const edgeRoom = Math.max(0, edgeEnd - (box.x + 3))
   const doing = truncate(doingOf(agent, nowMs), edgeRoom)
-  const named = doing || scale.model(agent.model ?? model)
+  // The model, on every card a phase's own rule names — a shut nested run's
+  // included. It used to carry `▸ 5 agents` there instead, as a second way into
+  // the run: the count stood in the model's cells, and a run still going lost
+  // the count as well, because what the card is doing takes that edge ahead of
+  // both. One edge cannot carry a measurement, a state and a control, so the
+  // control went to the band's caption, which is where it is in every layout,
+  // and the edge went back to saying the one thing it always says.
+  //
+  // A wave folded back inside an opened run keeps it, because there is nowhere
+  // else for it to go: that card is one of several in a band rather than a band
+  // of its own, and the rule above it names the phase, not the wave — see
+  // `alone`.
+  const inside =
+    box.inside?.alone === true ? truncate(`${FOLD_SHUT}${box.inside.agents} agents`, edgeRoom) : ''
+  const named = doing || inside || scale.model(agent.model ?? model)
   const edgeAt = Math.min(
     box.x + 2 + Math.max(1, Math.floor((inner - 2 - named.length) / 2)),
     edgeEnd - named.length,
@@ -1607,6 +1900,12 @@ function paintNode(
     c.put(edgeAt - 1, last, 0x20, frame)
     c.text(edgeAt, last, named, mix(doing ? color : COLORS.model, frame, 0.25))
     c.put(edgeAt + named.length, last, 0x20, frame)
+
+    // A wave's own way back out, on the card's bottom edge because the band's
+    // rule above it belongs to the phase and says nothing about the wave.
+    if (box.inside && named === inside) {
+      hotspots.push({ agentId: `${BAND_OPEN}${box.inside.phase}`, x: edgeAt, y: last, w: named.length })
+    }
   }
 
   if (box.h < 3) {
@@ -1650,22 +1949,16 @@ function paintBarrier(
   left: NodeBox[],
   right: NodeBox[],
   busAt: number,
-  orientation: 'flow' | 'stack',
+  orientation: 'horizontal' | 'vertical',
   /** True where the bus stands for carries read off labels, not for a barrier. */
   inferred = false,
   tick = -1,
-  /**
-   * The lines the drawing has spoken for but not drawn yet — the border between
-   * two phases, laid out across. A feeder that reaches one hops it rather than
-   * leaving a hole in it, the same way a carry does.
-   */
-  ruled: Set<number> = new Set(),
 ): void {
   if (left.length === 0 || right.length === 0) {
     return
   }
 
-  const along = (p: { x: number; y: number }) => (orientation === 'flow' ? p.y : p.x)
+  const along = (p: { x: number; y: number }) => (orientation === 'horizontal' ? p.y : p.x)
   const ports = [
     ...left.map(n => exitOf(n, orientation)),
     ...right.map(n => entryOf(n, orientation)),
@@ -1680,11 +1973,11 @@ function paintBarrier(
   // greened as its phase landed put a state on a line, and the phase's own rule
   // already fills with exactly that fact, in the layer meant to carry it.
   const color = COLORS.wire
-  const spine = orientation === 'flow' ? (inferred ? DASH_V : 0x2502) : inferred ? DASH_H : 0x2500
-  const feeder = orientation === 'flow' ? (inferred ? DASH_H : 0x2500) : inferred ? DASH_V : 0x2502
+  const spine = orientation === 'horizontal' ? (inferred ? DASH_V : 0x2502) : inferred ? DASH_H : 0x2500
+  const feeder = orientation === 'horizontal' ? (inferred ? DASH_H : 0x2500) : inferred ? DASH_V : 0x2502
 
   for (let at = from; at <= to; at++) {
-    if (orientation === 'flow') {
+    if (orientation === 'horizontal') {
       line(c, busAt, at, spine, color)
     } else {
       line(c, at, busAt, spine, color)
@@ -1711,24 +2004,23 @@ function paintBarrier(
     // the gutter came out in four greens and three greys.
     // The point the feeder leaves by, marked, with the run starting past it —
     // the same point a carry out of this card would take, since it is the same
-    // card and the same side of it. Where the bus stands hard against the card
-    // there is no run to start and the tap is the whole of it.
-    const room = (orientation === 'flow' ? busAt - port.x : busAt - port.y) > 1
+    // card and the same side of it.
+    //
+    // Marked even where the bus stands hard against the card and there is no
+    // run to start. The cell used to be given to the feeder instead, on the
+    // grounds that a point with no line after it says nothing — but a node
+    // drawn as a row has no edge for a line to leave from, so what it drew was
+    // a stroke with one end against the bus and the other against the blank
+    // between a card's name and its figures. The point is what says *this card*;
+    // the bus in the next cell is what it says it about.
+    c.put(port.x, port.y, PORT, color)
 
-    if (room) {
-      c.put(port.x, port.y, PORT, color)
-    }
-
-    if (orientation === 'flow') {
-      for (let x = room ? port.x + 1 : port.x; x < busAt; x++) {
-        if (ruled.has(x)) {
-          c.put(x, port.y, HOP, color)
-        } else {
-          cross(c, x, port.y, feeder, color)
-        }
+    if (orientation === 'horizontal') {
+      for (let x = port.x + 1; x < busAt; x++) {
+        cross(c, x, port.y, feeder, color)
       }
     } else {
-      for (let y = room ? port.y + 1 : port.y; y < busAt; y++) {
+      for (let y = port.y + 1; y < busAt; y++) {
         cross(c, port.x, y, feeder, color)
       }
     }
@@ -1743,14 +2035,9 @@ function paintBarrier(
     const head = color
     const route: { x: number; y: number }[] = []
 
-    if (orientation === 'flow') {
+    if (orientation === 'horizontal') {
       for (let x = busAt + 1; x < port.x; x++) {
-        if (ruled.has(x)) {
-          c.put(x, port.y, HOP, color)
-        } else {
-          cross(c, x, port.y, feeder, color)
-        }
-
+        cross(c, x, port.y, feeder, color)
         route.push({ x, y: port.y })
       }
 
@@ -1777,8 +2064,8 @@ function paintBarrier(
   // spine where there is more spine to go to, out to whatever feeds it, out to
   // whatever it feeds. A tap at either end of the bus caps it with a corner —
   // written as a `┤` the bus read as carrying on past its own last node.
-  const ALONG = orientation === 'flow' ? { back: ARM.up, on: ARM.down } : { back: ARM.left, on: ARM.right }
-  const ACROSS = orientation === 'flow' ? { in: ARM.left, out: ARM.right } : { in: ARM.up, out: ARM.down }
+  const ALONG = orientation === 'horizontal' ? { back: ARM.up, on: ARM.down } : { back: ARM.left, on: ARM.right }
+  const ACROSS = orientation === 'horizontal' ? { in: ARM.left, out: ARM.right } : { in: ARM.up, out: ARM.down }
 
   for (const [at, tap] of taps) {
     const arms =
@@ -1789,7 +2076,7 @@ function paintBarrier(
 
     const glyph = joint(arms) ?? spine
 
-    if (orientation === 'flow') {
+    if (orientation === 'horizontal') {
       c.put(busAt, at, glyph, color)
     } else {
       c.put(at, busAt, glyph, color)
@@ -1798,542 +2085,285 @@ function paintBarrier(
 }
 
 /**
- * Draws the edges that skip a lane as rails in the margin beside the graph.
+ * Says, on the card, where a phase was fed from when it was fed from further
+ * back than the phase before it.
  *
- * Such an edge cannot run straight — the band it passes is in the way — and one
- * line per node, routed between the columns, is what made a five-topic run read
- * as a tangle. They are also the least of what the drawing has to say: the
- * layers already carry the order, and a skip only adds that the later phase was
- * fed from further back than the phase above it.
+ * These used to be drawn: an edge over more than one lane cannot run straight —
+ * the band it passes is in the way — so each pair of phases got a rail outside
+ * the block of nodes, leaving the drawing, crossing the phase it passed and
+ * coming back in. Three sides of a rectangle round that phase. A run of
+ * twenty-one phases has eighteen such pairs, so the graph came out as eighteen
+ * nested rectangles in the wire colour with the cards somewhere inside them,
+ * and the reader who had to read it said they could not tell what was connected
+ * to what. They were right: a rail spans at least two whole phases, the drawing
+ * scrolls, and a line with both ends off the pane says only that there is a
+ * line.
  *
- * So each pair of phases gets one rail, outside the block of nodes, and it
- * joins the graph where a join belongs: the bus in the gutter, which is the
- * line every agent of a phase already feeds into and every agent of the next
- * already leaves from. The rail's own ends are drawn along that bus, so they
- * read as part of it rather than as two lines stopping beside the nodes.
+ * So the fact is written where the reader is already looking — under the card
+ * that was fed, in the name of the phase that fed it. It costs a row of the gap
+ * the cards already leave between them, it cannot be taken for a wire because
+ * it is a word, and it reads at any scroll position because it is not a line
+ * between two places.
  *
- * A pane with no margin to spare draws none: an omitted rail costs a hint,
- * where one drawn through the nodes costs the graph.
+ * The wires that remain are the ones between neighbours, which is every line a
+ * reader can follow end to end on one screen.
  */
-function paintSkips(
-  c: Canvas,
-  view: Layout,
-  skips: Skip[],
-  arrows: { x: number; y: number }[],
-  tick: number,
-): void {
-  const nodes = view.lanes.flatMap(l => l.nodes)
-
-  if (skips.length === 0 || nodes.length === 0) {
-    return
-  }
-
-  // One axis is the run's: the rail travels along it, from the gutter it leaves
-  // to the gutter it arrives at. The other is the margin's: the rail stands at
-  // an offset on it, clear of every node. Stacked, the run reads downward, so
-  // the margin is a column; flowing, the run reads rightward and the margin a
-  // row.
-  const down = view.orientation === 'stack'
-  const put = (offset: number, at: number, code: number, color: Rgb) =>
-    down ? c.put(offset, at, code, color) : c.put(at, offset, code, color)
-  const stroke = (offset: number, at: number, code: number, color: Rgb) =>
-    down ? line(c, offset, at, code, color) : line(c, at, offset, code, color)
-  /** Where a node's bus tap stands, on the margin's axis. */
-  const portOf = (n: NodeBox) =>
-    down ? n.x + Math.floor(n.w / 2) : n.y + Math.floor(n.h / 2)
-
-  const nearSide = down ? Math.min(...nodes.map(n => n.x)) : Math.min(...nodes.map(n => n.y))
-  const farSide = down
-    ? Math.max(...nodes.map(n => n.x + n.w))
-    : Math.max(...nodes.map(n => n.y + n.h))
-  // The last row (or column) something else has already claimed: the header,
-  // laid out across. Downward the bands are full width and the margin beside
-  // them is the pane's own, so nothing is claimed before the rails.
-  const taken = down ? -1 : view.headerRows - 1
-  const limit = down ? c.columns : c.rows
-  const near = nearSide - taken - 1 >= 2 && nearSide - taken - 1 >= limit - farSide - 1
-  // Rails are drawn before the nodes, so what is clear is a question about the
-  // layout rather than about the canvas: a row (or column) is free where no
-  // node box stands on it anywhere along the rail's run.
-  const taps = (n: NodeBox) => (down ? [n.x, n.x + n.w - 1] : [n.y, n.y + n.h - 1])
-  const spans = (n: NodeBox) => (down ? [n.y, n.y + n.h - 1] : [n.x, n.x + n.w - 1])
-  const used: number[] = []
-  const heads = arrows.map(p => (down ? { offset: p.x, at: p.y } : { offset: p.y, at: p.x }))
-  /**
-   * True where another edge has already put its arrowhead. A rail's taps run
-   * along the gutter the other edges arrive in, so they cross those heads; a
-   * head is not a line glyph, so a stroke over one replaces it rather than
-   * joining it, and the edge below it loses the cell that says it arrives.
-   * The rail passes behind instead — a dash either side of a head reads as one
-   * line crossing another, which is what it is.
-   */
-  const marked = (offset: number, at: number) => heads.some(h => h.offset === offset && h.at === at)
-  /**
-   * True where a card's own point stands. A rail's taps run up the gutter the
-   * carries leave by, so they pass the point of every card between the one the
-   * rail leaves and the line it runs on. The rail goes behind them: a tap with
-   * a dot in it reads as a line passing a card, and a tap drawn through one
-   * takes the mark that says which card the wire below it comes out of.
-   */
-  const ported = (offset: number, at: number) => (down ? c.at(offset, at) : c.at(at, offset)) === PORT
-  // The arms a line already in the cell would have to share with the rail for
-  // the two to read as one line. Crossing arms are fine — that is what a
-  // junction glyph is for — so only a run the rail's own way counts.
-  const alongArms = down ? ARM.up | ARM.down : ARM.left | ARM.right
-  /**
-   * True where the cell already holds a line running the rail's own way. The
-   * carries are drawn before the rails, so a rail laid along a row an edge
-   * already runs down joins onto it end to end, and the two read as one line
-   * from that edge's source to the rail's target — which is a claim neither of
-   * them makes.
-   */
-  const inked = (offset: number, at: number) => {
-    const arms = armsOf(down ? c.at(offset, at) : c.at(at, offset))
-
-    return arms !== undefined && (arms & alongArms) !== 0
-  }
-
-  /**
-   * True where a line already crosses the rail's own way at right angles.
-   *
-   * The taps run across the gutter and pass behind whatever they meet there;
-   * the two stretches that join a card to its tap run along it, and meet the
-   * same lines the other way round. Written through, they turned each meeting
-   * into a junction — a cell that says the rail and a carry are one line.
-   */
-  const crossed = (offset: number, at: number) => {
-    const arms = armsOf(down ? c.at(offset, at) : c.at(at, offset))
-
-    return arms !== undefined && (arms & ~alongArms) !== 0
-  }
-
-  /**
-   * A clear line for the rail, as close to `want` as the layout allows.
-   *
-   * The cells the other edges put their arrowheads on are taken: a rail run
-   * through one rubs it out, and an edge that arrives at a node without an
-   * arrowhead is a line that happens to stop there.
-   *
-   * Run in the outer margin, a rail leaves the block, crosses the whole of the
-   * phase it passes, and comes back in — three sides of a rectangle round that
-   * phase, which reads as a box drawn around it rather than as an edge going
-   * past it. The gaps between the rows of nodes are clear the whole way across,
-   * so the rail takes the one nearest the node it arrives at and each of its
-   * two ends is a cell or two long.
-   */
-  const alreadyDrawn = (offset: number, lo: number, hi: number) => {
-    for (let at = lo; at <= hi; at++) {
-      if (inked(offset, at)) {
-        return true
-      }
-    }
-
-    return false
-  }
-
-  /**
-   * The lines the drawing has already spoken for, on the axis a rail taps
-   * across: the rule a band is named on, laid out down, and the border between
-   * two phases, laid out across. Both go down after the edges do, so nothing is
-   * there to read yet and the layout has to be asked instead.
-   */
-  const ruled = new Set(
-    down
-      ? view.lanes.flatMap(lane => (lane.captionRow === undefined ? [] : [lane.captionRow]))
-      : bordersOf(view.lanes, 'flow').filter(at => at >= 0),
-  )
-
-  /** Every line a card stands on, anywhere in the drawing. */
-  const occupied = new Set<number>()
-
-  for (const node of nodes) {
-    const [from, to] = taps(node)
-
-    for (let at = from; at <= to; at++) {
-      occupied.add(at)
-    }
-  }
-
-  const clearOf = (want: number, first: number, last: number): number | undefined => {
-    const offsets: number[] = []
-    // Across, the search reaches past the block into the margin the layout kept
-    // for these rails. Inside the block every row a rail could take is level
-    // with some card, and a rail level with a card is read as a line leaving
-    // that card — which is how an edge anchored to the fourth node of a phase
-    // came to look like an edge out of the third.
-    const from = down ? nearSide : Math.max(0, taken + 1)
-    const to = down ? farSide : Math.min(limit - 1, farSide + 1)
-
-    for (let offset = from; offset <= to; offset++) {
-      offsets.push(offset)
-    }
-
-    // The nearest line to the node the rail arrives at, and of two the same
-    // distance off, the one no card stands on anywhere.
-    //
-    // Clear lines used to come first however far off they were, and with two
-    // phases whose cards are staggered there is no line between them that some
-    // card somewhere is not level with: the rail went to the margin above the
-    // whole drawing and came back down the far side, three sides of a rectangle
-    // round everything between its two ends. `clear` already asks the question
-    // that matters — whether a card stands on this line anywhere along this
-    // rail's own run — so the global answer is a tiebreak, not the rule.
-    offsets.sort(
-      (p, q) =>
-        Math.abs(p - want) - Math.abs(q - want) ||
-        (occupied.has(p) ? 1 : 0) - (occupied.has(q) ? 1 : 0),
-    )
-
-    const lo = Math.min(first, last)
-    const hi = Math.max(first, last)
-    const clear = (offset: number) =>
-      !used.includes(offset) &&
-      !heads.some(head => head.offset === offset && head.at >= lo && head.at <= hi) &&
-      !alreadyDrawn(offset, lo, hi) &&
-      !nodes.some(n => {
-        const [from, to] = taps(n)
-        const [start, end] = spans(n)
-
-        return offset >= from && offset <= to && end >= lo && start <= hi
-      })
-
-    // A card draws a frame on all four sides, so the two orientations need
-    // different room. Laid out downward the rail is vertical, and a column
-    // with a card either side of it puts the rail hard against two frames
-    // where it reads as a third; laid out across it is horizontal, the rows
-    // above and below a card are blank, and one clear row is enough.
-    //
-    // A column clear on both sides is taken first, wherever the gaps between
-    // the cards leave one, so the rail stands off the cards it passes. Failing
-    // that one clear side will do — a rail against one frame is still a rail,
-    // where no rail at all is an edge the reader never learns about.
-    for (const room of down ? [2, 1] : [0]) {
-      for (const offset of offsets) {
-        const sides = (clear(offset - 1) ? 1 : 0) + (clear(offset + 1) ? 1 : 0)
-
-        if (clear(offset) && sides >= room) {
-          used.push(offset)
-
-          return offset
-        }
-      }
-    }
-
+/**
+ * The longest run of untouched cells on one row, within a node's own columns.
+ *
+ * A row beside a card is rarely empty and rarely full: a wire from two bands
+ * back runs down through one column of it and leaves the rest clear. Asking
+ * whether the whole row is free gave up on every such row and said nothing;
+ * asking for the longest clear run writes in the space that is actually there.
+ */
+function clearRun(c: Canvas, x: number, y: number, width: number): { x: number; w: number } | undefined {
+  if (y < 0 || y >= c.rows) {
     return undefined
   }
 
-  skips.forEach((skip, i) => {
-    const from = view.lanes[skip.fromLane]
-    const through = view.lanes[skip.fromLane + 1]
-    const to = view.lanes[skip.toLane]
+  const end = Math.min(x + width, c.columns)
+  let best: { x: number; w: number } | undefined
+  let start = -1
 
-    if (!from || !to || !through || from.nodes.length === 0 || to.nodes.length === 0) {
-      return
+  for (let at = x; at <= end; at++) {
+    const cell = at < end ? c.at(at, y) : 1
+    const free = cell === 0 || cell === 0x20
+
+    if (free && start < 0) {
+      start = at
     }
 
-    // The rail turns where the two buses stand: the gutter the earlier phase
-    // feeds, and the gutter the later one is fed from.
-    const leaves = through.busAt
-    const arrives = to.busAt
-    // A rail stands for particular edges, so it is hung off the nodes at their
-    // ends rather than off the lanes those sit in. Where none of them is drawn
-    // — a pane too small to hold every node — the lanes are the fallback, which
-    // is where this started.
-    const found = (id: string, lane: LaneBox) => lane.nodes.find(n => n.agent.agentId === id)
-    const pairs = skip.edges.flatMap(e => {
-      const tail = found(e.fromId, from)
-      const head = found(e.toId, to)
-
-      return tail && head ? [[tail, head] as const] : []
-    })
-    const targets = pairs.length > 0 ? pairs.map(p => p[1]) : to.nodes
-    // The rail wants to run beside the node it arrives at, so the first of the
-    // nodes it arrives at is what the search for a clear line aims at.
-    const inside = clearOf(Math.min(...targets.map(portOf)), leaves, arrives)
-    const offset = inside ?? (near ? taken + 1 + i : farSide + 1 + i)
-    const outside =
-      inside === undefined && (near ? offset >= nearSide - 1 || offset <= taken : offset >= limit - 1)
-
-    if (outside || arrives - leaves < 2) {
-      return
-    }
-
-    // The same tone as every other join on the pane. Whether the rail is proven
-    // or read off the labels is said by its stroke, below, the way it is said
-    // for a carry: a rail dimmed toward the ground as well put a third and a
-    // fourth grey into a layer that has one thing to say.
-    const tone = COLORS.wire
-    const run = skip.confirmed ? (down ? 0x2502 : 0x2500) : down ? DASH_V : DASH_H
-    const tap = skip.confirmed ? (down ? 0x2500 : 0x2502) : down ? DASH_H : DASH_V
-    // Where the tap meets the bus. A rail in the margin comes at the bus from
-    // outside, so it lands on the end nearest it; one in a gap between nodes is
-    // already alongside, so it lands on whichever tap it is closest to.
-    const bankOf = (own: NodeBox[]) => {
-      const pick = (best: NodeBox, node: NodeBox) =>
-        inside === undefined
-          ? (near ? portOf(node) < portOf(best) : portOf(node) > portOf(best))
-            ? node
-            : best
-          : Math.abs(portOf(node) - offset) < Math.abs(portOf(best) - offset)
-            ? node
-            : best
-
-      return own.reduce(pick)
-    }
-
-    // The rail is drawn as whichever of its edges runs closest to the line it
-    // took, with the count beside it standing for the rest. Choosing each end
-    // on its own put the tail at one edge's source and the head at another
-    // edge's target, drawing a line between two agents that never exchanged
-    // anything — and with five topics each skipping a phase, that line was
-    // wrong about both of them.
-    const aside = (n: NodeBox) => Math.abs(portOf(n) - offset)
-    const nearest = (best: readonly [NodeBox, NodeBox], pair: readonly [NodeBox, NodeBox]) =>
-      aside(pair[0]) + aside(pair[1]) < aside(best[0]) + aside(best[1]) ? pair : best
-    const banks = pairs.length > 0 ? pairs.reduce(nearest) : [bankOf(from.nodes), bankOf(to.nodes)]
-    const leave = exitOf(banks[0], view.orientation)
-    const starts = down ? leave.y : leave.x
-    // A rail leaves by the same point a carry does — the middle of the side it
-    // is heading for — so a card has one place a line comes out of whatever
-    // kind of line it is. Which line the rail then turns on is the question
-    // `apart` answers.
-    const bank = portOf(banks[0])
-
-    /**
-     * Whether the rail can turn off its card's line here.
-     *
-     * Three questions. Whether the drawing has already spoken for the line —
-     * the rule a band is named on, the border between two phases — which
-     * nothing can be read off the canvas for, since those go down after the
-     * edges do. Then one for each of the two runs the turn joins: whether the
-     * stretch from the card to this line is clear of anything running the same
-     * way, and whether the tap up to the rail is clear of anything running
-     * across it. A line crossing either at right angles is not in the way —
-     * that is what a rail passing behind is for.
-     */
-    const apart = (at: number) => {
-      if (ruled.has(at)) {
-        return false
+    if (!free && start >= 0) {
+      if (best === undefined || at - start > best.w) {
+        best = { x: start, w: at - start }
       }
 
-      for (let step = starts; step < at; step++) {
-        if (inked(bank, step)) {
-          return false
-        }
-      }
+      start = -1
+    }
+  }
 
-      for (let line = Math.min(offset, bank) + 1; line < Math.max(offset, bank); line++) {
-        if (crossed(line, at)) {
-          return false
-        }
-      }
+  return best
+}
 
-      return true
+/**
+ * The cells of a clear run a label may actually use.
+ *
+ * A run ends at whatever is drawn beside it, and a label set hard against that
+ * reads as one word with it: `↰ Preflig…▾` was a card's source and the
+ * arrowhead of a wire arriving at the same card, with nothing between them to
+ * say they were two things. So a cell of air is kept wherever the run ends at
+ * something rather than at the card's own edge.
+ */
+function roomOf(c: Canvas, run: { x: number; w: number }, y: number, end: number): number {
+  const after = run.x + run.w
+  const cell = after < end && after < c.columns ? c.at(after, y) : 0x20
+
+  return cell === 0 || cell === 0x20 ? run.w : run.w - 1
+}
+
+/**
+ * The cells of one row a written source may take, counting a wire running
+ * through them as cells it may have.
+ *
+ * Down the pane every row beside a card has a wire down the middle of it, so a
+ * label that waits for a wholly clear row waits for one that never comes. The
+ * band's own caption settled this already: it stands where it is centred, clears
+ * its cells, and the wire gives way for that one row and runs whole above and
+ * below it. This is the same bargain for the same reason.
+ *
+ * A plain upright only — the light one and the dashed one. A tee, an elbow, an
+ * arrowhead or a card's frame is a shape a reader follows rather than a line
+ * passing through, and rubbing one out loses a fact rather than a cell of a
+ * line that is drawn again on the next row.
+ */
+function wireRun(c: Canvas, x: number, y: number, width: number): { x: number; w: number } | undefined {
+  if (y < 0 || y >= c.rows) {
+    return undefined
+  }
+
+  const end = Math.min(x + width, c.columns)
+  let best: { x: number; w: number } | undefined
+  let start = -1
+
+  for (let at = x; at <= end; at++) {
+    const cell = at < end ? c.at(at, y) : 1
+    const free = cell === 0 || cell === 0x20 || cell === LIGHT.down || cell === DASH_V
+
+    if (free && start < 0) {
+      start = at
     }
 
-    /**
-     * Where the rail turns off the line it leaves its first card on.
-     *
-     * The bus by preference: the line there is the rail's own, and where the
-     * phase it leaves ends in a barrier the turn lands on that barrier's spine
-     * and joins it.
-     *
-     * A card one line tall has no spare edge for a rail to leave by, so the
-     * rail leaves on the line its card's name is on — which is the line the
-     * carries of the next band arrive on. Sharing it, the rail and an arriving
-     * carry are drawn one over the other, in one colour, for every cell between
-     * the card and the bus, and the pair reads as a single edge running from
-     * the rail's card to the carry's. The turn comes back toward the card until
-     * it finds a line free of both, and the rail crosses the gutter above the
-     * wires rather than along one of them.
-     */
-    let opens = leaves
-
-    while (opens > starts && !apart(opens)) {
-      opens--
-    }
-
-    const ends: { at: number; bank: number; toward: number }[] = [
-      { at: opens, bank, toward: 0 },
-      { at: arrives, bank: portOf(banks[1]), toward: 0 },
-    ].map(end => ({ ...end, toward: Math.sign(end.bank - offset) }))
-
-    // Each corner is built from the two arms that meet in it: the one the rail
-    // carries on along, and the one its own tap runs off on. In the margin both
-    // taps run the same way; in a gap between nodes one can run back and the
-    // other on, and a corner written out case by case had two of those four
-    // pointing the wrong way.
-    const ALONG = down ? { on: ARM.down, back: ARM.up } : { on: ARM.right, back: ARM.left }
-    const ACROSS = down ? { plus: ARM.right, minus: ARM.left } : { plus: ARM.down, minus: ARM.up }
-    const corner = (at: number, toward: number) =>
-      joint((at === opens ? ALONG.on : ALONG.back) | (toward > 0 ? ACROSS.plus : ACROSS.minus)) ?? run
-
-    /**
-     * One cell of the rail's own run.
-     *
-     * Laid out across, the rail is the horizontal of every crossing it makes,
-     * so it is the one that hops: over a carry turning in the gutter, over the
-     * border between two phases. Laid out down it is the vertical, the line
-     * across is the one that steps over, and the cell is left to it — so the
-     * rail reads as the one going behind. An arrowhead is neither. Nothing is
-     * drawn over a head, because a head rubbed out is an edge that stops at a
-     * card rather than one that arrives at it.
-     */
-    const rail = (line: number, at: number) => {
-      if (marked(line, at) || ported(line, at)) {
-        return
+    if (!free && start >= 0) {
+      if (best === undefined || at - start > best.w) {
+        best = { x: start, w: at - start }
       }
 
-      if (!crossed(line, at) && !(!down && ruled.has(at))) {
-        stroke(line, at, run, tone)
+      start = -1
+    }
+  }
 
-        return
+  return best
+}
+
+function paintSources(c: Canvas, view: Layout, sources: Map<string, string[]>): void {
+  if (sources.size === 0) {
+    return
+  }
+
+  for (const box of view.lanes) {
+    for (const node of box.nodes) {
+      const named = sources.get(node.agent.agentId)
+
+      if (!named || named.length === 0) {
+        continue
       }
 
-      if (!down) {
-        put(line, at, HOP, tone)
+      // Above the card, in every layout. The row under a card is the row its
+      // wires leave by down the pane, so a name written there reads as
+      // something coming out of the card rather than into it; and a label that
+      // stood under a card across the pane and over one down it was the same
+      // fact in two shapes, which a reader has to learn twice.
+      //
+      // Said rather than left to whichever row is free. The band used to close
+      // hard under its cards, so down the pane the row below one was the next
+      // band's rule and the name had nowhere to go but up; a band that leaves
+      // that row free would quietly have started writing a card's inputs on the
+      // row its outputs leave by.
+      //
+      // Down the pane it is the second row up, not the first: the first is the
+      // one the arrowheads land on, and an arrowhead stands in the middle of it,
+      // so a label there had half a card's width, gave up its word for its name,
+      // and on a narrow pane said nothing at all. The second row up is the
+      // band's own, given to it for this, and the wire running down it gives way
+      // the way it gives way for a band's caption — whole above, whole below.
+      //
+      // The row nearest the card is still the fallback, and the row under it
+      // after that, because a card standing hard under its band's rule has
+      // neither of the rows above it. Which of the three is asked of the cells,
+      // because that is the only way to be right about a row a wire, a rule or a
+      // name may already have taken.
+      //
+      // The mark points at the card, so it is the arrowhead of the row it
+      // landed on: `▾` from above, `▴` from below. It used to be `↰`, which is
+      // the return arrow everywhere else a developer meets it — a reader asked
+      // whether the run rewound to this step. Every input this pane draws ends
+      // in an arrowhead pointing into the card it feeds; an input it writes
+      // instead of drawing should say the same thing the same way.
+      const end = Math.min(node.x + node.w, c.columns)
+      const down = view.orientation === 'vertical'
+      const rows = [
+        ...(down ? [{ y: node.y - 2, mark: ARROW_DOWN, over: true }] : []),
+        { y: node.y - 1, mark: ARROW_DOWN, over: false },
+        { y: node.y + node.h, mark: ARROW_UP, over: false },
+      ]
+      // Eight cells, which is a mark, a cell of air and six letters of a phase
+      // name. It was ten, and at ten the label a card carried across the pane
+      // went missing from the same card drawn down it, at every width where the
+      // row it had there came to nine.
+      const found = rows
+        .map(row => ({ ...row, run: (row.over ? wireRun : clearRun)(c, node.x, row.y, node.w) }))
+        .find(({ run, y }) => run !== undefined && roomOf(c, run, y, end) >= 8)
+
+      if (found === undefined || found.run === undefined) {
+        continue
       }
-    }
 
-    // Strokes rather than puts: a rail that turns onto a bus another phase
-    // already drew has to join it. Written over the bus, the corner said the
-    // line stopped there, and a `╯` in the middle of a run reads as one line
-    // ending and another starting in the same cell.
-    for (const end of ends) {
-      stroke(offset, end.at, end.toward === 0 ? run : corner(end.at, end.toward), tone)
-    }
+      const at = found.y
+      const room = roomOf(c, found.run, at, end)
+      // Where the run ends at the arrowhead of a wire already arriving at this
+      // card, that arrowhead serves both: the source is written up against it
+      // rather than given a second one two cells along. Two marks of the same
+      // shape on one row, both pointing into the same card, are one fact drawn
+      // twice — and down the pane, where the label and the wire share the row
+      // above the card, the second mark cost the name the cells it needed
+      // (`↰ Preflig…▾`).
+      //
+      // Otherwise the label brings its own, and keeps a cell of air after it:
+      // the spacing a card gives its own state mark, since a mark set against a
+      // word is read as part of the word.
+      const shares = found.run.x + found.run.w < end && c.at(found.run.x + found.run.w, at) === found.mark
+      const budget = shares ? room : room - 2
 
-    for (let at = opens + 1; at < arrives; at++) {
-      rail(offset, at)
-    }
+      // As many names as the card is wide, and a count for the rest. A card
+      // twelve columns wide cannot carry two phase names and should not pretend
+      // to — `▾ from Setup +2` says the same thing in the room there is.
+      const namesIn = (space: number): string => {
+        let said = runName(named[0], space)
 
-    for (const end of ends) {
-      // The tap runs to the bus and into it: the cell it lands on takes the arm
-      // the tap arrives by on top of whatever the barrier already drew there,
-      // so the rail joins the bus instead of stopping a cell short of it.
-      for (let side = offset + end.toward; side !== end.bank; side += end.toward) {
-        // Behind whatever already crosses here, not through it. A tap runs
-        // across the gutter the other wires turn in, so it meets them at right
-        // angles — and a `┼` written where two lines cross says they meet,
-        // which is a junction between two agents that exchanged nothing. The
-        // cell is left to the line that was already in it, and a tap with a gap
-        // in it where another line passes reads as the one going behind.
-        if (!marked(side, end.at) && !inked(side, end.at) && !ported(side, end.at)) {
-          stroke(side, end.at, tap, tone)
-        }
-      }
+        for (let i = 1; i < named.length; i++) {
+          const more = `${said}  ${runName(named[i], Math.max(1, space - cells(said) - 2))}`
 
-      // The cell the tap lands on is a corner, not more tap: the rail turns
-      // there and goes into the node. Left as a straight piece the rail ends in
-      // the middle of a row of other lines, with nothing to say which of the
-      // cards above it came out of. Strokes rather than puts, so where a
-      // barrier already drew its bus through that cell the corner joins it.
-      if (end.toward !== 0 && !marked(end.bank, end.at)) {
-        // A corner standing on the cell the card is left by has no line to turn
-        // from: the stretch back to the card is nothing at all, and the arm
-        // that would run along it points into the blank beside the card's name.
-        // The point is drawn instead. It says what that arm was there to say —
-        // the rail starts at this card — in the mark every other edge leaves a
-        // card by, and the tap above it carries on as before.
-        if (end.at === opens && opens === starts) {
-          put(end.bank, end.at, PORT, tone)
+          if (cells(more) > space) {
+            return `${said} +${named.length - i}`
+          }
 
-          continue
+          said = more
         }
 
-        stroke(
-          end.bank,
-          end.at,
-          joint((end.at === opens ? ALONG.back : ALONG.on) | (end.toward > 0 ? ACROSS.minus : ACROSS.plus)) ?? tap,
-          tone,
-        )
+        return said
+      }
+
+      // The word, not the mark alone. `▴ Preflight` was the arrowhead every
+      // drawn input ends in and the name of what sent it, which is right and is
+      // learned rather than read: the first reader to meet one asked what the
+      // text beside the card was for. `from` is the word the dialog's own foot
+      // already uses for the same fact, so the pane and the dialog say it the
+      // same way.
+      //
+      // Where the word would cost the name letters it is dropped instead — the
+      // ladder a token count runs down, for the same reason. Down the pane the
+      // arriving wire's arrowhead stands in the middle of the row the label
+      // shares with it, so the label has half a card's width and no more, and
+      // `from Prefli…` names nothing while spelling out a mark the reader has
+      // already met spelled out on some other card in the same drawing.
+      const lead = 'from '
+      const wide = namesIn(budget)
+      const tight = namesIn(Math.max(1, budget - lead.length))
+      const said = tight === wide ? lead + tight : wide
+
+      // The mark is a wire's and takes a wire's colour; the name is a name and
+      // stays grey. Drawn in one tone the pair read as a caption, which put the
+      // written arrowhead in a different register from the drawn one beside it.
+      //
+      // Written rather than put, because it is a mark in a sentence and not the
+      // end of a line — the same standing the strip's `Verify ▸ Escalate` has.
+      // A line the pane draws has to reach something at both ends, and this one
+      // is pointing at a card out of the space where the wire would have been.
+      const text = truncate(said, budget)
+
+      if (shares) {
+        c.text(found.run.x + room - cells(text), at, text, quietOf(c.background))
+      } else {
+        // Centred on the card, the way a card centres its own name and its own
+        // model. Set against the left edge it hung off a card wider than it by
+        // the whole of the difference, which read as a label belonging to
+        // whatever was further left rather than to the card it points at.
+        //
+        // On the card and not on the run of clear cells: the run is whatever
+        // the rest of the drawing left, and centring in that put the label
+        // wherever the wires happened to fall. Clamped into the run after,
+        // since that is the space it may actually write in.
+        const wide = 2 + cells(text)
+        const middle = node.x + Math.floor((node.w - wide) / 2)
+        const from = Math.max(found.run.x, Math.min(middle, found.run.x + room - wide))
+
+        // Cleared before it is written, where the row it took has a wire
+        // running down it. `c.text` skips a blank, so the cell the wire is in
+        // would keep the wire and the label would be written around it; and a
+        // cell put back to a blank is a cell the line checker knows was given
+        // up rather than overwritten, which is how a band's caption covers a
+        // wire without being read as a word drawn over one.
+        if (found.over) {
+          for (let dx = 0; dx < wide; dx++) {
+            c.put(from + dx, at, 0x20, quietOf(c.background))
+          }
+        }
+
+        c.text(from, at, String.fromCodePoint(found.mark), COLORS.wire)
+        c.text(from + 2, at, text, quietOf(c.background))
       }
     }
-
-    // The first of it: out of the node it leaves and up to the tap. The tap
-    // stands mid-gutter, so without this the rail starts two cells clear of the
-    // card, as a line that happens to begin there rather than an edge leaving.
-    if (opens > starts) {
-      put(ends[0].bank, starts, PORT, tone)
-    }
-
-    for (let at = starts + 1; at < opens; at++) {
-      rail(ends[0].bank, at)
-    }
-
-    // The last of it: out of the tap and into the node it feeds, with the head
-    // on the node's own entry cell. Stopping at the tap left the rail ending
-    // beside a card with an arrow halfway along it pointing at nothing, which
-    // is a line that happens to stop there rather than an edge arriving.
-    const port = entryOf(banks[1], view.orientation)
-    const head = down ? ARROW_DOWN : ARROW_RIGHT
-    const reach = down ? port.y : port.x
-
-    for (let at = arrives + 1; at < reach; at++) {
-      rail(ends[1].bank, at)
-    }
-
-    if (reach >= arrives) {
-      put(ends[1].bank, reach, head, tone)
-    }
-
-    // A rail carries work like any other edge, and until now it was the one
-    // edge that never showed it: a reader watching a phase being fed from two
-    // phases back saw the light travel every wire but that one. The route is
-    // walked in the order the work goes — out of the card, across the margin,
-    // into the node it feeds — so the light says which way as well as that.
-    if (banks[1].agent.state === 'running') {
-      const route: { x: number; y: number }[] = []
-      const step = (line: number, at: number) => route.push(down ? { x: line, y: at } : { x: at, y: line })
-
-      for (let at = starts + 1; at <= opens; at++) {
-        step(ends[0].bank, at)
-      }
-
-      for (let side = ends[0].bank - ends[0].toward; side !== offset; side -= ends[0].toward) {
-        step(side, opens)
-      }
-
-      if (ends[0].toward !== 0) {
-        step(offset, opens)
-      }
-
-      for (let at = opens + 1; at <= arrives; at++) {
-        step(offset, at)
-      }
-
-      for (let side = offset + ends[1].toward; side !== ends[1].bank; side += ends[1].toward) {
-        step(side, arrives)
-      }
-
-      if (ends[1].toward !== 0) {
-        step(ends[1].bank, arrives)
-      }
-
-      for (let at = arrives + 1; at <= reach; at++) {
-        step(ends[1].bank, at)
-      }
-
-      paintFlowing(c, route, tick)
-    }
-
-    // How many edges the rail stands for, written along the rail itself — the
-    // line beside it is a column wide, and a figure dropped there reads as a
-    // stray mark rather than as a count. Written along means across the pane
-    // where the rail runs across it and down it where the rail runs down, which
-    // is two cells of one column rather than a label with nowhere to go. The
-    // `×` is what tells it from the figures on the cards it passes.
-    const count = `×${skip.count}`
-
-    if (skip.count > 1 && arrives - leaves >= count.length + 4) {
-      const at = leaves + Math.floor((arrives - leaves - count.length) / 2)
-      const tint = mix(tone, COLORS.text, 0.6)
-
-      for (let i = 0; i < count.length; i++) {
-        put(offset, at + i, count.codePointAt(i) ?? 0x20, tint)
-      }
-    }
-  })
+  }
 }
 
 /**
@@ -2356,9 +2386,9 @@ function paintSkips(
  * clear column left over goes without a boundary, which costs a line where
  * drawing it would cost the wires.
  */
-function bordersOf(lanes: LaneBox[], orientation: 'flow' | 'stack'): number[] {
+function bordersOf(lanes: LaneBox[], orientation: 'horizontal' | 'vertical'): number[] {
   return lanes.map(lane =>
-    orientation === 'flow' && lane.edgeAt >= 0 && lane.edgeAt < lane.busAt && lane.edgeAt < lane.x - 1
+    orientation === 'horizontal' && lane.edgeAt >= 0 && lane.edgeAt < lane.busAt && lane.edgeAt < lane.x - 1
       ? lane.edgeAt
       : -1,
   )
@@ -2382,14 +2412,293 @@ function bordersOf(lanes: LaneBox[], orientation: 'flow' | 'stack'): number[] {
  * it has got, which is what the captions, the seam and the header's progress
  * rule said between them before.
  */
+/**
+ * The lane the run is working in, which is where the window looks.
+ *
+ * The lane holding the most recently started agent that is still running; with
+ * none running, the most recently started lane of any state, which is where the
+ * run has got to. Taken off the drawing rather than off the run, because a
+ * phase the layout dropped is a phase there is nothing to look at.
+ */
+function frontLaneOf(view: Layout, live: boolean): LaneBox | undefined {
+  if (!live) {
+    return undefined
+  }
+
+  const drawn = view.lanes.filter(lane => lane.nodes.length > 0)
+  const running = drawn.filter(lane => lane.nodes.some(node => node.agent.state === 'running'))
+  const among = running.length > 0 ? running : drawn
+
+  if (among.length === 0) {
+    return undefined
+  }
+
+  const startedAt = (lane: LaneBox) => Math.max(...lane.nodes.map(node => node.agent.startedMs))
+
+  // Ties go to the later lane: phases that began in the same millisecond are
+  // phases replayed from a file, and there the declared order is the run's.
+  return among.reduce((latest, lane) => (startedAt(lane) >= startedAt(latest) ? lane : latest))
+}
+
+/**
+ * The loop, drawn as a loop: a rail down the left gutter from the last phase
+ * the run went round on back up to the first.
+ *
+ * Down the pane a rewind has nowhere to show itself. Every phase is a row, the
+ * rows run in the order the run declared them, and a run that went round four
+ * times draws the same rows a run that went round once does — only with more
+ * marks on them. The marks say a phase was entered again; they cannot say which
+ * phases were entered again *together*, which is the thing a reader wants when
+ * a pipeline rewinds. Here the run's seventeen phases hold a body of eleven,
+ * and the four outside it ran once each, at the ends.
+ *
+ * So the rail spans the phases that repeated, first to last, and the head at
+ * the top points into the row control came back to. It is the only wire this
+ * layout draws, and it is drawn in the wire's colour for that reason: it is
+ * control flow, not furniture. The gutter is two cells the list layout keeps
+ * free at every width, which is why the rail can be drawn without asking the
+ * layout for room.
+ *
+ * Drawn before the band rules, because a rule goes into blank cells only: the
+ * rule then starts at the rail's right arm, and every caption the rail passes
+ * joins it with a tee rather than crossing it.
+ */
+function paintReturn(c: Canvas, view: Layout, laneAgents: FoldedLane[], bottom: number): void {
+  if (view.list !== true) {
+    return
+  }
+
+  const looped = view.lanes.filter(
+    lane => (laneAgents[lane.index]?.entries ?? 0) > 1 && lane.nodes.length > 0,
+  )
+
+  // One phase that repeated is a phase that was retried, and its own caption
+  // already counts the attempts. A rail wants two ends in different sections,
+  // because what it says is that they went round together.
+  if (looped.length < 2) {
+    return
+  }
+
+  const first = looped[0] as LaneBox
+  const last = looped[looped.length - 1] as LaneBox
+  const head = Math.min(...first.nodes.map(n => n.y))
+  const foot = Math.max(...last.nodes.map(n => n.y + n.h - 1))
+  // The outermost margin of the phases it ties, not the first one's: a nested
+  // run a reader has opened stands its rows in by a gutter of their own, and a
+  // rail hung off that would be a rail drawn inside the run it encloses.
+  const rail = Math.min(...looped.flatMap(lane => lane.nodes.map(node => node.x))) - 2
+
+  if (foot <= head || rail < 0) {
+    return
+  }
+
+  const tone = COLORS.wire
+  const tees = new Set(
+    view.lanes
+      .map(lane => lane.captionRow)
+      .filter((row): row is number => row !== undefined && row > head && row < foot),
+  )
+
+  for (let y = head + 1; y < foot; y++) {
+    if (y >= 0 && y < bottom) {
+      c.put(rail, y, tees.has(y) ? TEE_RIGHT : BOUND_V, tone)
+    }
+  }
+
+  if (head >= 0 && head < bottom) {
+    c.put(rail, head, LIGHT.tl, tone)
+    c.put(rail + 1, head, ARROW_RIGHT, tone)
+  }
+
+  if (foot >= 0 && foot < bottom) {
+    c.put(rail, foot, LIGHT.bl, tone)
+    c.put(rail + 1, foot, RULE_LEFT, tone)
+  }
+}
+
+/**
+ * The fork from a phase's rule into the agents that ran in it.
+ *
+ * Laid out down the pane as bands, a fan is drawn as a fan: a barrier over the
+ * band and a wire into every card. The flat list has room for neither — it is
+ * what a pane too narrow for a node of any kind falls back to — and without
+ * them three agents that ran at once and three passes that ran in turn are the
+ * same three rows in the same order. The one fact the list kept was sequence,
+ * which is the one fact its order already gave.
+ *
+ * So it keeps the one line it has room for: a stem in the gutter, branching out
+ * of the phase's own rule into each of its rows and closing under the last. A
+ * phase that ran a single agent gets none — a fork with one tine says nothing
+ * a reader could not already see — and that is itself the reading: a phase with
+ * a stem fanned out, a phase without one did not.
+ *
+ * Drawn before the rules, because a rule gives way to whatever is already in
+ * its cells: the stem's own branch off it has to survive the rule being laid
+ * across the pane afterwards.
+ */
+function paintStems(c: Canvas, view: Layout, bottom: number): void {
+  if (view.list !== true) {
+    return
+  }
+
+  const tone = quietOf(c.background)
+
+  for (const lane of view.lanes) {
+    if (lane.nodes.length < 2) {
+      continue
+    }
+
+    const stem = (lane.nodes[0] as NodeBox).x - 1
+    const head = lane.captionRow ?? -1
+
+    if (stem < 0) {
+      continue
+    }
+
+    if (head >= 0 && head < bottom) {
+      c.put(stem, head, TEE_LEFT, tone)
+    }
+
+    lane.nodes.forEach((node, at) => {
+      if (node.y < 0 || node.y >= bottom) {
+        return
+      }
+
+      c.put(stem, node.y, at === lane.nodes.length - 1 ? LIGHT.bl : TEE_RIGHT, tone)
+    })
+  }
+}
+
+/**
+ * A nested run a reader has opened, told apart from the run that called it.
+ *
+ * Opened, its agents used to be drawn exactly as the calling run's own are —
+ * same rule down the left, same gutter, same indent — so thirteen rows of
+ * another workflow sat in the middle of this one with nothing but the band
+ * above them to say so, and that band scrolls away. A reader who arrived at the
+ * rows by scrolling had no way to know whose they were.
+ *
+ * So the run gets a gutter of its own, one step in from the calling run's, and
+ * it is drawn in the dashed register — the same double dash the strip of
+ * phases still ahead is drawn in, which on this pane already means *not part of
+ * the run proper*. The gutter closes at the foot on what the whole of the
+ * nested run came to, so folding it away again loses no figure that was on the
+ * pane while it was open.
+ *
+ * The child's own phases are not drawn, because they are not recorded: every
+ * agent of a nested run carries the calling run's phase name (`▸ plugin:flow`,
+ * and `#2` for the second trip), so the pane has its passes and its agents and
+ * no phase structure beneath them to lay out.
+ */
+function paintInset(
+  c: Canvas,
+  view: Layout,
+  laneAgents: FoldedLane[],
+  nowMs: number,
+  bottom: number,
+): void {
+  if (view.list !== true) {
+    return
+  }
+
+  const tone = quietOf(c.background)
+
+  for (const lane of view.lanes) {
+    if (lane.inset !== true || lane.nodes.length === 0) {
+      continue
+    }
+
+    const rail = (lane.nodes[0] as NodeBox).x - INSET_W
+    const head = Math.min(...lane.nodes.map(node => node.y))
+    const foot = Math.max(...lane.nodes.map(node => node.y + node.h - 1)) + 1
+
+    if (rail < 0) {
+      continue
+    }
+
+    for (let y = head; y < foot; y++) {
+      if (y >= 0 && y < bottom) {
+        c.put(rail, y, SEAM_V, tone)
+      }
+    }
+
+    if (foot < 0 || foot >= bottom) {
+      continue
+    }
+
+    c.put(rail, foot, LIGHT.bl, tone)
+    c.put(rail + 1, foot, SEAM_H, tone)
+
+    const agents = laneAgents[lane.index]?.agents ?? []
+    const at = rail + 3
+    const room = Math.max(0, c.columns - at - 1)
+
+    if (agents.length > 0 && room > 8) {
+      c.text(at, foot, truncate(sumOf(agents, nowMs), room), COLORS.dim)
+    }
+  }
+}
+
+/**
+ * What a whole nested run came to: how many agents it ran, how long the run
+ * spent inside it, and what it spent there.
+ *
+ * The clock is the passes added up, not the first start to the last end. A run
+ * entered three times is three separate stretches with the calling run's own
+ * work in the gaps — first start to last end counted those gaps as time inside
+ * the nested run, and read as forty-nine minutes for a run that took six.
+ * Which trip is which is in the phase name: the engine writes `#2` and `#3`
+ * after it for the second and third.
+ */
+function sumOf(agents: AgentRow[], nowMs: number): string {
+  const passes = new Map<string, AgentRow[]>()
+
+  for (const agent of agents) {
+    const trip = passes.get(agent.phase) ?? []
+
+    trip.push(agent)
+    passes.set(agent.phase, trip)
+  }
+
+  const took = [...passes.values()].reduce(
+    (sum, trip) =>
+      sum +
+      Math.max(
+        0,
+        Math.max(...trip.map(a => a.endedMs ?? nowMs)) - Math.min(...trip.map(a => a.startedMs)),
+      ),
+    0,
+  )
+  const spent = agents
+    .map(a => tokensOf(a))
+    .filter((n): n is number => n !== undefined)
+    .reduce((sum, n) => sum + n, 0)
+
+  return [
+    `${TOOL_MARK} ${agents.length} agents`,
+    elapsed(took),
+    ...(spent > 0 ? [tokensShort(spent)] : []),
+  ].join('  ')
+}
+
 function paintSections(
   c: Canvas,
   view: Layout,
-  laneAgents: { phase: string; agents: AgentRow[] }[],
+  laneAgents: FoldedLane[],
   passes: Map<string, Pass>,
   bottom: number,
   tick: number,
   over: boolean,
+  hotspots: Hotspot[],
+  /**
+   * The cells across the drawing has, which is the pane less whatever the
+   * scroll rail down the right edge takes.
+   *
+   * The rules used to run the pane's full width and the rail was painted over
+   * the last two cells of each of them, so a caption centred on the pane sat
+   * two cells left of the middle of the rule a reader could actually see.
+   */
+  width: number,
 ): void {
   const tone = quietOf(c.background)
 
@@ -2418,17 +2727,34 @@ function paintSections(
     c.put(x, y, code, paint)
   }
 
-  if (view.orientation === 'flow') {
-    const bandBottom = Math.max(
-      ...view.lanes.map(l => Math.max(l.y + l.h, ...l.nodes.map(n => n.y + n.h))),
-    )
+  if (view.orientation === 'horizontal') {
+    // As tall as the drawing, not as tall as the pane. A boundary divides the
+    // cards from each other, and a run of four phases of one agent draws four
+    // cards twelve rows deep in a body of thirty-four: run to the foot, the
+    // boundaries were four full-height vertical lines with a band of cards
+    // somewhere in the middle of them, and most of the ink on the pane was
+    // furniture around a drawing a fifth its size. A reader looking at that
+    // said they could not read the graph, and the lines they were reading were
+    // these.
+    const nodes = view.lanes.flatMap(lane => lane.nodes)
+
+    if (nodes.length === 0) {
+      return
+    }
+
+    // It starts under the header's rule, where the header has already drawn the
+    // tee that says a section begins here, and stops one row past the last card
+    // — the row the `↰` marks are written on. Starting it beside the topmost
+    // card instead left that tee as a stub with nothing under it.
+    const bandTop = view.headerRows
+    const bandBottom = Math.min(bottom, Math.max(...nodes.map(n => n.y + n.h)) + 1)
 
     bordersOf(view.lanes, view.orientation).forEach(x => {
       if (x < 0) {
         return
       }
 
-      for (let y = Math.max(0, view.headerRows); y < Math.min(bottom, bandBottom); y++) {
+      for (let y = bandTop; y < bandBottom; y++) {
         ink(x, y, BOUND_V, tone)
       }
     })
@@ -2443,100 +2769,128 @@ function paintSections(
       return
     }
 
-    const facts = phaseFactsOf(lane.phase, lane.index, laneAgents[lane.index]?.agents ?? [], passes, over)
-    const filled = facts.total > 0 ? Math.round((facts.landed / facts.total) * c.columns) : 0
-    /** The columns of this rule a wire is in, which its name has to keep off. */
-    const wired: number[] = []
-
-    for (let x = 0; x < c.columns; x++) {
+    const fold = laneAgents[lane.index]
+    // `▸` is the press that opens a nested run, so once it is open the mark has
+    // to stop saying *press me to open*. A marker that never changes is a
+    // control with no state, and a reader who has opened two of three nested
+    // runs cannot see which two.
+    const open = fold?.nested === true && fold.shut !== true
+    const facts = phaseFactsOf(
+      open ? FOLD_OPEN + lane.phase.slice(FOLD_SHUT.length) : lane.phase,
+      lane.index,
+      fold?.agents ?? [],
+      passes,
+      over,
+    )
+    // The heavy stroke says *progress*, not *done*. A band with work still in it
+    // fills to the share of it that has landed; a band that has all landed, and
+    // one nothing has entered, draw the plain rule every other divider on the
+    // pane is drawn with.
+    //
+    // It used to fill by the same share whatever the state, so a finished run of
+    // seventeen phases was seventeen rules of heavy stroke across the whole pane
+    // — seventeen hundred cells of the loudest ink the drawing has, all of it
+    // repeating what the count at the end of each rule already said. Structure is
+    // grey here, and a rule that has nothing left to report is structure.
+    const filled =
+facts.total > 0 && facts.landed < facts.total ? Math.round((facts.landed / facts.total) * width) : 0
+    for (let x = 0; x < width; x++) {
       const landed = x < filled
 
       // Laid out down the pane the wires run down and the rule runs across, so
-      // here it is the rule that hops: the same arc, drawn in the rule's own
-      // quiet, saying a wire passes under it rather than ending there.
+      // this is the same crossing the across layout makes in its gutters — and
+      // it is settled the same way: the wire stays whole and the rule breaks.
+      //
+      // The rule used to arc over the wire instead, in its own quiet. An arc is
+      // the mark for *two lines, and this is the one in front*, and spending it
+      // on a boundary sent a reader looking for a second line to follow. A
+      // one-cell gap in a rule that runs the width of the pane is read as a
+      // rule with something crossing it, which is what it is.
       if (armsOf(c.at(x, y)) === (ARM.up | ARM.down)) {
-        c.put(x, y, HOP, tone)
-        wired.push(x)
-
         continue
       }
 
-      // A point standing in a rule breaks it, and reads as a bullet someone set
-      // on the line rather than as the cell a wire leaves a card by. Where the
-      // band is tight enough that a card's exit cell is the next band's rule,
-      // one cell has two marks to carry and the rule is the one that has to be
-      // whole: it runs the width of the pane, and a gap in it reads as a gap in
-      // the phase. The point is the one that can be spared, because a wire
-      // leaving the cell directly under a card says which card it left without
-      // being told.
+      // Where the band is tight enough that a card's exit cell is the next
+      // band's rule, one cell has two marks to carry, and the point is the one
+      // that stays. It is the only thing on the pane that says which card a
+      // wire left, and a band drawn as rows has no edge of its own for the wire
+      // to leave from — rubbed out, the run below it began in mid-air.
+      //
+      // The rule used to win this cell, on the grounds that it runs the width
+      // of the pane and a gap in it reads as a gap in the phase. It does not:
+      // the rule gives way to every wire crossing it for the same reason, and
+      // one cell of a hundred and ten is a rule with something crossing it.
       if (c.at(x, y) === PORT) {
-        c.put(x, y, landed ? RULE_DONE : RULE_LEFT, tone)
-        wired.push(x)
-
         continue
       }
 
-      ink(x, y, landed ? RULE_DONE : RULE_LEFT, tone)
+      ink(x, y, ruleOf(fold?.nested === true, landed), tone)
     }
 
     // The name is set into the rule the way a card's is set into its top edge:
     // centred, with a blank cell either side of it, so the rule reads as one
     // line broken by a word rather than as two lines with a word between them.
-    const label = paintPhaseLabel(c, 0, y, c.columns, facts, 2, w => clearOf(c, y, w, wired))
+    //
+    // Centred in every layout, because a name titles the thing under it and the
+    // reader crosses layouts: a caption flush left down the pane and centred
+    // across it is the same fact told two ways, and the pane stops reading as
+    // one drawing seen from two sides.
+    //
+    // It stands where it is centred whatever crosses the rule there, and the
+    // wire gives way: the caption clears the cells it stands in, so a wire
+    // passing through the rule loses this one row of itself and runs on above
+    // and below, which is the same break the rule takes for the wire everywhere
+    // else on the pane.
+    //
+    // The caption used to give way instead, stepping along the rule until it
+    // found a window with no wire in it. Down a pane of centred cards the spine
+    // runs down the middle, which is the caption's own column, so every band
+    // stepped aside and by a different amount: the rule came out longer on one
+    // side of the caption than the other, band after band, and a reader asked
+    // why the phase names were not centred.
+    const nested = fold?.nested === true
+    const shut = fold?.shut === true
+    const handle = nested ? foldHandle(shut, fold?.agents.length ?? 0, width) : ''
+    const label = paintPhaseLabel(
+      c,
+      0,
+      y,
+      width,
+      facts,
+      2,
+      handle.length > 0 ? HANDLE_GAP + handle.length + 1 : 0,
+    )
 
     c.put(label.x - 1, y, 0x20, tone)
-    c.put(label.x + label.w, y, 0x20, tone)
+    c.put(label.x + label.used, y, 0x20, tone)
+
+    // A run of twenty-three agents drawn as one row has to have a way in, and a
+    // way back out once it is open. Both are the handle after the caption. The
+    // mark the name opens with takes the press only where there was no room for
+    // the handle: it is a coloured cell, and a Button strips the colour, so it
+    // is a target of last resort rather than the ordinary one.
+    if (nested) {
+      const drew = paintFoldHandle(
+        c,
+        lane.phase,
+        label.x + label.used + HANDLE_GAP,
+        y,
+        width - label.x - label.used - HANDLE_GAP,
+        tone,
+        shut,
+        fold?.agents.length ?? 0,
+        hotspots,
+      )
+
+      if (!drew) {
+        hotspots.push(markSpot(lane.phase, label.x, y, 0))
+      }
+    }
   })
 }
 
-/**
- * Where a band's name can stand in its rule without rubbing out a wire.
- *
- * The rule has already given way to every wire that crosses it: those cells
- * hold the wire's own arc, and the cells where a card's exit point fell on the
- * rule hold the rule in the point's place. A name set into the rule clears the
- * cells it stands in, so a name standing on one of them takes a carry's only
- * cell in that row — the wire above the rule and the wire below it stop dead
- * against a word, with nothing to say they are one line.
- *
- * So the name moves instead. It starts centred and steps out a cell at a time
- * until the window it needs, its own blanks included, holds nothing but rule.
- * A rule with no such window anywhere keeps the name centred: a band whose
- * every column carries a wire has nowhere better, and the name is the thing
- * that has to be readable.
- */
-function clearOf(c: Canvas, y: number, w: number, wired: number[]): number {
-  const centred = Math.max(0, Math.floor((c.columns - w) / 2))
-  const taken = new Set(wired)
-  const free = (x: number) => {
-    for (let dx = -1; dx <= w; dx++) {
-      const code = c.at(x + dx, y)
-
-      if (taken.has(x + dx) || (code !== RULE_DONE && code !== RULE_LEFT && code !== 0x20)) {
-        return false
-      }
-    }
-
-    return true
-  }
-
-  if (free(centred)) {
-    return centred
-  }
-
-  for (let step = 1; step <= c.columns; step++) {
-    for (const x of [centred - step, centred + step]) {
-      if (x >= 0 && x + w <= c.columns && free(x)) {
-        return x
-      }
-    }
-  }
-
-  return centred
-}
-
 function along(view: Layout, p: { x: number; y: number }): number {
-  return view.orientation === 'flow' ? p.y : p.x
+  return view.orientation === 'horizontal' ? p.y : p.x
 }
 
 /**
@@ -2547,7 +2901,7 @@ function along(view: Layout, p: { x: number; y: number }): number {
 function deeper(view: Layout, right: LaneBox): boolean {
   const ports = right.nodes.map(n => entryOf(n, view.orientation))
 
-  return ports.length > 0 && Math.min(...ports.map(p => (view.orientation === 'flow' ? p.x : p.y))) > right.busAt
+  return ports.length > 0 && Math.min(...ports.map(p => (view.orientation === 'horizontal' ? p.x : p.y))) > right.busAt
 }
 
 /**
@@ -2590,6 +2944,28 @@ function crowded(view: Layout, crossing: Carry[], byId: Map<string, NodeBox>): b
  * detail dialog, was never drawn — and a Button over cells that hold nothing is
  * a press that lands on nothing.
  */
+/**
+ * Drops the drawing's presses that the body's window clipped, and leaves the
+ * header's alone.
+ *
+ * A node scrolled off the top is still in the list the painter built: it drew
+ * nothing, but it pushed a hotspot, and a press landing on the header row above
+ * it would open an agent the reader cannot see.
+ */
+function inWindow(
+  hotspots: Hotspot[],
+  from: number,
+  box: { x: number; y: number; w: number; h: number },
+): void {
+  const body = hotspots.splice(from)
+
+  hotspots.push(
+    ...body.filter(
+      h => h.x >= box.x && h.x + h.w <= box.x + box.w && h.y >= box.y && h.y < box.y + box.h,
+    ),
+  )
+}
+
 function onCanvas(c: Canvas, hotspots: Hotspot[], lastRow: number): void {
   const shown = hotspots.filter(h => h.w > 0 && h.x >= 0 && h.x + h.w <= c.columns && h.y >= 0 && h.y < lastRow)
 
@@ -2682,6 +3058,75 @@ function dialogOf(c: Canvas, rows: number): Rect | null {
   }
 }
 
+/**
+ * The dialog over the drawing: a nested run, an agent, or one of that agent's
+ * calls opened out of it.
+ *
+ * All three take the same rectangle, so this is where they are told apart
+ * rather than in any of them. A call that is no longer in the agent's list —
+ * the reader moved to another agent with the call still open — falls back to
+ * the agent, which is the thing they pressed to get here.
+ */
+function openDetail(
+  c: Canvas,
+  agent: AgentRow | undefined,
+  inside: AgentRow[],
+  phase: string | undefined,
+  nowMs: number,
+  tick: number,
+  panel: Rect,
+  options: PaintOptions,
+  hotspots: Hotspot[],
+  fedBy: string[],
+  defaultModel?: string,
+): DetailView {
+  if (phase !== undefined && inside.length > 0) {
+    const pane = paintRun(c, phase, inside, nowMs, panel, options.detailScroll?.[RUN_PANE] ?? 0, tick, hotspots)
+
+    return { panes: [pane], tab: RUN_PANE, run: pane }
+  }
+
+  if (agent === undefined) {
+    return { panes: [], tab: 0 }
+  }
+
+  const call = options.openCall ? agent.calls?.find(one => one.id === options.openCall) : undefined
+
+  if (call) {
+    const shown = paintCall(
+      c,
+      call,
+      nowMs,
+      panel,
+      { arg: options.callScroll ?? 0, out: options.callOutScroll ?? 0 },
+      agent.state === 'running',
+      hotspots,
+    )
+
+    return {
+      panes: [shown.arg],
+      tab: options.detailTab ?? 0,
+      call: shown.arg,
+      out: shown.out,
+      split: shown.split,
+    }
+  }
+
+  return paintDetail(
+    c,
+    agent,
+    nowMs,
+    tick,
+    panel,
+    options.detailScroll ?? [],
+    options.detailTab ?? 0,
+    hotspots,
+    fedBy,
+    defaultModel,
+    options.fromRun,
+  )
+}
+
 export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintResult {
   const { nowMs, selectedId } = options
   // A run that has ended draws no more frames, so anything that moves has to
@@ -2692,16 +3137,40 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
   c.clear()
 
   const selected = run.agents.find(a => a.agentId === selectedId)
-  const panel: Rect | null = selected ? dialogOf(c, options.detailRows ?? 0) : null
+  // A nested run has no agent of its own to be selected by. What is selected is
+  // the phase, and what the dialog reads is every agent in it — see `RUN_OPEN`.
+  const phase = selectedId?.startsWith(RUN_OPEN) ? selectedId.slice(RUN_OPEN.length) : undefined
+  const inside = phase === undefined ? [] : run.agents.filter(a => a.phase === phase)
+  const reading = selected !== undefined || inside.length > 0
+  const panel: Rect | null = reading ? dialogOf(c, options.detailRows ?? 0) : null
+  // What fed this agent from further back than the band above it. The graph
+  // writes the same phases beside the card; the dialog is where they are said
+  // in full, and where the mark beside the card is spelled out in a word.
+  const fedBy = selected === undefined ? [] : (sourcesOf(run).get(selected.agentId) ?? [])
+  /** Which nested runs the reader has unfolded, in whichever layout is drawn. */
+  const opened = options.opened && options.opened.length > 0 ? new Set(options.opened) : undefined
 
-  if (options.orientation === 'time') {
-    const hotspots = paintTimeline(c, run, nowMs, tick, selectedId, 0, c.columns, options.runPicker)
+  if (options.orientation === 'timeline') {
+    const { hotspots, body, front } = paintTimeline(
+      c,
+      run,
+      nowMs,
+      tick,
+      selectedId,
+      0,
+      c.columns,
+      options.runPicker,
+      opened,
+      options.bodyScroll?.y ?? 0,
+      options.bodyScroll?.x ?? 0,
+      options.follow !== false,
+    )
 
     onCanvas(c, hotspots, c.rows)
-    modal(hotspots, panel !== null && selected !== undefined, menuKeeps(options))
+    modal(hotspots, panel !== null && reading, menuKeeps(options))
 
-    const detail = panel && selected
-      ? paintDetail(c, selected, nowMs, panel, options.detailScroll ?? [], hotspots, run.defaultModel)
+    const detail = panel && reading
+      ? openDetail(c, selected, inside, phase, nowMs, tick, panel, options, hotspots, fedBy, run.defaultModel)
       : undefined
 
     onCanvas(c, hotspots, c.rows)
@@ -2714,11 +3183,90 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
 
     shade(c, frontOf(about, settings, menu, detail && panel))
 
-    return { hotspots, orientation: 'time', detail }
+    return {
+      hotspots,
+      orientation: 'timeline',
+      detail,
+      ...(body ? { body } : {}),
+      ...(front ? { front } : {}),
+    }
   }
 
-  const view = layout(run, c.columns, c.rows, options.orientation ?? 'auto', 0)
-  const lanes = orderedLanes(run)
+  const setting = options.orientation ?? 'auto'
+  // The drawing is laid out whole and the body shows a window on to it, rather
+  // than the layout being cut down until it fitted. A run of seventy agents is
+  // a run of seventy agents at any pane size, and the reader scrolls to the
+  // part they want; before this, the pane drew what fitted and said `… 38 more`
+  // about the rest, which is a way of saying the pane cannot show the run.
+  //
+  // The rails cost cells, and the cells change what fits, so the size is
+  // settled first: lay out, see which way the drawing overruns, give up the
+  // column or the row that rail needs, and lay out again at what is left. Two
+  // passes reach a fixed point — the second can only add a rail, never take one
+  // away, because giving up a column cannot make the drawing narrower.
+  let railed: boolean = false
+  let footed: boolean = false
+  let view = layout(run, c.columns, c.rows, setting, 0, opened)
+
+  for (let pass = 0; pass < 2; pass++) {
+    const reach = extentOf(view)
+    // A body with no room for two arrows and a track between them cannot show
+    // a rail, and giving up cells for one it cannot draw makes the pane that
+    // was already too small smaller. A drawing overruns such a pane whatever
+    // is done about it.
+    const roomy = c.rows - view.headerRows >= 2 + RAIL_MIN
+    const wantsRail: boolean = roomy && reach.h > c.rows - (footed ? 1 : 0)
+    const wantsFoot: boolean = c.columns >= 2 + RAIL_MIN && reach.w > c.columns - (railed ? RAIL_W : 0)
+
+    if (wantsRail === railed && wantsFoot === footed) {
+      break
+    }
+
+    railed = wantsRail
+    footed = wantsFoot
+    view = layout(run, c.columns - (railed ? RAIL_W : 0), c.rows, setting, footed ? 1 : 0, opened)
+  }
+
+  const bodyW = c.columns - (railed ? RAIL_W : 0)
+  const bodyFoot = c.rows - (footed ? 1 : 0)
+  // The first row the drawing may land on, which is not the first row under the
+  // header: a stacked band carries its own name over itself, and the first
+  // band's name sits on the last row the header counts. Across, the header's
+  // last two rows are the phase names and the rule under them, both drawn from
+  // the lanes — the strip's own caption sits on the same pair, and a body that
+  // began below them clipped it.
+  const bodyTop =
+    view.orientation === 'horizontal'
+      ? view.headerRows
+      : Math.min(view.headerRows, ...view.lanes.map(l => l.captionRow ?? view.headerRows))
+  const reach = extentOf(view)
+  const spanX = Math.max(0, reach.w - bodyW)
+  const spanY = Math.max(0, reach.h - bodyFoot)
+  // While the run is live the window looks where the work is. Seventeen phases
+  // are wider and taller than any pane, and a pane that opened at the first one
+  // showed a phase that finished an hour ago while the agent actually running
+  // was off the drawing entirely — the reader had to scroll to find the present.
+  //
+  // Scrolling away is a peek rather than a decision: the pane stays where it is
+  // put until the run enters a different phase, and then it goes back to the
+  // front. Staying away until asked back needs a control that says *resume*, and
+  // a control nobody presses while reading leaves the pane showing the past.
+  // Nothing is lost by going back, because the run is still going and what was
+  // being read is still there to scroll to.
+  const front = frontLaneOf(view, run.status === 'running')
+  const seat =
+    options.follow !== false && front
+      ? {
+          x: front.x + front.w / 2 - bodyW / 2,
+          y: front.y + front.h / 2 - bodyTop - (bodyFoot - bodyTop) / 2,
+        }
+      : { x: options.bodyScroll?.x ?? 0, y: options.bodyScroll?.y ?? 0 }
+  const atX = Math.max(0, Math.min(spanX, Math.round(seat.x)))
+  const atY = Math.max(0, Math.min(spanY, Math.round(seat.y)))
+
+  view = scrolled(view, -atX, -atY)
+
+  const lanes = orderedLanes(run, opened)
   const carries = edgesOf(run)
   const byId = new Map<string, NodeBox>()
   const hotspots: Hotspot[] = []
@@ -2750,10 +3298,34 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
     options.runPicker,
   )
 
+  paintAheadCaption(c, view, overOf(run))
+
+  // Where the header's own presses end. Everything pushed after this belongs to
+  // the drawing, and the drawing can be scrolled out from under the reader, so
+  // the two are filtered by different rules.
+  const headerSpots = hotspots.length
+
+  // From here to the rails, every cell lands inside the body. The header keeps
+  // its rows whatever the drawing is doing underneath it, and a lane scrolled
+  // half off the top draws the half that is still in the body — the rest simply
+  // does not land, so nothing has to be laid out twice or cut to size.
+  // The window holds the drawing's rows, not its columns: the layout was
+  // already narrowed to leave the rail its column, so the only cells that reach
+  // past the body are the stubs where a wire leaves the last card — and the
+  // rail, drawn last, takes back whatever lands under it. Clipping the width as
+  // well cut those stubs and left an arm pointing at nothing.
+  c.window(0, bodyTop, c.columns, bodyFoot - bodyTop)
+
   // The flat list, and not merely a stack of one-row nodes: a band of rows still
   // has gutters to route through and still says which node fed which, so it is
   // drawn with every wire a band of cards gets.
   const isList = view.list === true
+
+  // How each phase's work was spread over time: the agents that ran together, in
+  // the order the groups went. A phase is fed at whatever started first and left
+  // from whatever finished last, which for a fan is all of it, for a chain is one
+  // node at either end, and for anything between is the two ends of the middle.
+  const waves = view.lanes.map(lane => wavesOf(lanes[lane.index] ?? { agents: [] }))
 
   // Which phases ran one agent at a time. A chain is fed once, at its head, and
   // hands on from each pass to the next; a fan is fed at every node. The hops
@@ -2780,9 +3352,9 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
   const abreast = (from?: NodeBox, to?: NodeBox) =>
     from !== undefined &&
     to !== undefined &&
-    (view.orientation === 'flow'
-      ? exitOf(from, 'flow').y === entryOf(to, 'flow').y
-      : exitOf(from, 'stack').x === entryOf(to, 'stack').x)
+    (view.orientation === 'horizontal'
+      ? exitOf(from, 'horizontal').y === entryOf(to, 'horizontal').y
+      : exitOf(from, 'vertical').x === entryOf(to, 'vertical').x)
 
   /** The gutters drawn as one bundle, whose carries are not drawn again. */
   const bundled = new Set<number>()
@@ -2790,11 +3362,6 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
   const arrows: { x: number; y: number }[] = []
 
   // Barriers first, so a node always wins the cells it shares with one.
-  /** The border columns, for the feeders that reach one: see `paintBarrier`. */
-  const edges = new Set(
-    view.orientation === 'flow' ? bordersOf(view.lanes, 'flow').filter(at => at >= 0) : [],
-  )
-
   for (let i = 1; i < view.lanes.length && !isList; i++) {
     const left = view.lanes[i - 1]
     const right = view.lanes[i]
@@ -2826,7 +3393,6 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
         view.orientation,
         true,
         tick,
-        edges,
       )
     }
 
@@ -2842,29 +3408,38 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
     }
 
     if (!isPipelineLike(lanes[i - 1], lanes[i], carries)) {
-      // A chain is entered at its head and left from its tail. Feeding every
-      // pass of it from the phase above draws four arrows into work that was
-      // handed along, and the line each pass gave the next — the only line that
-      // says it was a sequence — is lost among them.
-      const ends = (chain: AgentRow[] | null, pick: (c: AgentRow[]) => AgentRow, nodes: NodeBox[]) => {
-        if (!chain) {
+      // A phase is entered at whatever started first and left from whatever
+      // finished last. Feeding every pass of a chain from the phase above draws
+      // four arrows into work that was handed along, and the line each pass gave
+      // the next — the only line that says it was a sequence — is lost among
+      // them. A nested run opened out is the same fault at four times the size:
+      // a dozen agents that planned, fanned out and gathered, drawn with a wire
+      // from the phase above into all twelve and a wire out of all twelve into
+      // the phase below, is two gutters of wire that say the calling phase
+      // started twelve agents at once. The doors are the first wave and the
+      // last; a phase that really is one fan has one wave, and keeps every wire.
+      const ends = (groups: AgentRow[][], pick: (w: AgentRow[][]) => AgentRow[], nodes: NodeBox[]) => {
+        if (groups.length < 2) {
           return nodes
         }
 
-        const node = byId.get(pick(chain).agentId)
+        const door = pick(groups).flatMap(agent => {
+          const node = byId.get(agent.agentId)
 
-        return node ? [node] : nodes
+          return node ? [node] : []
+        })
+
+        return door.length > 0 ? door : nodes
       }
 
       paintBarrier(
         c,
-        ends(chains[i - 1], chain => chain[chain.length - 1], left.nodes),
-        ends(chains[i], chain => chain[0], right.nodes),
+        ends(waves[i - 1], group => group[group.length - 1], left.nodes),
+        ends(waves[i], group => group[0], right.nodes),
         right.busAt,
         view.orientation,
         false,
         tick,
-        edges,
       )
     } else if (wants) {
       bundle()
@@ -2887,7 +3462,7 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
   const turnAt = new Map<Carry, number>()
 
   if (!isList) {
-    const flow = view.orientation === 'flow'
+    const flow = view.orientation === 'horizontal'
     /** The coordinate along the run: the axis a wire crosses the gutter on. */
     const lead = (p: { x: number; y: number }) => (flow ? p.x : p.y)
     /** The coordinate across it: the axis a wire moves along while it turns. */
@@ -2899,7 +3474,7 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
     // having come apart.
     const rules = new Set(
       flow
-        ? bordersOf(view.lanes, 'flow').filter(at => at >= 0)
+        ? bordersOf(view.lanes, 'horizontal').filter(at => at >= 0)
         : view.lanes.flatMap(lane => (lane.captionRow === undefined ? [] : [lane.captionRow])),
     )
     // The bus is the barrier's own line, and the line a rail comes in on. A
@@ -3073,18 +3648,6 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
   // solid and at full strength: this agent's answer is in that agent's prompt,
   // which is a record of what flowed. An inferred one stays dashed and dimmed,
   // because a shared label is a hint about the run, not a fact about it.
-  /**
-   * The lines a run crosses that are not on the canvas yet.
-   *
-   * The border between two phases is painted after the wires, into the cells
-   * they left empty, so a run cannot see it coming and would leave a hole in it
-   * a cell wide. A run that reaches one of these columns hops it, the same way
-   * it hops a wire, and the border is drawn whole either side of the arc.
-   */
-  const ruled = new Set(
-    view.orientation === 'flow' ? bordersOf(view.lanes, 'flow').filter(at => at >= 0) : [],
-  )
-
   for (const carry of isList ? [] : wires) {
     const from = byId.get(carry.fromId)
     const to = byId.get(carry.toId)
@@ -3141,19 +3704,21 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
     }
 
     /**
-     * One cell of a run laid across the pane, hopped where something crosses.
+     * One cell of a run laid across the pane, hopped where a wire crosses it.
      *
-     * Whatever is already on the canvas `cross` finds for itself. The border
-     * between two phases is not drawn yet, so that crossing has to be known
-     * rather than seen.
+     * Only a wire. An arc says *two lines share this cell and this is the one
+     * in front*, and it used to be drawn over the border between two phases as
+     * well — so a reader followed the arc looking for the second line and found
+     * a boundary, which is not a line anything travels along. Four arcs down a
+     * gutter where nothing crossed anything read as the picture's busiest
+     * junction.
+     *
+     * The border gives way instead, which is the rule the pane already keeps
+     * everywhere else it draws one: it is painted after the wires, into the
+     * cells they left empty, so a run through it simply leaves a gap and the
+     * eye completes a boundary across one cell without being asked.
      */
     const acrossAt = (x: number, y: number) => {
-      if (ruled.has(x)) {
-        c.put(x, y, HOP, stroke)
-
-        return
-      }
-
       cross(c, x, y, across, stroke)
     }
 
@@ -3172,7 +3737,7 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
     // band, side by side. There is no gutter to route through and none is
     // wanted — the whole edge is the gap between two neighbours.
     if (span === 0) {
-      const flow = view.orientation === 'flow'
+      const flow = view.orientation === 'horizontal'
       const gap = flow ? to.y - (from.y + from.h) : to.x - (from.x + from.w)
       const at = flow ? from.x + Math.floor(from.w / 2) : from.y + Math.floor(from.h / 2)
 
@@ -3226,7 +3791,7 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
       continue
     }
 
-    if (view.orientation === 'flow' && start.y === end.y) {
+    if (view.orientation === 'horizontal' && start.y === end.y) {
       const route: { x: number; y: number }[] = []
       const marked = end.x - start.x >= 2
 
@@ -3245,7 +3810,7 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
       if (lit) {
         paintFlowing(c, [...route, end], tick)
       }
-    } else if (view.orientation === 'stack' && start.x === end.x) {
+    } else if (view.orientation === 'vertical' && start.x === end.x) {
       const route: { x: number; y: number }[] = []
       const marked = end.y - start.y >= 2
 
@@ -3264,7 +3829,7 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
       if (lit) {
         paintFlowing(c, [...route, end], tick)
       }
-    } else if (view.orientation === 'flow' && end.x - start.x >= 2) {
+    } else if (view.orientation === 'horizontal' && end.x - start.x >= 2) {
       // The cell the wire leaves on is a turn it may take: a corner there is a
       // wire leaving the card and going straight for its row. Clamped a cell
       // past it, the first column the gutter has to give was never used, and
@@ -3315,7 +3880,7 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
       if (lit) {
         paintFlowing(c, route, tick)
       }
-    } else if (view.orientation === 'flow') {
+    } else if (view.orientation === 'horizontal') {
       // Two lanes with no gutter between them to turn in: the router bends it
       // where it can rather than drawing nothing.
       const route = edge(c, start.x, start.y, end.x, end.y, stroke, tone, !solid)
@@ -3370,20 +3935,14 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
     }
   }
 
-  // An edge over more than one lane has a whole band of nodes in its way. One
-  // such edge per node drew a thicket of lines threading between the columns,
-  // so they are gathered by the pair of phases they join and drawn once, as a
-  // rail in the margin the layout kept for them. Drawn last of the edges, so a
-  // rail meeting a carry can say so with a junction rather than crossing it.
-  if (!isList) {
-    paintSkips(c, view, skipsOf(run), arrows, tick)
-  }
-
-  const bottom = c.rows
+  const bottom = bodyFoot
 
   const over = overOf(run)
 
-  paintSections(c, view, lanes, passes, bottom, tick, over)
+  paintReturn(c, view, lanes, bottom)
+  paintStems(c, view, bottom)
+  paintInset(c, view, lanes, nowMs, bottom)
+  paintSections(c, view, lanes, passes, bottom, tick, over, hotspots, bodyW)
 
   for (const lane of view.lanes) {
     if (lane.ghost) {
@@ -3402,7 +3961,7 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
         nowMs,
         tick,
         view.density,
-        node.agent.agentId === selectedId,
+        pressOf(node) === selectedId,
         hotspots,
         scale,
         run.defaultModel,
@@ -3413,44 +3972,57 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
     }
   }
 
-  // A pane too small for the run drew the agents that fitted and said nothing
-  // about the rest, which reads as a run with fewer agents in it than it has.
-  const placed = view.lanes.flatMap(l => l.nodes)
-  const past = (edge: number) =>
-    placed.filter(n => n.y + n.h > edge || n.x + n.w > c.columns).length
-  // The notice takes the last row, so it hides one more node than the pane did.
-  const hidden = past(bottom) > 0 ? past(bottom - 1) : 0
-
-  if (hidden > 0) {
-    c.fill(0, bottom - 1, c.columns, 1, c.background)
-    c.text(0, bottom - 1, `… ${hidden} more`, COLORS.dim)
+  // An edge over more than one lane has a whole band of nodes in its way, so it
+  // is not drawn at all: the card it arrives at says which phase it came from,
+  // in words. Drawn after everything else the body holds — the rules, the
+  // cards, the wires — because the row it goes on is whichever of the two
+  // beside the card is still clear, and asking that before the rules are down
+  // put the name in the row a band is named on.
+  if (!isList) {
+    paintSources(c, view, sourcesOf(run))
   }
 
-  if (hidden === 0 && view.pending.length > 0) {
+  const placed = view.lanes.flatMap(l => l.nodes)
+
+  if (view.pending.length > 0) {
     if (view.ahead) {
       paintAhead(c, view, run.plan, bottom, over)
     } else {
-      // Centred in what the drawing left, not pinned to either end of it. Down
-      // the pane the end of the run is the foot of the drawing, and a section
-      // held against the seat's own bottom edge reads as part of the pane's
-      // furniture rather than as the next thing the run will do — but held
-      // against the last node instead, the same blank rows simply moved
-      // underneath it. Between the two it reads as the drawing's own last
-      // section, which is what it is.
       const foot = placed.length > 0 ? Math.max(...placed.map(n => n.y + n.h)) : view.headerRows
-      const depth = Math.max(1, Math.min(view.aheadRows ?? 1, bottom - foot - 1))
+      const depth = Math.max(1, Math.min(view.aheadRows ?? 1, Math.max(1, bottom - foot - 1)))
+      // Scrolled, the band goes where the run puts it: under the last section,
+      // wherever that has moved to, so it scrolls with the drawing it belongs
+      // to. Standing still it is centred in what the drawing left, not pinned
+      // to either end of it — down the pane the end of the run is the foot of
+      // the drawing, and a section held against the seat's own bottom edge
+      // reads as part of the pane's furniture rather than as the next thing the
+      // run will do, while held against the last node instead it is the same
+      // blank rows simply moved underneath it. Between the two it reads as the
+      // drawing's own last section, which is what it is.
       const slack = Math.max(0, bottom - foot - 1 - depth)
-      const top = Math.min(bottom - depth, foot + 1 + Math.floor(slack / 2))
+      const top =
+        spanY > 0 ? foot + 1 : Math.min(bottom - depth, foot + 1 + Math.floor(slack / 2))
 
       paintAheadBand(c, view.pending, run.plan, top, depth, over)
     }
   }
 
-  onCanvas(c, hotspots, hidden > 0 ? bottom - 1 : bottom)
-  modal(hotspots, panel !== null && selected !== undefined, menuKeeps(options))
+  c.window()
+  inWindow(hotspots, headerSpots, { x: 0, y: bodyTop, w: bodyW, h: bottom - bodyTop })
 
-  const detail = panel && selected
-    ? paintDetail(c, selected, nowMs, panel, options.detailScroll ?? [], hotspots, run.defaultModel)
+  if (railed) {
+    paintBodyRail(c, c.columns - 1, bodyTop, bottom - bodyTop, atY, spanY, hotspots)
+  }
+
+  if (footed) {
+    paintFootRail(c, c.rows - 1, c.columns, atX, spanX, bodyW, hotspots)
+  }
+
+  onCanvas(c, hotspots, c.rows)
+  modal(hotspots, panel !== null && reading, menuKeeps(options))
+
+  const detail = panel && reading
+    ? openDetail(c, selected, inside, phase, nowMs, tick, panel, options, hotspots, fedBy, run.defaultModel)
     : undefined
 
   onCanvas(c, hotspots, c.rows)
@@ -3461,7 +4033,14 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
 
   shade(c, frontOf(about, settings, menu, detail && panel))
 
-  return { hotspots, orientation: view.orientation, detail }
+  return {
+    hotspots,
+    orientation: view.orientation,
+    detail,
+    view,
+    ...(front ? { front: front.phase } : {}),
+    ...(spanX > 0 || spanY > 0 ? { body: { x: atX, y: atY, spanX, spanY } } : {}),
+  }
 }
 
 /**
@@ -3609,6 +4188,38 @@ function paintPlan(
  * next under the drawing rather than at the end of it, which read as a note
  * about the pane rather than as part of the run, and it cost the graph a row.
  */
+/**
+ * The strip's own column head: the boundary's join into the header's rule, and
+ * the word over it.
+ *
+ * Drawn with the header rather than with the strip, because it is a column head
+ * and column heads do not scroll. It used to be drawn with the rest of the
+ * strip, inside the body, which meant the body's window had to start two rows
+ * higher than the drawing did to keep from clipping it — and once the graph
+ * could scroll down the pane, a card scrolled far enough up landed on the row
+ * the phase names are on and wrote over them.
+ */
+function paintAheadCaption(c: Canvas, view: Layout, over: boolean): void {
+  const strip = view.ahead
+
+  if (!strip || view.pending.length === 0 || view.lanes.length === 0 || view.headerRows < 2) {
+    return
+  }
+
+  const inner = Math.max(1, strip.w - 1)
+
+  c.put(strip.x, view.headerRows - 1, TEE_LEFT, quietOf(c.background))
+
+  // Centred over the column it captions, which is how every other phase's
+  // caption sits over its cards. Flush left it had two left edges a couple of
+  // cells apart, the caption's and the list's, which read as a caption that
+  // missed rather than as a heading over its list.
+  const caption = truncate(over ? 'Skipped' : 'Ahead', inner)
+  const capAt = strip.x + 1 + Math.max(0, Math.floor((inner - cells(caption)) / 2))
+
+  c.text(capAt, view.headerRows - 2, caption, aheadTone(over))
+}
+
 function paintAhead(c: Canvas, view: Layout, plan: Step[] | undefined, bottom: number, over: boolean): void {
   const strip = view.ahead
 
@@ -3650,21 +4261,6 @@ function paintAhead(c: Canvas, view: Layout, plan: Step[] | undefined, bottom: n
   const slack = Math.max(0, Math.min(Math.floor((inner - drawnW) / 2), inner - boxW))
   const nameAt = strip.x + 1 + slack
   const room = Math.max(1, inner - slack)
-
-  // The header's rule runs over the strip too, and meets the boundary the way
-  // it meets the ones between the sections.
-  if (view.headerRows >= 2) {
-    c.put(strip.x, view.headerRows - 1, TEE_LEFT, tone)
-
-    // Centred over the column it captions, which is how every other phase's
-    // caption sits over its cards. It was flush left while the names were flush
-    // left: two left edges a couple of cells apart read as a caption that
-    // missed, so the two move together rather than one of them alone.
-    const caption = truncate(over ? 'Skipped' : 'Ahead', inner)
-    const capAt = strip.x + 1 + Math.max(0, Math.floor((inner - cells(caption)) / 2))
-
-    c.text(capAt, view.headerRows - 2, caption, aheadTone(over))
-  }
 
   // Centred down the strip too, the way the foot band is centred in what the
   // drawing leaves it. Pinned under the boundary the caption sits on, three
@@ -4085,9 +4681,9 @@ const SWATCH_W = 4
 
 /** The layouts the dialog offers, in the order it offers them. */
 const LAYOUTS: { value: Orientation; label: string }[] = [
-  { value: 'flow', label: 'across' },
-  { value: 'stack', label: 'down' },
-  { value: 'time', label: 'timeline' },
+  { value: 'horizontal', label: 'horizontal' },
+  { value: 'vertical', label: 'vertical' },
+  { value: 'timeline', label: 'timeline' },
   { value: 'auto', label: 'fits' },
 ]
 
@@ -5137,6 +5733,87 @@ function drawColumns(
  * node meters only hint at, since they compare each agent to the slowest, not
  * to the clock.
  */
+/**
+ * The time axis under the bar: a rule across the span the bars are drawn on,
+ * with a tick and its elapsed time every `step` milliseconds.
+ *
+ * The timeline used to draw none. Every bar is scaled to the one span the
+ * header already states, so a ruled row was said to repeat that fact a dozen
+ * times and cost the rows the bars wanted — but a span for the whole run says
+ * nothing about where in the run one bar sits, which is the question a trace is
+ * opened to answer.
+ */
+function paintRuler(
+  c: Canvas,
+  y: number,
+  axisX: number,
+  axisW: number,
+  startMs: number,
+  span: number,
+  step: number,
+  cellOf: (ms: number) => number,
+  tone: Rgb,
+): void {
+  for (let x = axisX; x < axisX + axisW; x++) {
+    c.put(x, y, RULE_LEFT, tone)
+  }
+
+  for (let ms = 0; ms <= span; ms += step) {
+    const x = cellOf(startMs + ms)
+
+    if (x < axisX || x >= axisX + axisW) {
+      continue
+    }
+
+    c.put(x, y, TEE_LEFT, tone)
+
+    // `0ms` at the origin reads as a measurement of something; `0s` reads as
+    // the start of the scale, which is what it is.
+    const said = ms === 0 ? '0s' : elapsed(ms)
+
+    if (x + 1 + cells(said) < axisX + axisW) {
+      c.text(x + 1, y, said, COLORS.dim)
+    }
+  }
+}
+
+/**
+ * The ruler's ticks carried down the rows, in the cells no bar claimed.
+ *
+ * Without them a bar is read against the scale by looking straight up at it,
+ * and across thirty rows of a trace the row is lost by the time the eye is
+ * back. It is structure rather than a line anything travels along, so it stops
+ * wherever a bar or a word already stands and picks up again underneath.
+ */
+function paintGrid(
+  c: Canvas,
+  from: number,
+  to: number,
+  axisX: number,
+  axisW: number,
+  startMs: number,
+  span: number,
+  step: number,
+  cellOf: (ms: number) => number,
+  tone: Rgb,
+): void {
+  for (let ms = 0; ms <= span; ms += step) {
+    const x = cellOf(startMs + ms)
+
+    if (x < axisX || x >= axisX + axisW) {
+      continue
+    }
+
+    for (let y = from; y < to; y++) {
+      const cell = c.at(x, y)
+
+      if (cell === 0 || cell === 0x20) {
+        c.put(x, y, DASH_V, tone)
+      }
+    }
+  }
+}
+
 function paintTimeline(
   c: Canvas,
   run: RunState,
@@ -5146,9 +5823,13 @@ function paintTimeline(
   reservedRows: number,
   columns = c.columns,
   picker?: 'shut' | 'open',
-): Hotspot[] {
+  opened?: Set<string>,
+  scrollY = 0,
+  scrollX = 0,
+  follow = true,
+): { hotspots: Hotspot[]; body?: BodyScroll; front?: string } {
   const hotspots: Hotspot[] = []
-  const lanes = orderedLanes(run)
+  const lanes = orderedLanes(run, opened)
   const passes = passesOf(run)
   const barRows = barRowsOf(c.rows, c.columns)
 
@@ -5157,50 +5838,21 @@ function paintTimeline(
   if (run.agents.length === 0) {
     c.text(0, barRows, 'Waiting for the first agent to start.', COLORS.dim)
 
-    return hotspots
+    return { hotspots }
   }
 
-  // What the names need, not a fixed share of the row.
-  //
-  // A third of the pane, capped at twenty-eight, is what this column used to
-  // take whatever was on it: a run of short names left two thirds of the column
-  // empty, and a run of long ones cut every name at twenty-eight however wide
-  // the pane was — so at a hundred and forty columns the bars ran on for a
-  // hundred cells beside `review:journal:correctne…`. The column asks for the
-  // longest name it has to carry and is held to a share of the row, because the
-  // bar beside it is the other half of what a reader came here to read.
-  const wants = Math.max(0, ...run.agents.map(a => cells(a.label))) + 3
-  const ceiling = Math.max(10, Math.min(Math.floor(columns * 0.45), columns - 44))
-  const labelW = Math.max(10, Math.min(wants, Math.max(Math.floor(columns / 3), ceiling)))
-  const axisX = labelW + 1
-  // The numbers take a column of their own against the right edge rather than
-  // riding after each bar. Down a run of thirty agents that is the difference
-  // between thirty figures a reader has to find and three columns they can
-  // compare — and no bar can reach far enough to shoulder them off the row.
-  const facts = factsColumns(run, nowMs, Math.max(0, columns - axisX - 12))
-  const axisW = Math.max(4, columns - axisX - 1 - (facts.width > 0 ? facts.width + 2 : 0))
-  const factsX = columns - facts.width
-  const startMs = Math.min(run.startedMs, ...run.agents.map(a => a.startedMs))
-  const endMs = Math.max(run.endedMs ?? nowMs, ...run.agents.map(a => a.endedMs ?? nowMs))
-  const span = Math.max(1000, endMs - startMs)
-  const cellOf = (ms: number) =>
-    axisX + Math.min(axisW - 1, Math.max(0, Math.floor(((ms - startMs) / span) * axisW)))
-
-  const bottom = c.rows - reservedRows
+  /**
+   * The rows a phase stands on, which for a shut nested run is not its agents.
+   *
+   * Twenty-three agents of another workflow listed under this one's phase is a
+   * timeline of that workflow with this one's name at the top — and every trip
+   * through it interleaved, because the run was entered three times and the
+   * calling run worked in between. A shut band draws one bar a trip instead:
+   * the span each trip actually took, in the state it came back in, with the
+   * calling run's own work visible in the gaps. Press the ▸ for the rest.
+   */
+  const rowsOf = (lane: FoldedLane) => (lane.shut === true && lane.spans ? lane.spans : lane.agents)
   const running = run.status === 'running'
-  const nowX = cellOf(nowMs)
-  // Where a bar ends when its agent never reported one. While the run is going
-  // that is the clock; once it has ended it is the end of the run, or the bars
-  // of the agents it took down with it kept growing after it died.
-  const openEnd = running
-    ? nowMs
-    : (run.endedMs ?? Math.max(nowMs, ...run.agents.map(a => a.endedMs ?? 0)))
-
-  // No axis. Every bar is scaled to the one span the header already states, so
-  // a ruled row of `0  15s  30s  45s` repeats that fact a dozen times to say
-  // what one figure said once — and costs two of the rows the bars wanted.
-  let y = barRows
-  let remaining = run.agents.length
   // A phase nothing has entered has no bars to draw, so its band is a rule with
   // an empty row under it — which reads as a band that failed to draw rather
   // than as work still to come. They are gathered into a section at the foot
@@ -5208,14 +5860,182 @@ function paintTimeline(
   // kept back before a bar is drawn: taken afterwards they would have been rows
   // an agent was already on.
   const pending = lanes.filter(lane => lane.agents.length === 0).map(lane => lane.phase)
-  const aheadRows = aheadDepth(pending.length, bottom - barRows)
-  const floor = bottom - aheadRows
+  /**
+   * Every row the bands want: a rule, a bar an agent, and a blank between.
+   *
+   * It does not depend on the width, which is what lets the rail be settled
+   * before a cell is drawn. The graph layouts need two passes for this — a rail
+   * costs a column, a narrower column changes what fits, and what fits decides
+   * whether a rail is needed — but a timeline's rows are its agents, and its
+   * agents do not change when the pane narrows.
+   */
+  let content = 0
+  /** The band the run is working in, and the row it opens on. */
+  let front: FoldedLane | undefined
+  let frontRow = 0
 
-  outer: for (const lane of lanes) {
-    if (y >= floor) {
-      break
+  for (const lane of lanes) {
+    if (lane.agents.length === 0) {
+      continue
     }
 
+    if (running && lane.agents.some(agent => agent.state === 'running')) {
+      front = lane
+      frontRow = content
+    }
+
+    content += rowsOf(lane).length + 2
+  }
+
+  content = Math.max(0, content - 1)
+
+  const startMs = Math.min(run.startedMs, ...run.agents.map(a => a.startedMs))
+  const endMs = Math.max(run.endedMs ?? nowMs, ...run.agents.map(a => a.endedMs ?? nowMs))
+  const span = Math.max(1000, endMs - startMs)
+  // Where a bar ends when its agent never reported one. While the run is going
+  // that is the clock; once it has ended it is the end of the run, or the bars
+  // of the agents it took down with it kept growing after it died.
+  const openEnd = running
+    ? nowMs
+    : (run.endedMs ?? Math.max(nowMs, ...run.agents.map(a => a.endedMs ?? 0)))
+  const shortest = Math.max(
+    1,
+    Math.min(...run.agents.map(agent => (agent.endedMs ?? openEnd) - agent.startedMs)),
+  )
+
+  /**
+   * How wide the axis is, which is no longer how wide the pane is.
+   *
+   * Squeezed into whatever the pane had left, a run of an hour drew every agent
+   * that took under a minute as the same two cells — so a column of bars all
+   * the same length said the agents all took the same time, which was the one
+   * thing the drawing was there to disprove. The axis is a measurement, and a
+   * measurement too coarse to separate its readings is not one.
+   *
+   * So it takes the cells the run needs: enough that the shortest span on it is
+   * a cell of its own, and the body scrolls sideways to the rest. Capped,
+   * because a single short agent in an hour-long run would otherwise ask for
+   * thousands of columns to be scrolled through at a dozen cells a press.
+   */
+  const AXIS_PANES = 4
+  const axisSpanOf = (axisW: number) =>
+    Math.max(axisW, Math.min(Math.ceil(span / shortest), axisW * AXIS_PANES))
+
+  /**
+   * The rails cost a row and a column, and each changes what the other has to
+   * work with, so the sizes are settled before a cell is drawn: measure with
+   * neither, see which way the drawing overruns, and measure again at what is
+   * left. The same two passes `paint` makes for the graph layouts.
+   */
+  const measure = (footed: boolean) => {
+    const bottom = c.rows - reservedRows - (footed ? 1 : 0)
+    const aheadRows = aheadDepth(pending.length, Math.max(1, bottom - barRows))
+    const floor = bottom - aheadRows
+    // The ruler stands under the bar and does not scroll with the bands: a time
+    // axis that scrolls off the top is a scale the reader can no longer read
+    // the bars against.
+    const top = barRows + 1
+    const shown = Math.max(1, floor - top)
+    const spanY = Math.max(0, content - shown)
+    const railed = spanY > 0 && shown >= 2 + RAIL_MIN && columns >= RAIL_W + 24
+    const width = columns - (railed ? RAIL_W : 0)
+
+    // What the names need, not a fixed share of the row.
+    //
+    // A third of the pane, capped at twenty-eight, is what this column used to
+    // take whatever was on it: a run of short names left two thirds of the
+    // column empty, and a run of long ones cut every name at twenty-eight
+    // however wide the pane was — so at a hundred and forty columns the bars ran
+    // on for a hundred cells beside `review:journal:correctne…`. The column asks
+    // for the longest name it has to carry and is held to a share of the row,
+    // because the bar beside it is the other half of what a reader came here to
+    // read.
+    const wants = Math.max(0, ...run.agents.map(a => cells(a.label))) + 3 + INSET_W
+    const ceiling = Math.max(10, Math.min(Math.floor(width * 0.45), width - 44))
+    const labelW = Math.max(10, Math.min(wants, Math.max(Math.floor(width / 3), ceiling)))
+    const axisX = labelW + 1
+    // The numbers take a column of their own against the right edge rather than
+    // riding after each bar. Down a run of thirty agents that is the difference
+    // between thirty figures a reader has to find and three columns they can
+    // compare — and no bar can reach far enough to shoulder them off the row.
+    //
+    // The axis is asked for first and the figures are offered what is left.
+    // Offered everything past the names, they took forty-six cells of a hundred
+    // and ten and left the bars twenty-eight — the narrowest column on a drawing
+    // whose whole subject is the bars. Held to this, the ladder in
+    // `factsColumns` drops the clock first, which is the fact the bar beside it
+    // already draws.
+    const wantsAxis = Math.max(12, Math.floor(width * 0.4))
+    const facts = factsColumns(run, nowMs, Math.max(0, width - axisX - 1 - wantsAxis))
+    const axisW = Math.max(4, width - axisX - 1 - (facts.width > 0 ? facts.width + 2 : 0))
+
+    return {
+      aheadRows,
+      floor,
+      top,
+      shown,
+      spanY,
+      railed,
+      width,
+      labelW,
+      axisX,
+      facts,
+      axisW,
+      factsX: width - facts.width,
+      axisSpan: axisSpanOf(axisW),
+      spanX: Math.max(0, axisSpanOf(axisW) - axisW),
+    }
+  }
+
+  const footed = measure(false).spanX > 0
+  const { aheadRows, floor, top, shown, spanY, railed, width, labelW, axisX, facts, axisW, factsX, axisSpan, spanX } =
+    measure(footed)
+
+  // While the run is live the window looks where the work is, and a reader who
+  // scrolled away is left there until the run enters a different phase: the
+  // same contract the graph layouts keep, for the same reason. See the seat in
+  // `paint`.
+  const seat = follow && front ? frontRow - Math.floor(Math.max(0, shown - 1) / 2) : scrollY
+  const atY = Math.max(0, Math.min(spanY, Math.round(seat)))
+  const atX = Math.max(0, Math.min(spanX, Math.round(scrollX)))
+
+  /** Where a moment stands on the axis, in the cells the pane is over. */
+  const cellOf = (ms: number) =>
+    axisX -
+    atX +
+    Math.min(axisSpan - 1, Math.max(0, Math.floor(((ms - startMs) / span) * axisSpan)))
+  /** Whether a cell is one of the axis's own, rather than a name's or a figure's. */
+  const onAxis = (x: number) => x >= axisX && x < axisX + axisW
+
+  const nowX = cellOf(nowMs)
+
+  // The ruler: a round step of time between ticks, near a dozen cells apart, so
+  // a bar can be read against the scale rather than only against the bars
+  // beside it. It used to be left out — every bar is scaled to the one span the
+  // header states, so a ruled row was said to repeat that fact — but a span for
+  // the whole run tells a reader nothing about where in the run one bar sits,
+  // which is the question a trace is opened to answer.
+  const STEPS = [
+    1000, 2000, 5000, 10_000, 15_000, 30_000, 60_000, 120_000, 300_000, 600_000, 900_000,
+    1_800_000, 3_600_000,
+  ]
+  const perCell = span / axisSpan
+  const step = STEPS.find(ms => ms >= perCell * 12) ?? STEPS[STEPS.length - 1]
+  const quiet = quietOf(c.background)
+
+  paintRuler(c, barRows, axisX, axisW, startMs, span, step, cellOf, quiet)
+
+  let y = top - atY
+  /** Where the bar's own presses end: everything after this can scroll away. */
+  const headerSpots = hotspots.length
+
+  // From here the bands are drawn at their place in the whole timeline, and the
+  // window takes whichever of them the pane is currently over. A band scrolled
+  // half off the top draws the half still in the body; the rest simply does not
+  // land, so nothing has to be laid out twice or cut to size.
+  c.window(0, top, width, floor - top)
+
+  for (const lane of lanes) {
     if (lane.agents.length === 0) {
       continue
     }
@@ -5223,53 +6043,95 @@ function paintTimeline(
     // The same rule a stacked band opens with, for the same reason: it says
     // where a phase starts, what it is called and how far it has got, and the
     // rows under it are that phase's agents.
-    const band = phaseFactsOf(lane.phase, lanes.indexOf(lane), lane.agents, passes, overOf(run))
-    const filled = band.total > 0 ? Math.round((band.landed / band.total) * columns) : 0
-    const quiet = quietOf(c.background)
+    const open = lane.nested === true && lane.shut !== true
+    const indent = open ? INSET_W : 0
+    const band = phaseFactsOf(
+      open ? FOLD_OPEN + lane.phase.slice(FOLD_SHUT.length) : lane.phase,
+      lanes.indexOf(lane),
+      lane.agents,
+      passes,
+      overOf(run),
+    )
+    const filled = band.total > 0 ? Math.round((band.landed / band.total) * width) : 0
 
-    for (let x = 0; x < columns; x++) {
-      const landed = x < filled
-
-      c.put(x, y, landed ? RULE_DONE : RULE_LEFT, quiet)
+    for (let x = 0; x < width; x++) {
+      c.put(x, y, ruleOf(lane.nested === true, x < filled), quiet)
     }
 
-    const label = paintPhaseLabel(c, 0, y, columns, band, 2)
+    const handle = lane.nested === true ? foldHandle(!open, lane.agents.length, width) : ''
+    // Centred, like every other band rule that runs the width of the pane.
+    const label = paintPhaseLabel(
+      c,
+      0,
+      y,
+      width,
+      band,
+      2,
+      handle.length > 0 ? HANDLE_GAP + handle.length + 1 : 0,
+    )
 
     c.put(label.x - 1, y, 0x20, quiet)
-    c.put(label.x + label.w, y, 0x20, quiet)
+    c.put(label.x + label.used, y, 0x20, quiet)
+
+    // The handle that opens the run and folds it back, after the caption,
+    // exactly where the other two layouts put it.
+    if (lane.nested) {
+      const drew = paintFoldHandle(
+        c,
+        lane.phase,
+        label.x + label.used + HANDLE_GAP,
+        y,
+        width - label.x - label.used - HANDLE_GAP,
+        quiet,
+        !open,
+        lane.agents.length,
+        hotspots,
+      )
+
+      if (!drew) {
+        hotspots.push(markSpot(lane.phase, label.x, y, 0))
+      }
+    }
 
     y++
 
-    for (const agent of lane.agents) {
-      // The last row is kept for the count of what did not fit.
-      if (y >= floor - 1 && remaining > 1) {
-        c.text(0, Math.min(y, floor - 1), `… ${remaining} more`, COLORS.dim)
-        break outer
-      }
-
-      if (y >= floor) {
-        break outer
-      }
-
-      const isSelected = agent.agentId === selectedId
+    for (const agent of rowsOf(lane)) {
+      // A shut nested run's rows are its trips, not its agents, so each of them
+      // answers to the run — the same press its card and its row answer to in
+      // the other two layouts.
+      const key = lane.shut === true ? `${RUN_OPEN}${lane.phase}` : agent.agentId
+      const isSelected = key === selectedId
       const color = colorOf(agent.state)
       const took = (agent.endedMs ?? openEnd) - agent.startedMs
-      const room = labelW - 3
+      const room = labelW - 3 - indent
 
       const moving = agent.state === 'running' || isSelected
 
-      c.put(1, y, markOf(agent.state, tick), color)
+      // A nested run's agents stand one step in from the run that called them,
+      // behind the same dashed gutter the other layouts give them — so a reader
+      // scrolling a trace of a hundred rows can see at a glance which of them
+      // belong to this run and which to a workflow it called.
+      if (indent > 0) {
+        c.put(1, y, SEAM_V, quiet)
+      }
+
+      c.put(1 + indent, y, markOf(agent.state, tick), color)
       c.text(
-        3,
+        3 + indent,
         y,
         moving ? slide(agent.label, room, tick) : truncate(agent.label, room),
         isSelected ? COLORS.accent : COLORS.text,
       )
-      hotspots.push({ agentId: agent.agentId, x: 3, y, w: Math.min(room, cells(agent.label)) })
+      hotspots.push({ agentId: key, x: 3 + indent, y, w: Math.min(room, cells(agent.label)) })
 
       const x0 = cellOf(agent.startedMs)
       const x1 = cellOf(agent.endedMs ?? openEnd)
       const length = x1 - x0 + 1
+      // The axis is wider than the pane, so a bar can start before the window
+      // and end after it. Clipped rather than moved: a bar drawn at the edge it
+      // ran off is a bar in the wrong place on the scale.
+      const from = Math.max(x0, axisX)
+      const to = Math.min(x1, axisX + axisW - 1)
       const isLive = agent.state === 'running'
       const glow = glowOf()
 
@@ -5286,7 +6148,7 @@ function paintTimeline(
       // the measurement it seemed to give grew every second.
       const block = cut ? 0x2591 : isLive ? 0x2592 : 0x2588
 
-      for (let x = x0; x <= x1; x++) {
+      for (let x = from; x <= to; x++) {
         const tone = isLive
           ? mix(color, glow, pulse(x - x0, Math.max(2, length * 2), tick))
           : isSelected
@@ -5296,7 +6158,7 @@ function paintTimeline(
         c.put(x, y, block, tone)
       }
 
-      if (isLive) {
+      if (isLive && onAxis(x1)) {
         c.put(x1, y, ARROW_RIGHT, mix(color, glow, 0.5))
       }
 
@@ -5309,27 +6171,28 @@ function paintTimeline(
       const after = x1 + 2
       const afterRoom = factsX - 2 - after
 
-      if (tail && afterRoom >= 6) {
+      if (tail && afterRoom >= 6 && onAxis(x1)) {
         c.text(after, y, truncate(tail, afterRoom), tailColorOf(agent, nowMs, color))
       }
 
-      remaining--
       y++
     }
 
-    if (y < floor) {
-      y++
-    }
+    y++
   }
 
-  if (pending.length > 0) {
-    // Centred between the last bar and the rows kept back for it, for the
-    // reason the graph centres it: against either end it reads as the seat's
-    // furniture rather than as the run's last section.
-    const at = Math.min(floor, y + Math.floor(Math.max(0, floor - y) / 2))
-
-    paintAheadBand(c, pending, run.plan, at, aheadRows, overOf(run))
-  }
+  paintGrid(
+    c,
+    top,
+    Math.min(y, floor),
+    axisX,
+    axisW,
+    startMs,
+    span,
+    step,
+    cellOf,
+    mix(COLORS.track, COLORS.text, 0.14),
+  )
 
   // Where the clock stands, down the rows the agents took, in the cells no bar
   // claimed: a bar that reaches it is still going, one that stops short landed.
@@ -5339,15 +6202,41 @@ function paintTimeline(
   // there would sit a third of the way along bars that visibly continue past
   // it, and claim a moment the drawing contradicts. What happened to each
   // agent is a word in its own column instead.
-  if (running) {
-    for (let row = barRows; row < Math.min(y, bottom); row++) {
-      if (c.at(nowX, row) === 0x20) {
+  if (running && onAxis(nowX)) {
+    for (let row = top; row < Math.min(y, floor); row++) {
+      const cell = c.at(nowX, row)
+
+      if (cell === 0x20 || cell === 0 || cell === DASH_V) {
         c.put(nowX, row, DASH_V, mix(COLORS.track, COLORS.running, 0.35))
       }
     }
   }
 
-  return hotspots
+  c.window()
+  inWindow(hotspots, headerSpots, { x: 0, y: top, w: width, h: floor - top })
+
+  if (pending.length > 0) {
+    // Centred between the last bar and the rows kept back for it, for the
+    // reason the graph centres it: against either end it reads as the seat's
+    // furniture rather than as the run's last section.
+    const at = Math.max(barRows, Math.min(floor, y + Math.floor(Math.max(0, floor - y) / 2)))
+
+    paintAheadBand(c, pending, run.plan, at, aheadRows, overOf(run))
+  }
+
+  if (railed) {
+    paintBodyRail(c, columns - 1, top, floor - top, atY, spanY, hotspots)
+  }
+
+  if (footed && spanX > 0) {
+    paintFootRail(c, c.rows - 1, columns, atX, spanX, axisW, hotspots)
+  }
+
+  return {
+    hotspots,
+    ...(spanY > 0 || spanX > 0 ? { body: { x: atX, y: atY, spanX, spanY } } : {}),
+    ...(front ? { front: front.phase } : {}),
+  }
 }
 
 /**
@@ -5358,7 +6247,34 @@ function paintTimeline(
  * `right` for what belongs against the block's far edge. A line with either is
  * drawn field by field; one with neither is drawn as the string it is.
  */
-type DetailLine = { text: string; color: Rgb; bg?: Rgb; fields?: Field[]; right?: Field[] }
+type DetailLine = {
+  text: string
+  color: Rgb
+  bg?: Rgb
+  /**
+   * The line as coloured runs set end to end, with no gap between them.
+   *
+   * `fields` is a row of separate measurements and puts two cells between each
+   * of them; this is one piece of text whose parts are told apart by tone. A
+   * command's own name, its flags and its quoted strings are one line of shell,
+   * not three facts about it.
+   *
+   * Tone and not hue. Colour in this pane says what state a node is in or that a
+   * line is a wire, and a third meaning would cost the first two their meaning —
+   * so the runs are the quoted block's own grey at three weights, and the reader
+   * who ignores them reads exactly what they read before.
+   */
+  runs?: Field[]
+  fields?: Field[]
+  right?: Field[]
+  /**
+   * The cells of this line a reader can press, and what it presses.
+   *
+   * `at` is measured from the first cell of the text column rather than from
+   * the canvas, since a block does not know where it sits until it is drawn.
+   */
+  press?: { key: string; at: number; w: number }
+}
 
 /** One scrollable block of the dialog, and where its list currently stands. */
 export type DetailPane = {
@@ -5370,23 +6286,209 @@ export type DetailPane = {
   scroll: number
 }
 
-/** Every block of the dialog, in the order their controls are keyed. */
-export type DetailView = { panes: DetailPane[] }
+/**
+ * Every block of the dialog, in the order their controls are keyed: one entry
+ * per tab, and only the tab on top has anything in it.
+ *
+ * A tab nobody is looking at reports no lines and no room for them, so a press
+ * aimed at it can move nothing — which is the truth about a list that is not
+ * drawn. Each keeps its own place in `detailScroll`, so coming back to a tab
+ * comes back to where it was left.
+ */
+export type DetailView = {
+  panes: DetailPane[]
+  tab: number
+  /**
+   * The opened call's own list, where one is open.
+   *
+   * Kept apart from `panes` because the tabs' places are what `detailScroll`
+   * indexes: a call's scroll written into pane zero would be the Prompt tab's
+   * scroll, and coming back from a call would land the prompt wherever the
+   * call's payload happened to be left.
+   */
+  call?: DetailPane
+  /**
+   * The opened call's output, which is a compartment of its own beside its
+   * argument's — its own ground, its own bar, its own place kept.
+   */
+  out?: DetailPane
+  /**
+   * The canvas row the shelf between those two compartments stands on.
+   *
+   * The wheel needs it. A scroll carries rows and nothing else, so which of the
+   * two the pointer is over is read from the row it was on, the same way the
+   * sideways move is.
+   */
+  split?: number
+  /**
+   * The list of a nested run's agents, where a run is open rather than an agent.
+   *
+   * It is the only pane in its dialog and it keeps its scroll under pane zero,
+   * which is safe because the two readings can never be open at once: pressing
+   * a row of the list is what closes the run and opens the agent.
+   */
+  run?: DetailPane
+}
 
 /**
- * The lines a call takes: what it was and what it was passed.
+ * The key a row in the Calls list presses: one call, opened whole.
+ */
+export const CALL_OPEN = '@call:'
+
+/**
+ * A call's argument as one line: its own line breaks and runs of space closed
+ * up, so the whole of it reads as a sentence and what is cut off is cut off the
+ * end.
  *
- * What came back is not listed, a call that failed included. A tool's answer is
- * the agent's material, not the reader's — a file the agent read, a directory it
- * listed — and a list of them buried the calls themselves: what an agent did is
- * the sequence of its calls, and that sequence has to be readable down the
- * column. A failed call's reason was the one exception, and it was three lines
- * of an engine's own wording in a list of one-line rows; the mark says the call
+ * The keys are kept. A call's payload is usually two or three fields and only
+ * one of them identifies it — `command:` for a shell call, `file_path:` for a
+ * read — but which one that is differs by tool, and a row that showed the first
+ * value alone read as blank for every tool whose first field is not the
+ * interesting one. Keyed, a reader can see what they are looking at and what
+ * they are not.
+ */
+function flatten(input: string): string {
+  return input.replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * A tool's name as a reader tells it from the tool beside it.
+ *
+ * An MCP tool is named `mcp__<server>__<tool>`, and one knowledge-base server
+ * in this corpus contributes fifteen of them whose first forty cells are
+ * identical: cut to fit a column, `mcp__plugin_engineering-knowledge-base_ekb…`
+ * is the same string for a file read, a tree walk and a semantic search. The
+ * last segment is the part that differs, and it is the part a reader says out
+ * loud. The whole name is in the call's own dialog, where there is room for it.
+ */
+function toolShort(name: string): string {
+  const at = name.lastIndexOf('__')
+
+  return at >= 0 && at + 2 < name.length ? name.slice(at + 2) : name
+}
+
+/**
+ * The keys that say which call this is, in the order they say it.
+ *
+ * A payload read back from a transcript arrives as every key the tool was
+ * handed, in the order the tool's own schema happens to list them, so an `Edit`
+ * led with `replace_all: false` — the same six characters on every `Edit` in the
+ * run — and the path it edited was cut off the end of the row. A `Bash` led with
+ * its command and then spent the rest of the row on `description`, which is the
+ * model describing to itself what it had just written.
+ */
+const NAMES_A_CALL = [
+  'command',
+  'file_path',
+  'notebook_path',
+  'path',
+  'pattern',
+  'query',
+  'url',
+  'description',
+  'prompt',
+]
+
+/**
+ * The part of a call's payload that says which call it is.
+ *
+ * The key's own label goes with it. `command:` in front of a command, on a row
+ * whose first column already reads `Bash`, is the pane saying the same thing
+ * twice in the tool's vocabulary rather than the reader's — and it costs cells
+ * the path or the command needs.
+ *
+ * A payload with no key the pane knows keeps all of it, labels included: a tool
+ * this file has never heard of has no identifying argument to pick, and the
+ * keys are then the only thing saying what the values are.
+ */
+function saidOf(input: string): string {
+  const lines = input.split('\n')
+  const keyed = lines.map(line => {
+    const at = line.indexOf(': ')
+    const key = at > 0 ? line.slice(0, at) : ''
+
+    return /^[a-z_][a-z0-9_]*$/.test(key) ? key : ''
+  })
+
+  if (keyed.every(key => key === '')) {
+    return input
+  }
+
+  const from = keyed.findIndex(key => NAMES_A_CALL.includes(key))
+
+  if (from < 0) {
+    return input
+  }
+
+  // Through to the next key, not just the one line: a command written over four
+  // lines is four lines of this payload, and only the first of them carries the
+  // key.
+  let to = from + 1
+
+  while (to < lines.length && keyed[to] === '') {
+    to++
+  }
+
+  return [lines[from].slice(lines[from].indexOf(': ') + 2), ...lines.slice(from + 1, to)].join('\n')
+}
+
+/**
+ * A path cut to fit, from the front.
+ *
+ * Everything else on this pane is cut from the end, because the head of a
+ * sentence or a command is what identifies it. A path is the other way round: a
+ * run's calls all live under one tree, so the first forty characters of every
+ * `Edit` in the list are the same forty characters, and cutting from the end
+ * produced a column of identical rows. The file is the last segment, and the
+ * directory that gives it meaning is the one before it.
+ *
+ * Cut on the separators rather than mid-segment, so what is left is a path a
+ * reader can read as a path.
+ */
+function tailPath(path: string, max: number): string {
+  if (cells(path) <= max || max < 8) {
+    return truncate(path, max)
+  }
+
+  const parts = path.split('/')
+
+  for (let from = 1; from < parts.length; from++) {
+    const tail = `\u2026/${parts.slice(from).join('/')}`
+
+    if (cells(tail) <= max) {
+      return tail
+    }
+  }
+
+  // One segment longer than the row: keep its end, which is where a file name
+  // and its extension are.
+  return `\u2026${path.slice(-(max - 1))}`
+}
+
+/** Whether what a call was passed is a path, and so cut from the front. */
+function isPath(said: string): boolean {
+  return /^[~/][^\s]*\/[^\s]+$/.test(said)
+}
+
+/**
+ * One call as one row: what it was, what it was passed, what it took and spent.
+ *
+ * It used to be as many rows as the payload wrapped to, with a dashed seam
+ * between one call and the next. What that produced on an agent with forty-two
+ * calls was a column of ragged blocks two to six rows deep, four of them
+ * visible at a time — so the list whose whole job is to be read as a sequence
+ * could not be read as one, and finding a call meant scrolling past the text of
+ * every call before it.
+ *
+ * One row each, and the rows are uniform: the tool names line up in a column,
+ * the arguments start at one place, the figures hold the right edge, and twenty
+ * calls are on screen instead of four. What a call was about in full is a press
+ * away, in the call's own dialog, which is where a payload that wants forty
+ * lines can have them.
+ *
+ * What came back is not on the row, a call that failed included. A tool's answer
+ * is the agent's material, not the reader's, and the mark already says the call
  * failed, which is the part that belongs in the sequence.
- *
- * The payload wraps rather than truncates — what a call was *about* is usually
- * the reason the detail was opened, and one elided line of it says little — so
- * the column scrolls instead of cutting.
  *
  * A call read back from a transcript is stamped from the recording's own
  * timestamps, so it states its duration like a call this module watched. What a
@@ -5395,18 +6497,16 @@ export type DetailView = { panes: DetailPane[] }
  * running is drawn as a call that finished, not as one still in flight, since
  * the agent it belonged to certainly is not.
  */
-function callLines(call: ToolCall, nowMs: number, width: number, live: boolean): DetailLine[] {
+function callRow(call: ToolCall, nowMs: number, width: number, live: boolean, nameW: number): DetailLine {
   const running = live && call.startedMs > 0 && call.endedMs === undefined
-  const mark = running ? '…' : call.isError ? '✖' : '✔'
+  const mark = running ? '\u2026' : call.isError ? '\u2716' : '\u2714'
   const color = running ? COLORS.running : call.isError ? COLORS.failed : COLORS.done
-  const name = `${mark}  ${call.name}`
   const quiet = mix(COLORS.text, color, 0.3)
   // What the call cost and how long it took, and nothing else. It used to carry
   // the number of the model request that issued it as well, which is an index
   // into a list the dialog does not draw — a figure a reader can do nothing
   // with, sitting in the row where the two they can are.
   const until = call.endedMs ?? (running ? nowMs : undefined)
-  const lead = cells(name) + 2
   const tailWith = (form: (n: number) => string): Field[] =>
     [
       {
@@ -5416,53 +6516,41 @@ function callLines(call: ToolCall, nowMs: number, width: number, live: boolean):
       { text: call.stepTokens === undefined ? '' : form(call.stepTokens), color: COLORS.spend },
     ].filter(f => f.text.length > 0)
 
-  // The count says what the request that issued this call wrote, and `∑ 4.2k`
-  // on its own is a figure a reader has to be told the unit of. The word goes
-  // in wherever the row still leaves the call's own argument something to be
-  // read in — eight cells, which is the floor the wrap is given below.
-  const named = tailWith(tokensNamed)
-  const tail = lead + widthOf(named, 2) + 2 + 8 <= width ? named : tailWith(tokensWide)
+  // The argument is the only thing on the row that says which call this is, so
+  // it is the last thing to give way. The figures go down a ladder until the
+  // argument has twenty-four cells — about a path's last two segments, or a
+  // command and its first flag — the unit first, then the count, then the clock
+  // with it. Under that the row is a tool name and an ellipsis, and a list of
+  // those is a list nobody can find a call in.
+  //
+  // A narrow pane runs out before the ladder does, and there the last rung is
+  // taken: the tool and what it was passed, and the figures in the call's own
+  // dialog, where they are three fields on a row of their own.
+  const lead = 3 + nameW + 2
+  const ladder = [tailWith(tokensNamed), tailWith(tokensWide), tailWith(tokensNamed).slice(0, 1), []]
+  const fits = (row: Field[]) =>
+    lead + (row.length > 0 ? widthOf(row, 2) + 2 : 0) + 24 <= width
+  const tail = ladder.find(fits) ?? ladder[ladder.length - 1]
   const tailW = tail.length > 0 ? widthOf(tail, 2) : 0
-  const body = Math.max(8, width - lead)
-  const said = briefPaths(call.input)
-  const chunks = said ? wrapAfter(said, Math.max(8, body - (tailW > 0 ? tailW + 2 : 0)), body, 8) : []
+  const room = Math.max(4, width - lead - (tailW > 0 ? tailW + 2 : 0))
+  const name = truncate(toolShort(call.name), nameW)
+  const flat = flatten(saidOf(call.input))
+  const said = isPath(flat) ? tailPath(flat, room) : truncate(flat, room)
 
-  // The tool's name and what it was called with on one row. They were two rows
-  // — the name, then the argument indented under it — which doubled the height
-  // of a list whose whole job is to be read as a sequence, and set the name of
-  // every call in a column of its own with nothing else in it.
-  const lines: DetailLine[] = [
-    {
-      text: '',
-      color,
-      fields: [{ text: name, color }, ...(chunks[0] ? [{ text: chunks[0], color: quiet }] : [])],
-      right: tail,
-    },
-  ]
-
-  chunks.slice(1).forEach(text => {
-    lines.push({ text: `${' '.repeat(lead)}${text}`, color: quiet })
-  })
-
-  return lines
-}
-
-/**
- * The line between one call and the next.
- *
- * A call is a heading and however many lines its payload wrapped to, so the
- * block is a column of ragged groups with nothing between them: the last line
- * of one call's input sat directly above the next call's name, and where a
- * call's payload was itself a list the two ran together. The rule is the same
- * device the block's own heading is ruled with and the same tone every other
- * structural line on the pane takes, so it divides without being read as
- * content — and it is drawn between calls only, never above the first or below
- * the last, where it would close the block a second time.
- */
-const CALL_SEAM = 0x2508
-
-function callSeam(c: Canvas, width: number): DetailLine {
-  return { text: String.fromCodePoint(CALL_SEAM).repeat(Math.max(0, width)), color: quietOf(c.background) }
+  return {
+    text: '',
+    color,
+    // The mark carries the state and stands outside the press. Every cell under
+    // a Button comes out in the Button's own plain label, so a mark inside one
+    // would lose the colour that is the whole of what it says.
+    fields: [
+      { text: mark, color },
+      { text: `${name}${' '.repeat(Math.max(0, nameW - cells(name)))}`, color: quiet },
+      { text: said, color: quietOf(COLORS.text) },
+    ],
+    right: tail,
+    press: { key: `${CALL_OPEN}${call.id}`, at: 3, w: Math.max(0, lead - 3 + cells(said)) },
+  }
 }
 
 /** The cells a panel owns, its dividing rule included. */
@@ -5480,19 +6568,27 @@ export type Rect = { x: number; y: number; w: number; h: number }
  * long ones — so where the seat is wide enough the column is what it gets, and
  * the rule dividing the two turns ninety degrees with it.
  */
-/** One titled block of the detail, laid out as a column of its own. */
+/** One block of the detail, drawn on its own tab. */
 type Section = {
-  title: string
+  /** What its tab is called: one or two words, since the strip holds them all. */
+  tab: string
+  /**
+   * The shorter spelling of the name, for a strip that will not hold the full
+   * one even with the counts gone.
+   *
+   * The last rung of the strip's ladder. A tab whose name has gone is a tab
+   * nobody can aim at, so a name gives up letters rather than the tab giving up
+   * its place.
+   */
+  short?: string
   lines: (width: number) => DetailLine[]
   /**
-   * True where the lines cannot change while the run is going.
+   * Whether the block sits on the pane's own ground rather than the quoted one.
    *
-   * Only a block like that may give width to its neighbours: a block still
-   * being written would give a few cells away, grow past the rows it now fits
-   * in, take them back, and re-wrap every column in the dialog on a frame the
-   * reader was in the middle of reading.
+   * The quoted ground says *another program wrote this*, which is true of a
+   * prompt and of an answer and not of an index the pane built itself.
    */
-  fixed?: boolean
+  plain?: boolean
 }
 
 /**
@@ -5538,6 +6634,55 @@ function folded(line: string, width: number, color: Rgb): DetailLine[] {
 }
 
 /**
+ * Somebody else's writing, as lines of a block, with their own lines kept.
+ *
+ * A prompt and an answer are markdown: headings, list items, table rows and
+ * block quotes, and every one of those is a line. Wrapped as one paragraph — as
+ * this pane wrapped them until now — the structure does not degrade, it
+ * disappears, and what is left is a slab with `#` and `>` and `|` loose in the
+ * middle of sentences. A two-hundred-line implementation plan came out as one
+ * three-hundred-line paragraph.
+ *
+ * So the writer's lines are the lines, each wrapped inside itself, the same
+ * treatment a call's argument already gets. Blank lines are kept, because the
+ * paragraph breaks are the writer's too.
+ *
+ * A heading line is drawn a step back from the body, which is this pane's rule
+ * for structure everywhere else: what the words say is the content, and the
+ * scaffolding around it is grey. The body keeps the strength it had, so nothing
+ * a reader came to read is quieter than before, and a heading is findable while
+ * scrolling because it is the one line in view that is a different colour.
+ *
+ * That is the whole of the styling. Marking quotes, code spans and emphasis as
+ * well would be a syntax highlighter in a pane that is not an editor.
+ *
+ * The line length is capped short of the block. Prose set the full width of a
+ * two-hundred-column pane is prose a reader loses their place in between one
+ * line and the next; a table of calls is not, and keeps the whole block.
+ */
+const MEASURE = 96
+
+/**
+ * The most lines a pane of prose may run to.
+ *
+ * High enough that no prompt in the corpus reaches it, because the text *is* the
+ * pane and the reader opened the tab to read it: a ceiling against a runaway,
+ * not a budget. The wrapper came from the calls list, where an argument was a
+ * block of rows among other blocks and stopping at two hundred was generous; a
+ * four-hundred-line plan stopped at two hundred is a document the pane declines
+ * to show the end of.
+ */
+const PROSE_MAX = 2_000
+
+function prose(text: string, width: number, color: Rgb): DetailLine[] {
+  const measure = Math.min(width, MEASURE)
+  const quiet = mix(color, COLORS.dim, 0.45)
+
+  return written(text, measure, measure, PROSE_MAX)
+    .map(line => ({ text: line, color: /^\s{0,3}#{1,6}\s/.test(line) ? quiet : color }))
+}
+
+/**
  * What an agent answered, as lines of a block.
  *
  * Most answers are prose and are read as prose, wrapped to the block. An agent
@@ -5551,7 +6696,7 @@ function answerLines(answer: string, width: number, color: Rgb): DetailLine[] {
   const value = parsedJson(answer)
 
   if (value === undefined || typeof value === 'string') {
-    return wrap(typeof value === 'string' ? value : answer, width, 200).map(text => ({ text, color }))
+    return prose(typeof value === 'string' ? value : answer, width, color)
   }
 
   return JSON.stringify(value, null, 2)
@@ -5578,10 +6723,16 @@ function paintDetail(
   c: Canvas,
   agent: AgentRow,
   nowMs: number,
+  tick: number,
   rect: Rect,
   scroll: number[],
+  tab: number,
   hotspots: Hotspot[],
+  /** The phases that fed this agent from further back than the band above it. */
+  fedBy: string[],
   model?: string,
+  /** Set when this agent was opened out of a nested run's list, to return to. */
+  fromRun?: string,
 ): DetailView {
   const color = colorOf(agent.state)
   const last = rect.y + rect.h - 1
@@ -5625,8 +6776,16 @@ function paintDetail(
   // of.
   const toolsFull = toolLine([agent], 2)
   const toolsBare = toolLine([agent], 0)
-  const factsWith = (form: (n: number) => string, tools: string): Field[] => [
+  // The same word the graph writes, in a row that always has the cells for it.
+  // A card fed from further back carries `▾ from Preflight` above it, and gives
+  // the word up for the name where the row it shares with an arriving wire is
+  // too short for both. The dialog's foot is never that short, so a reader who
+  // opened the node to find out what the bare name beside it meant has the
+  // answer in the same place as the rest of the node's facts.
+  const from = (show: boolean): string => (show && fedBy.length > 0 ? `from ${fedBy.join(', ')}` : '')
+  const factsWith = (form: (n: number) => string, tools: string, fed = true): Field[] => [
       { text: agent.phase, color: COLORS.dim },
+      { text: from(fed), color: COLORS.wire },
       { text: `${CLOCK_MARK} ${elapsed(took)}`, color: COLORS.clock },
       { text: quiet > 0 ? `quiet ${elapsed(quiet)}` : '', color: mix(COLORS.failed, COLORS.running, 0.5) },
       { text: spent === undefined ? '' : form(spent), color: COLORS.spend },
@@ -5648,8 +6807,10 @@ function paintDetail(
     factsWith(tokensNamed, toolsFull),
     factsWith(tokensNamed, toolsBare),
     factsWith(tokensWide, toolsBare),
+    factsWith(tokensWide, toolsBare, false),
   ]
-  const facts = ladder.find(row => widthOf(divided(row), 1) <= footRoom) ?? ladder[ladder.length - 1]
+  const factsFor = (room: number) =>
+    ladder.find(row => widthOf(divided(row), 1) <= room) ?? ladder[ladder.length - 1]
 
   // Which agent is open is the dialog's title, and a title goes in the top edge
   // — set in the way a card sets its name in, so the two read as the same kind
@@ -5672,7 +6833,11 @@ function paintDetail(
     headY,
     right,
     [
-      { text: String.fromCodePoint(agent.state === 'running' ? ARROW_RIGHT : BULLET), color },
+      // The same mark the node carries. ▮ said only *a node*, which the reader
+      // knows: they pressed one. Whether it came back clean is the fact they
+      // opened the dialog with, and a dialog whose title disagrees with the card
+      // behind it is a dialog about some other run.
+      { text: String.fromCodePoint(markOf(agent.state, tick)), color },
       { text: title, color: COLORS.text },
     ],
     edge,
@@ -5687,16 +6852,372 @@ function paintDetail(
   c.put(closeX + 2, headY, 0x20, edge)
   hotspots.push({ agentId: DETAIL_CLOSE, x: closeX, y: headY, w: 3 })
 
+  // Opened out of a nested run's list, the dialog says so and offers the way
+  // back — the same corner, the same word, the same press a call's own dialog
+  // uses. Without it a reader who pressed the third of fourteen rows had to
+  // shut the dialog, find the run's row in the drawing behind it and press it
+  // again to read the fourth.
+  if (fromRun !== undefined) {
+    paintBack(c, rect.x, headY, closeX, edge, RUN_BACK, hotspots)
+  }
+
+  // Both of the dialog's rules are crossbars, the strip the tabs sit on
+  // included: they tie into the frame rather than lying between two walls.
+  const crossbar = (y: number) => paintCrossbar(c, rect, y, edge)
+
   if (ruleY > rect.y) {
-    for (let dx = 1; dx < rect.w - 1; dx++) {
-      c.put(rect.x + dx, ruleY, LIGHT.across, quietOf(c.background))
+    crossbar(ruleY)
+  }
+
+  /**
+   * The figures under the reading, and after them how far down it the reader is.
+   *
+   * The position used to be written at the right end of the tab strip, which put
+   * a measurement on the one row of the dialog that is otherwise all controls —
+   * and put it beside the tabs, so a reader picking along them read `1–21/78` as
+   * another of them. It belongs with the clock and the spend: this row is where
+   * the dialog says how big a thing is.
+   *
+   * It is the last field, so it is the first to go when the row runs out of
+   * cells. Everything else here is a fact about the agent; this is a fact about
+   * a reader's own scrolling, and they can see that by looking at the bar.
+   */
+  const paintFoot = (where: string) => {
+    const spare = where.length > 0 ? where.length + 3 : 0
+    const room = Math.max(0, footRoom - spare)
+    const facts = factsFor(room)
+    // Divided where the row has the cells for it. Where it has not, the dividers
+    // come out rather than the figures: drawFields stops at the first field that
+    // will not fit, and a row that stopped on a divider reads as a frame with a
+    // piece broken off.
+    const ruled = divided(facts)
+    const fits = widthOf(ruled, 1) <= room
+
+    drawFields(c, rect.x + 2, footY, room, fits ? ruled : facts, fits ? 1 : 3)
+
+    if (spare > 0) {
+      drawRight(c, right - 1, footY, divided([{ text: '', color: COLORS.dim }, { text: where, color: COLORS.dim }]), 1)
     }
   }
 
-  // Divided where the row has the cells for it. Where it has not, the dividers
-  // come out rather than the figures: drawFields stops at the first field that
-  // will not fit, and a row that stopped on a divider reads as a frame with a
-  // piece broken off.
+  const sections: Section[] = []
+
+  if (agent.prompt) {
+    const prompt = agent.prompt
+
+    sections.push({
+      tab: 'Prompt',
+      lines: w => prose(prompt, w, COLORS.text),
+    })
+  }
+
+  if (calls.length > 0) {
+    // One column for the names, as wide as the longest of them and no wider. A
+    // run of `Bash`, `Edit` and `Read` gets a column of five; the ceilings are
+    // there for the one long name among forty short ones, which would otherwise
+    // push every argument in the list right to make room for a single row — and
+    // for a narrow pane, where a fixed column that was a fifth of the row at a
+    // hundred and ten cells is half of it at fifty.
+    const longest = Math.max(4, ...calls.map(call => cells(toolShort(call.name))))
+    const nameW = (w: number) => Math.min(longest, 18, Math.max(4, Math.floor(w * 0.22)))
+
+    sections.push({
+      tab: `Tool Calls (${calls.length})`,
+      short: 'Calls',
+      // The list is an index rather than quoted material, and every row on it is
+      // a control. A Button carries no ground, so a ground painted under these
+      // rows is a ground the surface throws away — the block would come out in
+      // stripes, quoted where a row happened not to be pressable.
+      plain: true,
+      // Newest first. A reader opens an agent's detail to see what it is doing
+      // or what it did last, and the call that answers that was at the bottom of
+      // a list long enough to scroll — so the block opened on the oldest call
+      // every time, and the interesting end had to be hunted for.
+      lines: w => [...calls].reverse().map(call => callRow(call, nowMs, w, agent.state === 'running', nameW(w))),
+    })
+  } else if (agent.tools.length > 0) {
+    const list = agent.tools.map(t => (t.count > 1 ? `${t.name} ×${t.count}` : t.name)).join('   ')
+
+    sections.push({
+      tab: 'Tool Calls',
+      short: 'Calls',
+      lines: w => wrap(list, w, 40).map(text => ({ text, color: mix(COLORS.text, color, 0.3) })),
+    })
+  } else if (agent.lastTool) {
+    // A run this module never watched has no call list, only the summary's
+    // last call and its count.
+    const count = agent.toolCalls ? `${agent.toolCalls} ${agent.toolCalls === 1 ? 'call' : 'calls'}, last ` : ''
+
+    sections.push({
+      tab: 'Tool Calls',
+      short: 'Calls',
+      lines: w => wrap(`${count}${agent.lastTool}`, w, 40).map(text => ({ text, color: mix(COLORS.text, color, 0.3) })),
+    })
+  }
+
+  const saying = agent.state === 'running' && agent.isThinking ? agent.saying : undefined
+  const answer = agent.result ?? agent.resultPreview
+
+  if (saying) {
+    sections.push({
+      tab: 'Thinking',
+      lines: w => prose(saying, w, mix(COLORS.text, color, 0.25)),
+    })
+  } else if (answer) {
+    sections.push({
+      tab: 'Response',
+      lines: w => answerLines(answer, w, mix(COLORS.text, color, 0.25)),
+    })
+  }
+
+  // One row of chrome for the tabs, not two: the strip is set into the rule that
+  // used to close the title off from the reading, so naming the blocks costs
+  // nothing a five-row dialog cannot pay.
+  const tabY = rect.y + 1
+  const bodyY = tabY + 1
+  const rows = Math.max(0, ruleY - bodyY)
+  const inner: Rect = { x: rect.x + 1, y: bodyY, w: rect.w - 2, h: rows }
+
+  // An empty dialog over a node that was just pressed reads as a dialog that did
+  // not open. It says which of the two it is instead.
+  if (sections.length === 0) {
+    crossbar(tabY)
+    c.text(
+      inner.x + 1,
+      tabY,
+      agent.state === 'running'
+        ? 'Nothing recorded yet. What this agent was asked, and every call it makes, appear here as it works.'
+        : `No transcript for this agent: agent-${agent.agentId}.jsonl is not in the run's transcript folder.`,
+      COLORS.dim,
+    )
+
+    paintFoot('')
+
+    return { panes: [], tab: 0 }
+  }
+
+  const on = Math.max(0, Math.min(sections.length - 1, Math.floor(tab)))
+
+  if (rows < 1) {
+    crossbar(tabY)
+    paintTabs(c, rect.x + 1, tabY, rect.w - 2, sections, on, hotspots)
+    paintFoot('')
+
+    return { panes: sections.map(() => ({ total: 0, visible: 0, scroll: 0 })), tab: on }
+  }
+
+  // The block takes the whole dialog. Side by side, three of them shared a
+  // hundred columns, so each was about forty-five: a prompt of two hundred lines
+  // showed eleven of them, a command wrapped every five words, and the reading
+  // the dialog exists for was done through a keyhole. They are one question
+  // after another rather than one question compared with another — what it was
+  // told, what it did, what it said — so they take turns at full width instead.
+  const pane = paintTabBody(c, inner, sections[on], scroll[on] ?? 0, on, hotspots)
+  const panes = sections.map((_, i) => (i === on ? pane : { total: 0, visible: 0, scroll: scroll[i] ?? 0 }))
+
+  crossbar(tabY)
+  paintTabs(c, rect.x + 1, tabY, rect.w - 2, sections, on, hotspots)
+  paintFoot(
+    pane.total > pane.visible
+      ? `${pane.scroll + 1}\u2013${Math.min(pane.total, pane.scroll + pane.visible)}/${pane.total}`
+      : '',
+  )
+
+  return { panes, tab: on }
+}
+
+/**
+ * The press a nested run's own name answers to, keyed by the phase it is.
+ *
+ * A run drawn as one row has no agent of its own. What the row shows is
+ * `wholeOf` — the run's name over the clock and the spend of every agent in it,
+ * carrying the agent id of the one that decided the trip, because that is the
+ * agent whose state the mark reports. Pressed, that id opened that one agent's
+ * detail: a reader who asked to see a review panel of fourteen agents was shown
+ * the last of them, with nothing on the dialog saying the other thirteen
+ * existed.
+ *
+ * So the row answers to the phase instead, and the phase opens the run.
+ */
+export const RUN_OPEN = '@run:'
+
+/** The press that leaves an agent's dialog for the nested run it was opened from. */
+export const RUN_BACK = '@run-back'
+
+/** The press that leaves a call's own dialog for the list it was opened from. */
+export const CALL_BACK = '@call-back'
+
+/**
+ * The way back, in the corner the reader came from.
+ *
+ * The same edge the close mark sits in at the other end, and a word rather than
+ * a mark alone: `◂` on its own in a dialog that also scrolls is one more arrow
+ * among four, and a reader counting arrows is a reader who has stopped reading.
+ *
+ * Nothing is drawn where the title would have to give up letters for it. A
+ * dialog narrow enough for that is one where the name of the thing being read
+ * is worth more than a second way out of it, since `✕` is still in the corner.
+ */
+function paintBack(
+  c: Canvas,
+  x: number,
+  y: number,
+  closeX: number,
+  edge: Rgb,
+  key: string,
+  hotspots: Hotspot[],
+): void {
+  const back = `${String.fromCodePoint(ARROW_LEFT)} Back`
+
+  if (closeX - x <= cells(back) + 8) {
+    return
+  }
+
+  for (let cell = x + 1; cell <= x + 2 + cells(back); cell++) {
+    c.put(cell, y, 0x20, edge)
+  }
+
+  c.text(x + 2, y, back, mix(COLORS.dim, COLORS.text, 0.4))
+  hotspots.push({ agentId: key, x: x + 2, y, w: cells(back) })
+}
+
+/**
+ * The index the opened call's rail keys its arrows with.
+ *
+ * The rail emits `detail-up:<index>`, and the tabs use zero upward, so the
+ * call takes a number no tab can be. Keyed zero it moved the Prompt tab
+ * instead, and the payload a reader was scrolling stayed where it was.
+ */
+export const CALL_PANE = -1
+
+/**
+ * The opened call's output block, which scrolls apart from its argument.
+ *
+ * Numbered past `CALL_PANE` for the same reason that one is numbered past the
+ * tabs: the tabs are still behind the call at the lines they were left on, and
+ * a number that indexed into them would move one of those instead.
+ */
+export const CALL_OUT_PANE = -2
+
+/**
+ * The index a nested run's rail keys its arrows with.
+ *
+ * The run's list is one pane, and it is the only pane in its dialog, so it
+ * takes zero — which is also the index the dialog's own scroll is kept under,
+ * and there is never a tabbed detail open at the same time to confuse it with:
+ * pressing a row of the list is what closes the run and opens the agent.
+ */
+const RUN_PANE = 0
+
+/**
+ * Every agent a nested run ran, one to a row, each of them a press.
+ *
+ * A nested run is drawn as one row because fourteen agents of somebody else's
+ * workflow in the middle of this one's graph is a drawing of the wrong run. The
+ * cost of that is a row with no detail behind it: the row carries the figures of
+ * the agent that decided the trip, so pressing its name opened that agent alone,
+ * and a reader who asked *what did the review panel do* was answered with the
+ * last of fourteen answers and no sign of the other thirteen.
+ *
+ * So the name opens the run. The dialog is the same rectangle an agent's is —
+ * a run of fourteen is a list, and a list wants the width — and the list is the
+ * index: state, name, what it answered, what it took and spent, one row each,
+ * every row the same height. Pressing a row opens that agent in full, and
+ * `◂ Back` on it returns here.
+ *
+ * Unfolding the run in the drawing does the other thing this could have done:
+ * stands every agent as a node, in the graph, with its wires. The two are for
+ * different questions. Unfolded answers *where in the run did this happen*;
+ * the list answers *what did it do*, without giving up the shape of the run
+ * that called it.
+ */
+function paintRun(
+  c: Canvas,
+  phase: string,
+  inside: AgentRow[],
+  nowMs: number,
+  rect: Rect,
+  scroll: number,
+  tick: number,
+  hotspots: Hotspot[],
+): DetailPane {
+  const state = runStateOf(inside)
+  const color = colorOf(state)
+  const last = rect.y + rect.h - 1
+  const right = rect.x + rect.w - 1
+  const edge = mix(COLORS.dim, COLORS.text, 0.35)
+
+  c.fill(rect.x, rect.y, rect.w, rect.h, c.background)
+
+  for (let dx = 1; dx < rect.w - 1; dx++) {
+    c.put(rect.x + dx, rect.y, LIGHT.across, edge)
+    c.put(rect.x + dx, last, LIGHT.across, edge)
+  }
+
+  for (let dy = 1; dy < rect.h - 1; dy++) {
+    c.put(rect.x, rect.y + dy, LIGHT.down, edge)
+    c.put(right, rect.y + dy, LIGHT.down, edge)
+  }
+
+  c.put(rect.x, rect.y, LIGHT.tl, edge)
+  c.put(right, rect.y, LIGHT.tr, edge)
+  c.put(rect.x, last, LIGHT.bl, edge)
+  c.put(right, last, LIGHT.br, edge)
+
+  const closeX = right - 4
+  const footY = last - 1
+  const ruleY = footY - 1
+
+  paintDialogTitle(
+    c,
+    rect.x,
+    rect.y,
+    right,
+    [
+      { text: String.fromCodePoint(markOf(state, tick)), color },
+      // Without the marker the phase name carries. ▸ means *press to unfold*
+      // and is the one thing a reader has already done by the time they are
+      // looking at this; left on, the title reads as a control.
+      {
+        text: runName(
+          phase.startsWith(FOLD_SHUT) ? phase.slice(FOLD_SHUT.length) : phase,
+          Math.max(1, closeX - rect.x - 8),
+        ),
+        color: COLORS.text,
+      },
+    ],
+    edge,
+  )
+
+  c.put(closeX, rect.y, 0x20, edge)
+  c.put(closeX + 1, rect.y, CLOSE_MARK, mix(COLORS.dim, COLORS.text, 0.4))
+  c.put(closeX + 2, rect.y, 0x20, edge)
+  hotspots.push({ agentId: DETAIL_CLOSE, x: closeX, y: rect.y, w: 3 })
+
+  if (ruleY > rect.y) {
+    paintCrossbar(c, rect, ruleY, edge)
+  }
+
+  // What the whole run came to, in the fields the pane spells these in
+  // everywhere else. The count of agents is the one figure that is only true of
+  // a run — it is what the row the reader pressed was saying — so it stays on
+  // the foot rather than being left to the length of a list they have to
+  // scroll to the end of.
+  const done = inside.filter(a => a.state === 'done').length
+  const from = Math.min(...inside.map(a => a.startedMs))
+  const ended = inside.every(a => a.endedMs !== undefined)
+  const until = ended ? Math.max(...inside.map(a => a.endedMs ?? a.startedMs)) : nowMs
+  const spent = inside
+    .map(a => a.tokens ?? a.liveTokens)
+    .filter((n): n is number => n !== undefined)
+    .reduce((sum, n) => sum + n, 0)
+  const facts: Field[] = [
+    { text: `${stateWord(state) || 'running'} ${done}/${inside.length}`, color },
+    { text: `${CLOCK_MARK} ${elapsed(until - from)}`, color: COLORS.clock },
+    { text: spent > 0 ? tokensNamed(spent) : '', color: COLORS.spend },
+    { text: `${FLEET_MARK} ${inside.length}`, color: COLORS.dim },
+  ].filter(f => f.text.length > 0)
+  const footRoom = Math.max(0, right - rect.x - 3)
   const ruled = divided(facts)
 
   drawFields(
@@ -5708,144 +7229,876 @@ function paintDetail(
     widthOf(ruled, 1) <= footRoom ? 1 : 3,
   )
 
-  const sections: Section[] = []
-
-  if (agent.prompt) {
-    const prompt = agent.prompt
-
-    sections.push({
-      title: `${ASK_MARK}  Prompt`,
-      lines: w => wrap(prompt, w, 200).map(text => ({ text, color: COLORS.text })),
-      // An agent is given its prompt once and never again, so this is the one
-      // block in the dialog whose height at a given width is settled before the
-      // dialog is opened.
-      fixed: true,
-    })
-  }
-
-  if (calls.length > 0) {
-    sections.push({
-      title: `${TOOL_MARK}  Tool Calls  ${calls.length}`,
-      // Newest first. A reader opens an agent's detail to see what it is doing
-      // or what it did last, and the call that answers that was at the bottom of
-      // a list long enough to scroll — so the block opened on the oldest call
-      // every time, and the interesting end had to be hunted for.
-      lines: w =>
-        [...calls]
-          .reverse()
-          .flatMap((call, i) =>
-            (i === 0 ? [] : [callSeam(c, w)]).concat(callLines(call, nowMs, w, agent.state === 'running')),
-          ),
-    })
-  } else if (agent.tools.length > 0) {
-    const list = agent.tools.map(t => (t.count > 1 ? `${t.name} ×${t.count}` : t.name)).join('   ')
-
-    sections.push({
-      title: `${TOOL_MARK}  Tool Calls`,
-      lines: w => wrap(list, w, 40).map(text => ({ text, color: mix(COLORS.text, color, 0.3) })),
-    })
-  } else if (agent.lastTool) {
-    // A run this module never watched has no call list, only the summary's
-    // last call and its count.
-    const count = agent.toolCalls ? `${agent.toolCalls} ${agent.toolCalls === 1 ? 'call' : 'calls'}, last ` : ''
-
-    sections.push({
-      title: `${TOOL_MARK}  Tool Calls`,
-      lines: w => wrap(`${count}${agent.lastTool}`, w, 40).map(text => ({ text, color: mix(COLORS.text, color, 0.3) })),
-    })
-  }
-
-  const saying = agent.state === 'running' && agent.isThinking ? agent.saying : undefined
-  const answer = agent.result ?? agent.resultPreview
-
-  if (saying) {
-    sections.push({
-      title: `${THINK_MARK}  Thinking`,
-      lines: w => wrap(saying, w, 200).map(text => ({ text, color: mix(COLORS.text, color, 0.25) })),
-    })
-  } else if (answer) {
-    sections.push({
-      title: `${ANSWER_MARK}  Response`,
-      lines: w => answerLines(answer, w, mix(COLORS.text, color, 0.25)),
-    })
-  }
-
   const bodyY = rect.y + 1
   const rows = Math.max(0, ruleY - bodyY)
   const inner: Rect = { x: rect.x + 1, y: bodyY, w: rect.w - 2, h: rows }
 
-  if (rows < 2) {
-    return { panes: [] }
+  if (rows < 1) {
+    return { total: 0, visible: 0, scroll: 0 }
   }
 
-  // An empty dialog over a node that was just pressed reads as a dialog that did
-  // not open. It says which of the two it is instead.
-  if (sections.length === 0) {
-    c.text(
-      inner.x + 1,
-      bodyY,
-      agent.state === 'running'
-        ? 'Nothing recorded yet: no prompt, no call, no answer.'
-        : 'No transcript was written for this agent.',
-      COLORS.dim,
-    )
+  const longest = Math.max(4, ...inside.map(a => cells(a.label)))
+  const nameW = (w: number) => Math.min(longest, 24, Math.max(4, Math.floor(w * 0.3)))
 
-    return { panes: [] }
-  }
-
-  // What the agent was given and what it did are two halves of the same
-  // question and read side by side. What it answered is the outcome of both,
-  // so it takes a row of its own underneath, the full width of the dialog: an
-  // answer is prose, and prose in a third of a pane wraps every four words.
-  const tail = sections.length > 1 && rows >= 7 ? sections[sections.length - 1] : null
-  const head = tail ? sections.slice(0, -1) : sections
-  // As many rows as it has lines, up to a share of the dialog. It took the
-  // share whatever it held, so a one-line answer sat at the top of six blank
-  // rows while the prompt and the call list above it were scrolling nine lines
-  // at a time — the dialog was giving its room to the block with nothing to
-  // put in it. What the block does not need goes back to the two above it.
-  const share = Math.max(3, Math.round(rows * 0.4))
-  const need = tail ? tail.lines(Math.max(8, inner.w - 3)).length + 1 : 0
-  const tailRows = tail ? Math.max(2, Math.min(share, need)) : 0
-  const headRows = rows - tailRows - (tail ? 1 : 0)
-
-  const top = paintColumns(c, { ...inner, h: headRows }, head, scroll, 0, hotspots)
-
-  if (!tail) {
-    return { panes: top }
-  }
-
-  const bottom = paintColumns(
+  return paintTabBody(
     c,
-    { ...inner, y: bodyY + headRows + 1, h: tailRows },
-    [tail],
+    inner,
+    {
+      tab: phase,
+      plain: true,
+      lines: w => inside.map(agent => agentRow(agent, nowMs, tick, w, nameW(w))),
+    },
     scroll,
-    top.length,
+    RUN_PANE,
     hotspots,
   )
-
-  return { panes: [...top, ...bottom] }
 }
 
 /**
- * A block's heading: what it is, a rule to the width of the block, and where
- * its list stands. What moves the list is the bar down the block's right edge,
- * not this.
+ * The state a run of several agents is in.
+ *
+ * The same reckoning the mark on the folded row makes, and for the same reason:
+ * one agent of fourteen failing is the run failing, because that is what the
+ * workflow that called it does with the answer.
  */
-function paintHeading(c: Canvas, x: number, y: number, width: number, title: string, pane: DetailPane): void {
-  const scrolls = pane.total > pane.visible
-  const where = scrolls ? `${pane.scroll + 1}\u2013${Math.min(pane.total, pane.scroll + pane.visible)}/${pane.total}` : ''
-  const whereW = where.length > 0 && width >= where.length + 10 ? where.length + 2 : 0
-  const room = Math.max(1, width - whereW - 1)
-  const drawn = c.text(x, y, truncate(title, room), COLORS.dim)
+function runStateOf(inside: AgentRow[]): AgentRow['state'] {
+  return inside.some(a => a.state === 'failed')
+    ? 'failed'
+    : inside.some(a => a.state === 'running')
+      ? 'running'
+      : inside.some(a => a.state === 'stopped')
+        ? 'stopped'
+        : 'done'
+}
 
-  for (let dx = drawn + 1; dx < width - whereW; dx++) {
-    c.put(x + dx, y, 0x2500, quietOf(c.background))
+/**
+ * One agent of a nested run as one row: what it was, what it answered, what it
+ * took and spent.
+ *
+ * Built like a call's row and for the same reason — a list read as a sequence
+ * has to have rows of one height — so the two read alike, which is the point:
+ * a reader who has used the Calls list knows what pressing one of these does.
+ *
+ * What it answered rather than what it was asked. The prompts inside one nested
+ * run are near-identical by design — a panel hands its six reviewers the same
+ * brief with one line changed — so a column of them tells a reader nothing,
+ * while the first line of each answer is the one thing that differs.
+ */
+function agentRow(agent: AgentRow, nowMs: number, tick: number, width: number, nameW: number): DetailLine {
+  const running = agent.state === 'running'
+  const color = colorOf(agent.state)
+  const quiet = mix(COLORS.text, color, 0.3)
+  const until = agent.endedMs ?? nowMs
+  const tailWith = (form: (n: number) => string): Field[] =>
+    [
+      { text: `${CLOCK_MARK} ${elapsed(until - agent.startedMs)}`, color: COLORS.clock },
+      {
+        text: (agent.tokens ?? agent.liveTokens) === undefined ? '' : form((agent.tokens ?? agent.liveTokens) as number),
+        color: COLORS.spend,
+      },
+    ].filter(f => f.text.length > 0)
+
+  const lead = 3 + nameW + 2
+  const ladder = [tailWith(tokensNamed), tailWith(tokensWide), tailWith(tokensNamed).slice(0, 1), []]
+  const fits = (row: Field[]) => lead + (row.length > 0 ? widthOf(row, 2) + 2 : 0) + 24 <= width
+  const tail = ladder.find(fits) ?? ladder[ladder.length - 1]
+  const tailW = tail.length > 0 ? widthOf(tail, 2) : 0
+  const room = Math.max(4, width - lead - (tailW > 0 ? tailW + 2 : 0))
+  const name = truncate(agent.label, nameW)
+  // Nothing read back yet says nothing, not a blank: an agent's answer is read
+  // from its transcript the first time its own dialog is opened, and a list of
+  // fourteen that has never been opened would otherwise be fourteen names and
+  // no sign that there is anything behind them.
+  const said = truncate(
+    flatten(agent.resultPreview ?? agent.result ?? (running ? 'running' : agent.model ?? '')),
+    room,
+  )
+
+  return {
+    text: '',
+    color,
+    fields: [
+      { text: String.fromCodePoint(markOf(agent.state, tick)), color },
+      { text: `${name}${' '.repeat(Math.max(0, nameW - cells(name)))}`, color: quiet },
+      { text: said, color: quietOf(COLORS.text) },
+    ],
+    right: tail,
+    press: { key: agent.agentId, at: 3, w: Math.max(0, lead - 3 + cells(said)) },
+  }
+}
+
+/**
+ * One tool call, whole: what it was passed, what it answered, what it cost.
+ *
+ * The Calls list is an index — one row a call, every row the same height, the
+ * argument cut where the row runs out — and an index has to be able to hand a
+ * reader the thing it indexes. This is that thing. It takes the same rectangle
+ * the agent's detail took rather than opening as a smaller box inside it,
+ * because what it holds is a command or a patch or a query: the content that
+ * most wants width on the whole pane, and the content a box inside a box would
+ * have wrapped every five words.
+ *
+ * So it replaces the detail rather than covering part of it, and says so with
+ * the way back in the corner it came from. `◂ Back` returns to the list at the
+ * row it was left on — the tab and its scroll are untouched while this is open
+ * — and `✕` shuts the reading altogether, which is what a reader who has
+ * finished with the agent as well as the call wants.
+ *
+ * The argument keeps its own line breaks and its paths whole, folded rather
+ * than word-wrapped: a command is a thing a reader checks character by
+ * character, and one rewrapped at the spaces is a command they cannot check.
+ */
+function paintCall(
+  c: Canvas,
+  call: ToolCall,
+  nowMs: number,
+  rect: Rect,
+  scroll: { arg: number; out: number },
+  live: boolean,
+  hotspots: Hotspot[],
+): { arg: DetailPane; out?: DetailPane; split?: number } {
+  const running = live && call.startedMs > 0 && call.endedMs === undefined
+  const color = running ? COLORS.running : call.isError ? COLORS.failed : COLORS.done
+  const last = rect.y + rect.h - 1
+  const right = rect.x + rect.w - 1
+  const edge = mix(COLORS.dim, COLORS.text, 0.35)
+
+  c.fill(rect.x, rect.y, rect.w, rect.h, c.background)
+
+  for (let dx = 1; dx < rect.w - 1; dx++) {
+    c.put(rect.x + dx, rect.y, LIGHT.across, edge)
+    c.put(rect.x + dx, last, LIGHT.across, edge)
   }
 
-  if (whereW > 0) {
-    c.text(x + width - whereW + 1, y, where, COLORS.dim)
+  for (let dy = 1; dy < rect.h - 1; dy++) {
+    c.put(rect.x, rect.y + dy, LIGHT.down, edge)
+    c.put(right, rect.y + dy, LIGHT.down, edge)
   }
+
+  c.put(rect.x, rect.y, LIGHT.tl, edge)
+  c.put(right, rect.y, LIGHT.tr, edge)
+  c.put(rect.x, last, LIGHT.bl, edge)
+  c.put(right, last, LIGHT.br, edge)
+
+  const closeX = right - 4
+  const footY = last - 1
+  const ruleY = footY - 1
+
+  paintDialogTitle(
+    c,
+    rect.x,
+    rect.y,
+    right,
+    [
+      { text: running ? '\u2026' : call.isError ? '\u2716' : '\u2714', color },
+      { text: truncate(call.name, Math.max(1, closeX - rect.x - 18)), color: COLORS.text },
+    ],
+    edge,
+  )
+
+  paintBack(c, rect.x, rect.y, closeX, edge, CALL_BACK, hotspots)
+
+  c.put(closeX, rect.y, 0x20, edge)
+  c.put(closeX + 1, rect.y, CLOSE_MARK, mix(COLORS.dim, COLORS.text, 0.4))
+  c.put(closeX + 2, rect.y, 0x20, edge)
+  hotspots.push({ agentId: DETAIL_CLOSE, x: closeX, y: rect.y, w: 3 })
+
+  if (ruleY > rect.y) {
+    paintCrossbar(c, rect, ruleY, edge)
+  }
+
+  const until = call.endedMs ?? (running ? nowMs : undefined)
+  const facts: Field[] = [
+    { text: call.isError ? 'failed' : running ? 'running' : 'done', color },
+    {
+      text: call.startedMs > 0 && until !== undefined ? `${CLOCK_MARK} ${elapsed(until - call.startedMs)}` : '',
+      color: COLORS.clock,
+    },
+    { text: call.stepTokens === undefined ? '' : tokensNamed(call.stepTokens), color: COLORS.spend },
+    { text: call.step === undefined ? '' : `${REQUEST_MARK} ${call.step}`, color: COLORS.dim },
+  ].filter(f => f.text.length > 0)
+  const footRoom = Math.max(0, right - rect.x - 3)
+  const ruled = divided(facts)
+
+  drawFields(
+    c,
+    rect.x + 2,
+    footY,
+    footRoom,
+    widthOf(ruled, 1) <= footRoom ? ruled : facts,
+    widthOf(ruled, 1) <= footRoom ? 1 : 3,
+  )
+
+  const bodyY = rect.y + 1
+  const rows = Math.max(0, ruleY - bodyY)
+
+  if (rows < 1) {
+    return { arg: { total: 0, visible: 0, scroll: 0 } }
+  }
+
+  const across = { x: rect.x + 1, w: rect.w - 2 }
+  const body = (y: number, h: number) => ({ ...across, y, h })
+
+  // A shelf over each compartment and one between them, so the two are
+  // compartments of this box rather than two runs of text in one block. Set
+  // into the frame at both ends — the idiom the tab strip and the figures rule
+  // already use — and standing still while the rows under them move, which a
+  // rule drawn into the block itself cannot do: it scrolled away with the
+  // fourth line, and what was left was one slab of somebody else's text with no
+  // word anywhere saying where the argument stopped and the answer started.
+  if (call.result === undefined || rows < 4) {
+    return {
+      arg: paintTabBody(
+        c,
+        body(bodyY, rows),
+        { tab: call.name, lines: w => callBody(call, w) },
+        scroll.arg,
+        CALL_PANE,
+        hotspots,
+      ),
+    }
+  }
+
+  // The argument takes the rows it needs and no more, up to a third of the box.
+  // A command is a line or three and an answer is a hundred, so an even split
+  // would stand two blank rows over every diff; and a payload that runs long is
+  // still a payload, which is the reading a reader came for less often than the
+  // answer. Past the cap it keeps its own bar and scrolls.
+  const textW = Math.max(8, across.w - 3)
+  const room = rows - 2
+  const argH = Math.max(1, Math.min(callArgLines(call, textW).length, Math.max(1, Math.floor(room / 3))))
+  const split = bodyY + 1 + argH
+
+  paintCrossbar(c, rect, bodyY, edge, sectionWord(call))
+  paintCrossbar(c, rect, split, edge, 'output')
+
+  return {
+    arg: paintTabBody(
+      c,
+      body(bodyY + 1, argH),
+      { tab: call.name, lines: w => callArgLines(call, w) },
+      scroll.arg,
+      CALL_PANE,
+      hotspots,
+    ),
+    out: paintTabBody(
+      c,
+      body(split + 1, room - argH),
+      { tab: call.name, lines: w => callOutLines(call, w) },
+      scroll.out,
+      CALL_OUT_PANE,
+      hotspots,
+    ),
+    split,
+  }
+}
+
+/**
+ * One line of a call's text, as the coloured runs it reads in.
+ *
+ * Tone and not hue, and three weights at most. Colour in this pane says what
+ * state a node is in or that a line is a wire; a third meaning taken on here
+ * would cost the first two theirs. So a line is the block's own grey, lifted
+ * for the part that identifies the line and dropped for the punctuation holding
+ * it together — and a reader who does not notice reads exactly the text that
+ * was there before, in the weight it was in.
+ */
+type Lighter = (line: string, width: number, tone: Rgb) => DetailLine[]
+
+/**
+ * The three weights a call's text is set in, off whatever tone it is given.
+ *
+ * The drop is a third of the way to `dim` rather than half. At half it fell
+ * below 3.0 against the block's ground in four themes, which is the bar a
+ * reader has to lean in past; a third keeps it above 4.0 everywhere the block's
+ * own tone is above 4.0, so the setback costs nobody the words.
+ */
+function weightsOf(tone: Rgb): { lift: Rgb; base: Rgb; drop: Rgb } {
+  return {
+    lift: mix(tone, COLORS.text, 0.55),
+    base: tone,
+    drop: mix(tone, COLORS.dim, 0.35),
+  }
+}
+
+/**
+ * The runs of one line, folded to the width, with each run cut at the fold.
+ *
+ * `folded` wraps a line and indents what carries over; this does the same and
+ * carries the weights over with it, so a path that spans two rows is the same
+ * path on both of them.
+ *
+ * A colour per character rather than a walk over the runs: the runs are built by
+ * one matcher a line, the folds are decided by another rule entirely, and
+ * keeping the two in step by arithmetic is how an off-by-one puts a command's
+ * own name in the weight of its flags.
+ */
+function litLines(runs: Field[], width: number, tone: Rgb): DetailLine[] {
+  const whole = runs.map(r => r.text).join('')
+  const paint: Rgb[] = []
+
+  for (const run of runs) {
+    for (let i = 0; i < run.text.length; i++) {
+      paint.push(run.color)
+    }
+  }
+
+  /** One row's characters as the fewest runs that say the same thing. */
+  const runsOf = (from: number, to: number, pad: string): Field[] => {
+    const out: Field[] = pad.length > 0 ? [{ text: pad, color: tone }] : []
+
+    for (let i = from; i < to; i++) {
+      const color = paint[i] ?? tone
+      const last = out[out.length - 1]
+
+      if (last && last.color === color && !(pad.length > 0 && out.length === 1)) {
+        last.text += whole[i]
+      } else {
+        out.push({ text: whole[i] ?? '', color })
+      }
+    }
+
+    return out
+  }
+
+  if (whole.length <= width || width < 8) {
+    const to = Math.min(whole.length, width)
+
+    return [{ text: truncate(whole, width), color: tone, runs: runsOf(0, to, '') }]
+  }
+
+  const lead = whole.length - whole.trimStart().length
+  const indent = ' '.repeat(Math.min(Math.floor(width / 2), lead + 2))
+  const out: DetailLine[] = [{ text: whole.slice(0, width), color: tone, runs: runsOf(0, width, '') }]
+  let at = width
+
+  while (at < whole.length && out.length < 40) {
+    const room = width - indent.length
+    const to = Math.min(whole.length, at + room)
+
+    out.push({ text: indent + whole.slice(at, to), color: tone, runs: runsOf(at, to, indent) })
+    at = to
+  }
+
+  return out
+}
+
+/**
+ * A path, with everything before the last slash dropped back a weight.
+ *
+ * The directory is context and the file is the answer: a list of twelve reads
+ * off one repository is twelve rows whose first sixty cells are the same sixty
+ * cells, and the name a reader is looking for is the tail of each.
+ */
+function pathRuns(text: string, weights: ReturnType<typeof weightsOf>): Field[] {
+  const cut = text.lastIndexOf('/')
+
+  return cut <= 0
+    ? [{ text, color: weights.lift }]
+    : [
+        { text: text.slice(0, cut + 1), color: weights.drop },
+        { text: text.slice(cut + 1), color: weights.lift },
+      ]
+}
+
+/**
+ * A shell line as its parts: what runs, what it is told, and what joins them.
+ *
+ * The word after the start of a line or after an operator is the command being
+ * run and stands a weight up; the operators and redirections that join them drop
+ * a weight, since they are the sentence's punctuation and a reader scanning for
+ * what ran is scanning past them. A quoted string is one thing however many
+ * words are inside it, so it keeps its own weight all through rather than having
+ * its first word lifted as a command.
+ */
+function shellRuns(text: string, weights: ReturnType<typeof weightsOf>): Field[] {
+  const out: Field[] = []
+  // A word begins a command where the line begins, or where an operator left
+  // off. `git status && git diff` runs two things and names both.
+  let heads = true
+
+  for (const [piece] of text.matchAll(/"[^"]*"|'[^']*'|[|&;<>]+|\s+|[^\s|&;<>]+/g)) {
+    if (/^\s+$/.test(piece)) {
+      out.push({ text: piece, color: weights.base })
+
+      continue
+    }
+
+    if (/^[|&;<>]+$/.test(piece)) {
+      out.push({ text: piece, color: weights.drop })
+      heads = true
+
+      continue
+    }
+
+    if (/^["']/.test(piece)) {
+      out.push({ text: piece, color: weights.base })
+      heads = false
+
+      continue
+    }
+
+    if (heads) {
+      out.push({ text: piece, color: weights.lift })
+      heads = false
+
+      continue
+    }
+
+    // A flag is the one part of an argument list that is the tool's own word
+    // rather than the caller's, so it reads with the punctuation.
+    out.push({ text: piece, color: /^-/.test(piece) ? weights.drop : weights.base })
+  }
+
+  return out.length > 0 ? out : [{ text, color: weights.base }]
+}
+
+/**
+ * A line of a call's payload: its key set back, its value set in what it is.
+ *
+ * A payload is `key: value` a line, and the keys are the same handful over and
+ * over — `command`, `file_path`, `pattern`. They say which field a reader is
+ * looking at and nothing about the call, so they go back a weight and the value
+ * comes forward.
+ */
+function payloadLines(line: string, width: number, tone: Rgb): DetailLine[] {
+  const weights = weightsOf(tone)
+  const keyed = /^(\s*)([A-Za-z_][\w.]*):\s(.*)$/.exec(line)
+
+  if (!keyed) {
+    return litLines(valueRuns(line, weights), width, tone)
+  }
+
+  const [, lead, key, value] = keyed as unknown as [string, string, string, string]
+
+  return litLines(
+    [
+      { text: `${lead}${key}: `, color: weights.drop },
+      ...valueRuns(value, weights, key),
+    ],
+    width,
+    tone,
+  )
+}
+
+/** A payload value, read as the kind of thing its key says it is. */
+function valueRuns(value: string, weights: ReturnType<typeof weightsOf>, key?: string): Field[] {
+  if (key === 'command') {
+    return shellRuns(value, weights)
+  }
+
+  if (value.startsWith('/') || /path$/.test(key ?? '')) {
+    return pathRuns(value, weights)
+  }
+
+  return [{ text: value, color: weights.base }]
+}
+
+/**
+ * A line of what a tool printed back.
+ *
+ * Two things are set apart and nothing else is. A `Read` answers with its own
+ * line numbers down the left, which are the tool's counting and not the file's
+ * text; and the first column of a status or a diff is a mark rather than a word.
+ * The rest is left exactly as the tool wrote it, because a pane that decides
+ * which parts of somebody else's output matter is a pane editing it.
+ */
+function outputLines(line: string, width: number, tone: Rgb): DetailLine[] {
+  const weights = weightsOf(tone)
+  const gutter = /^(\s*\d+\t)(.*)$/.exec(line)
+
+  if (gutter) {
+    const [, number, rest] = gutter as unknown as [string, string, string]
+
+    return litLines([{ text: number, color: weights.drop }, { text: rest, color: weights.base }], width, tone)
+  }
+
+  // `git status --porcelain` answers in two columns of mark and a space, and a
+  // diff in one. Both say what happened to the file named after them, which is
+  // the part of the row a reader scans down.
+  const marked = /^(?![ ]{2})([ MADRCU?!]{2} |[-+] )(?=\S)(.*)$/.exec(line)
+
+  if (marked) {
+    const [, mark, rest] = marked as unknown as [string, string, string]
+
+    return litLines([{ text: mark, color: weights.lift }, { text: rest, color: weights.base }], width, tone)
+  }
+
+  return litLines([{ text: line, color: weights.base }], width, tone)
+}
+
+/**
+ * How much of a long value is kept at each end of it, in rows of the block.
+ *
+ * A tool that answers with four hundred lines is answering a question the
+ * reader did not ask twice. What they came for is at one end or the other — the
+ * command that ran and what it printed first, or the error it ended on — and
+ * the middle is what the scroll bar is for everywhere else in this dialog. Here
+ * the value is one run of text rather than a reading with a shape, so scrolling
+ * it is scrolling a wall.
+ */
+const KEEP_ROWS = 12
+
+/**
+ * A rule with a word set into it, opening a section of the call's reading.
+ */
+function sectionRule(word: string, width: number, tone: Rgb): DetailLine {
+  const rule = String.fromCodePoint(LIGHT.across)
+  const said = ` ${word} `
+
+  return {
+    text: `${rule.repeat(2)}${said}${rule.repeat(Math.max(0, width - 2 - said.length))}`,
+    color: tone,
+  }
+}
+
+/**
+ * One value's lines, with the middle of a long one left out and said so.
+ *
+ * The first and last of it rather than the first of it: a build log's last line
+ * is the verdict, and a value cut off at the front kept the part a reader had
+ * already guessed and dropped the one they opened the call for. What is left
+ * out is counted in the rule that stands where it was, so nothing goes missing
+ * quietly.
+ */
+function valueLines(text: string, width: number, tone: Rgb, lit?: Lighter): DetailLine[] {
+  const keep = width * KEEP_ROWS
+  const draw = (part: string): DetailLine[] => {
+    const out: DetailLine[] = []
+
+    for (const line of part.split('\n')) {
+      if (!line.trim()) {
+        if (out.length > 0) {
+          out.push({ text: '', color: tone })
+        }
+
+        continue
+      }
+
+      out.push(...(lit ? lit(line, width, tone) : folded(line, width, tone)))
+    }
+
+    return out
+  }
+
+  if (text.length <= keep * 2) {
+    return draw(text)
+  }
+
+  // Cut where the value already breaks. A slice taken at the character lands
+  // mid-word and mid-token, and the first row after the elision reads as
+  // nonsense until a reader works out it is the tail of something.
+  const head = text.lastIndexOf('\n', keep) + 1 || keep
+  const foot = text.indexOf('\n', text.length - keep) + 1 || text.length - keep
+  const gone = foot - head
+
+  return [
+    ...draw(text.slice(0, head)),
+    sectionRule(`\u2026 ${tokens(gone)} characters not shown \u2026`, width, tone),
+    ...draw(text.slice(foot)),
+  ]
+}
+
+/**
+ * A call's argument and its answer as the lines of one reading, in two sections.
+ *
+ * Each is under a rule naming it rather than run straight on: a payload and a
+ * result are both somebody else's text, and set against each other with only a
+ * blank between them the second reads as more of the first. The payload's rule
+ * says `command` where the tool took one and `argument` where it took anything
+ * else, because a reader looking at a shell call is looking at a command and
+ * calling it an argument is calling it by the wrong name.
+ *
+ * The result's rule used to be the only one, and said `answered`. Two sections
+ * with one heading between them reads as one section with a note in the middle:
+ * what is above the heading is the part with no name, and a reader has to work
+ * out that it is the call.
+ */
+/**
+ * What the first compartment is called.
+ *
+ * `command` where the call is a shell line and `argument` where it takes named
+ * fields: those are two different things to read, and a reader who sees
+ * `command` knows before reading a word that what follows is one.
+ */
+function sectionWord(call: ToolCall): string {
+  return /^command:/.test(call.input) ? 'command' : 'argument'
+}
+
+/** The lines of what a call was passed. */
+function callArgLines(call: ToolCall, width: number): DetailLine[] {
+  return valueLines(call.input, width, quietOf(COLORS.text), payloadLines)
+}
+
+/** The lines of what it answered. */
+function callOutLines(call: ToolCall, width: number): DetailLine[] {
+  return valueLines(call.result ?? '', width, quietOf(COLORS.text), outputLines)
+}
+
+/**
+ * Both readings in one block, for a dialog too short to give each a shelf.
+ *
+ * Three rows is a compartment, a shelf and a compartment with nothing in
+ * either. Below that the box goes back to one block with the sections ruled off
+ * inside it: the words still say which half a row belongs to, and the division
+ * scrolls with them rather than standing still.
+ */
+function callBody(call: ToolCall, width: number): DetailLine[] {
+  const tone = quietOf(COLORS.text)
+  const out: DetailLine[] = [sectionRule(sectionWord(call), width, tone), ...callArgLines(call, width)]
+
+  if (call.result) {
+    out.push({ text: '', color: tone })
+    out.push(sectionRule('output', width, tone))
+    out.push(...callOutLines(call, width))
+  }
+
+  return out
+}
+
+/** The key that shows one of the dialog's tabs. */
+export const DETAIL_TAB = '@tab:'
+
+/** The press that unfolds a nested run's band, or folds it back to one row. */
+export const BAND_OPEN = '@band:'
+
+/**
+ * The handle that opens a nested run and folds it back, set into its caption.
+ *
+ * It used to be a mark and, once the run was open, the word `collapse`. Two
+ * faults in that. The mark alone is one cell at the head of a name in the middle
+ * of a rule running the width of the pane — a target a reader hits by luck, and
+ * a coloured cell besides, which a Button turns into plain text and so strips of
+ * the one thing it was saying. And the word only existed in the open state, so
+ * the control changed shape the moment it was used: a verb in a rule that
+ * otherwise holds nothing but marks, names and counts, arriving from nowhere the
+ * first time a reader pressed the mark.
+ *
+ * So there is one handle, the same shape in both states, and only its mark
+ * flips. It says what the row standing for the whole run says — `▸ 8 agents`,
+ * the same press in the same words in the two places a reader would try it —
+ * and, opened, `▾ 8 agents`, which is that sentence with its state changed
+ * rather than a different sentence.
+ *
+ * It gives way down its own ladder: the count with its unit, the count alone,
+ * then the mark. Every rung is drawn on cleared cells with a blank at each end,
+ * and the whole cleared span is the press, so even the last rung is three cells
+ * wide and nothing coloured is given up to make it pressable.
+ */
+/**
+ * The cells of rule left between a caption and its handle.
+ *
+ * Set hard against the count the handle read as a fourth field of the caption —
+ * mark, name, count, handle — and the name lost the comparison. Two strokes of
+ * the rule put it back where it belongs: a second thing set into the same line,
+ * which is what it is.
+ */
+const HANDLE_GAP = 3
+
+function foldRungs(shut: boolean, agents: number): string[] {
+  const mark = shut ? FOLD_SHUT : FOLD_OPEN
+
+  return [`${mark}${agents} agents`, `${mark}${agents}`, mark.trimEnd()]
+}
+
+/** The widest rung that fits the cells left beside the caption, or none. */
+function foldHandle(shut: boolean, agents: number, room: number): string {
+  return foldRungs(shut, agents).find(rung => rung.length + 2 <= room) ?? ''
+}
+
+/** Draws it, and says whether there was room — a caller with none marks the mark instead. */
+function paintFoldHandle(
+  c: Canvas,
+  phase: string,
+  x: number,
+  y: number,
+  room: number,
+  tone: Rgb,
+  shut: boolean,
+  agents: number,
+  hotspots: Hotspot[],
+): boolean {
+  const text = foldHandle(shut, agents, room)
+
+  if (text === '' || x < 0) {
+    return false
+  }
+
+  // Cleared before the text goes in, its own blanks included: `c.text` writes no
+  // blank, so a rule showing through between the caption and the handle would
+  // join them into one token with a line in it.
+  for (let dx = 0; dx <= text.length + 1; dx++) {
+    c.put(x + dx, y, 0x20, tone)
+  }
+
+  c.text(x + 1, y, text, COLORS.dim)
+  hotspots.push({ agentId: `${BAND_OPEN}${phase}`, x, y, w: text.length + 2 })
+
+  return true
+}
+
+/**
+ * The cells a nested run's own mark answers to.
+ *
+ * Three rather than one, the way the dialog's close mark is three: the glyph is
+ * one cell, and a one-cell target is one cell to miss. The two beside it are the
+ * blank the caption clears either side of its name and the gap between the mark
+ * and the name, so nothing coloured is given up to make them pressable.
+ */
+function markSpot(phase: string, x: number, y: number, left: number): Hotspot {
+  const from = Math.max(left, x - 1)
+
+  return { agentId: `${BAND_OPEN}${phase}`, x: from, y, w: x + 1 - from + 1 }
+}
+
+
+/**
+ * The tabs, set into the rule under the title, and where the open one stands.
+ *
+ * A tab is a Button and a Button carries no colour and no ground, so which one
+ * is open cannot be said by tinting it. It is said by the rule instead: the open
+ * tab is bracketed out of it, `─┤ Tool Calls (20) ├─`, the way a card is framed
+ * rather than filled, and the brackets are cells the Button does not cover.
+ *
+ * Where the strip will not fit, the tabs give up their counts before any of them
+ * gives up a letter of its name, and shorten their names before any of them
+ * gives up its place: `Tool Calls (106)` says one more thing than `Tool Calls`,
+ * which says one more thing than `Calls`, and a tab whose name has gone is a tab
+ * nobody can aim at.
+ *
+ * The count is in brackets because it is a count of the things behind the tab
+ * and not part of what the tab is called. `Calls 106` read as a name with a
+ * number loose on the end of it, next to `Prompt` and `Response`, which have
+ * none.
+ */
+function paintTabs(
+  c: Canvas,
+  x: number,
+  y: number,
+  width: number,
+  sections: Section[],
+  on: number,
+  hotspots: Hotspot[],
+): void {
+  const rule = quietOf(c.background)
+
+  for (let dx = 0; dx < width; dx++) {
+    c.put(x + dx, y, LIGHT.across, rule)
+  }
+
+  // Every tab takes the same cells whether it is open or not — `  name  `, with
+  // the open one's brackets standing in the outer two — so the strip never
+  // shifts under the pointer at the moment somebody is picking along it.
+  const SIDES = 5
+  const end = x + width
+  const room = width - 2
+  const bare = (n: string) => n.replace(/\s+\(\d+\)$/, '')
+  // The counts go before any name does, and a name is shortened before a tab is
+  // dropped: a tab whose name has gone is a tab nobody can aim at.
+  const ladder = [
+    sections.map(s => s.tab),
+    sections.map(s => bare(s.tab)),
+    sections.map(s => bare(s.short ?? s.tab)),
+  ]
+  const strip = (list: string[]) => list.reduce((w, n) => w + cells(n) + SIDES, 0)
+  const shown = ladder.find(list => strip(list) <= room) ?? ladder[ladder.length - 1]!
+
+  let at = x + 3
+
+  shown.forEach((name, i) => {
+    const w = cells(name)
+
+    if (at + w + 1 > end) {
+      return
+    }
+
+    if (i === on) {
+      c.put(at - 2, y, 0x2524, COLORS.accent)
+      c.put(at + w + 1, y, 0x251c, COLORS.accent)
+    }
+
+    c.put(at - 1, y, 0x20, rule)
+    c.put(at + w, y, 0x20, rule)
+    c.text(at, y, name, i === on ? COLORS.text : COLORS.dim)
+    hotspots.push({ agentId: `${DETAIL_TAB}${i}`, x: at, y, w })
+
+    at += w + SIDES
+  })
+}
+
+/**
+ * The open tab's list, the whole width of the dialog, with its bar down the
+ * right edge.
+ */
+function paintTabBody(
+  c: Canvas,
+  rect: Rect,
+  section: Section,
+  scroll: number,
+  index: number,
+  hotspots: Hotspot[],
+): DetailPane {
+  // The bar stands in the block's last cell and a line wrapped to the whole of
+  // the block would end hard against it, which reads as one run of characters.
+  const text = Math.max(8, rect.w - 3)
+  const lines = section.lines(text)
+  const total = lines.length
+  const first = Math.max(0, Math.min(scroll, Math.max(0, total - rect.h)))
+  const pane: DetailPane = { total, visible: rect.h, scroll: first }
+
+  // The block's own ground, a step up from the pane's: what an agent was asked
+  // and what it answered is quoted material, and quoted material set straight on
+  // the pane reads as the pane talking. The bar stays outside it — its arrows
+  // are press targets, and a press target is emitted as a Button, which carries
+  // no ground of its own.
+  if (section.plain !== true) {
+    c.fill(rect.x, rect.y, text + 2, rect.h, quoteOf(c.background))
+  }
+
+  lines.slice(first, first + rect.h).forEach((line, row) => {
+    const y = rect.y + row
+    const at = rect.x + 1
+
+    if (line.press && line.press.w > 0) {
+      hotspots.push({ agentId: line.press.key, x: at + line.press.at, y, w: Math.min(line.press.w, text - line.press.at) })
+    }
+
+    if (line.runs) {
+      let dx = 0
+
+      for (const run of line.runs) {
+        if (dx >= text) {
+          break
+        }
+
+        c.text(at + dx, y, run.text, run.color, line.bg, text - dx)
+        dx += cells(run.text)
+      }
+
+      return
+    }
+
+    if (!line.fields && !line.right) {
+      c.text(at, y, line.text, line.color, line.bg, text)
+
+      return
+    }
+
+    const tail = line.right ?? []
+    const tailW = tail.length > 0 ? widthOf(tail, 2) : 0
+
+    drawFields(c, at, y, Math.max(0, text - (tailW > 0 ? tailW + 2 : 0)), line.fields ?? [], 2)
+
+    if (tailW > 0 && text > tailW + 4) {
+      drawRight(c, at + text, y, tail, 2)
+    }
+  })
+
+  if (total > rect.h) {
+    paintScrollbar(c, rect.x + rect.w - 1, rect.y, rect.h, pane, index, hotspots)
+  }
+
+  return pane
 }
 
 /**
@@ -5864,6 +8117,121 @@ function paintHeading(c: Canvas, x: number, y: number, width: number, title: str
  * was drawn into the canvas and then thrown away, leaving one row of the dialog
  * a shade off from the rows around it.
  */
+/**
+ * What a scroll rail costs the drawing beside it: the rail itself, and a
+ * column of air, so a node's last cell never touches the thumb.
+ */
+const RAIL_W = 2
+
+/** Track a rail needs between its two arrows before it can say anything. */
+const RAIL_MIN = 2
+
+/**
+ * Where the thumb sits on a track, and how long it is.
+ *
+ * A rail says two things at once: how much of the drawing is on the pane, and
+ * whereabouts in it. The thumb is never shorter than a cell, so a very long run
+ * still has something to look at, and it reaches the end of the track exactly
+ * when the drawing does.
+ */
+function thumbOn(track: number, at: number, span: number, shown: number): { from: number; size: number } {
+  const whole = span + shown
+  const size = Math.max(1, Math.min(track, Math.round((shown / Math.max(1, whole)) * track)))
+
+  return { from: span === 0 ? 0 : Math.round((at / span) * (track - size)), size }
+}
+
+/**
+ * The rail down the right of the body, and the presses that move it.
+ *
+ * The pane used to answer a drawing too tall for it with `… 38 more` on the
+ * last row: a number the reader could read and not act on. A rail is the same
+ * fact told as a place, and the place can be moved.
+ */
+function paintBodyRail(
+  c: Canvas,
+  x: number,
+  y: number,
+  rows: number,
+  at: number,
+  span: number,
+  hotspots: Hotspot[],
+): void {
+  // The rail owns its column and the one before it. Full-width furniture — a
+  // band's rule, the dashes over the phases the run skipped — is drawn to the
+  // pane's own edge, and a rule running under the thumb reads as one line, not
+  // as a drawing and a control beside it.
+  c.fill(x - RAIL_W + 1, y, RAIL_W, rows, c.background)
+
+  const key = (row: number, glyph: number, live: boolean, id: string) => {
+    c.put(x, row, glyph, live ? COLORS.accent : COLORS.idle)
+
+    if (live) {
+      hotspots.push({ agentId: id, x, y: row, w: 1 })
+    }
+  }
+
+  key(y, ARROW_UP, at > 0, 'body-up')
+  key(y + rows - 1, ARROW_DOWN, at < span, 'body-down')
+
+  const track = rows - 2
+
+  if (track < 1) {
+    return
+  }
+
+  const thumb = thumbOn(track, at, span, rows)
+
+  for (let row = 0; row < track; row++) {
+    const filled = row >= thumb.from && row < thumb.from + thumb.size
+
+    c.put(x, y + 1 + row, filled ? 0x2588 : 0x2502, filled ? COLORS.dim : COLORS.track)
+  }
+}
+
+/**
+ * The rail along the foot of the body, for a drawing wider than the pane.
+ *
+ * Only the flow layout can overrun sideways — a stack divides the width it is
+ * given — so this row is given up rarely, and only where the alternative is a
+ * run whose later phases are off the edge with nothing to say so.
+ */
+function paintFootRail(
+  c: Canvas,
+  y: number,
+  width: number,
+  at: number,
+  span: number,
+  shown: number,
+  hotspots: Hotspot[],
+): void {
+  const key = (x: number, glyph: number, live: boolean, id: string) => {
+    c.put(x, y, glyph, live ? COLORS.accent : COLORS.idle)
+
+    if (live) {
+      hotspots.push({ agentId: id, x, y, w: 1 })
+    }
+  }
+
+  c.fill(0, y, width, 1, c.background)
+  key(0, ARROW_LEFT, at > 0, 'body-left')
+  key(width - 1, ARROW_RIGHT, at < span, 'body-right')
+
+  const track = width - 2
+
+  if (track < 1) {
+    return
+  }
+
+  const thumb = thumbOn(track, at, span, shown)
+
+  for (let col = 0; col < track; col++) {
+    const filled = col >= thumb.from && col < thumb.from + thumb.size
+
+    c.put(1 + col, y, filled ? 0x2588 : 0x2500, filled ? COLORS.dim : COLORS.track)
+  }
+}
+
 function paintScrollbar(
   c: Canvas,
   x: number,
@@ -5900,192 +8268,6 @@ function paintScrollbar(
 
     c.put(x, y + 1 + row, filled ? 0x2588 : 0x2502, filled ? COLORS.dim : COLORS.track)
   }
-}
-
-/**
- * A row of the dialog: its sections side by side, each with its own heading,
- * its own scroll position, its own scrollbar, and a rule between it and the
- * next.
- *
- * `base` is where this row's blocks start in the dialog's list of them, so a
- * block's controls keep the same key wherever the row is drawn.
- */
-function paintColumns(
-  c: Canvas,
-  rect: Rect,
-  sections: Section[],
-  scroll: number[],
-  base: number,
-  hotspots: Hotspot[],
-): DetailPane[] {
-  const rows = rect.h - 1
-
-  if (sections.length === 0 || rows < 1) {
-    return []
-  }
-
-  // Each column gets an equal share; the rules between them and the scrollbar
-  // each cost a cell, which comes out before the share is struck. A dialog too
-  // narrow for one column per section stacks the leftovers into the last one
-  // rather than dropping them — a detail that silently omits what an agent
-  // called is worse than one that asks for a scroll.
-  const count = columnsFor(rect.w, sections.length)
-  const groups: Section[][] = Array.from({ length: count }, () => [])
-
-  sections.forEach((s, i) => groups[Math.min(i, count - 1)].push(s))
-
-  const share = Math.floor((rect.w - 2 - (count - 1) * 3) / count)
-  // What the division left over goes to the last column, so its bar stands in
-  // the dialog's own last cell. Split evenly it stood two or three cells short
-  // of the edge, and a bar that stops before the frame reads as a bar that
-  // belongs to something narrower than the block it moves.
-  const spare = Math.max(0, rect.w - 2 - (count - 1) * 3 - count * share)
-  const spans = groups.map(() => share)
-
-  spans[count - 1] += spare
-
-  // A block that already fits its rows gains nothing from another cell of
-  // width, and the block beside it may be scrolling through eighty lines. An
-  // equal split gave the prompt half a dialog to say nine lines in and left the
-  // call list to be read seventeen at a time; what the prompt does not need
-  // goes to the column that does.
-  //
-  // Only where there is a column that does. Where everything fits as it is,
-  // narrowing the prompt buys the block beside it nothing and costs the reader
-  // a column of four-word lines beside one of white space.
-  const fair = Math.max(8, share - 2)
-  const give = count > 1 && linesOf(groups[count - 1], fair).length > rows ? slackOf(groups[0], fair, rows) : 0
-
-  spans[0] -= give
-  spans[count - 1] += give
-
-  const bodies = spans.map(span => Math.max(8, span - 1))
-  // The scrollbar stands in the last cell of the block, and a line wrapped to
-  // the whole of the block ends hard against it — a sentence and a bar with
-  // nothing between them read as one run of characters.
-  const texts = bodies.map(body => Math.max(8, body - 1))
-  const lists = groups.map((group, i) => linesOf(group, texts[i]))
-  const panes: DetailPane[] = []
-  const starts = spans.map((_, i) => rect.x + 1 + spans.slice(0, i).reduce((at, w) => at + w + 3, 0))
-
-  groups.forEach((group, i) => {
-    const colX = starts[i]
-    const each = spans[i]
-    const text = texts[i]
-    const block = bodies[i]
-    const lines = lists[i]
-    const total = lines.length
-    const first = Math.max(0, Math.min(scroll[base + i] ?? 0, total - rows))
-    const pane: DetailPane = { total, visible: rows, scroll: first }
-
-    panes.push(pane)
-    paintHeading(c, colX, rect.y, block, group[0].title, pane)
-    // The block's own ground, a step up from the pane's: what an agent was
-    // asked, what it called and what it answered is quoted material, and quoted
-    // material set straight on the pane reads as the pane talking. The heading
-    // stays outside it — that is the drawing's label for the block, not part of
-    // what is quoted — and so does the bar, whose arrows are press targets, and
-    // a press target is emitted as a Button, which carries no ground of its own.
-    c.fill(colX - 1, rect.y + 1, text + 2, rows, quoteOf(c.background))
-
-    lines.slice(first, first + rows).forEach((line, row) => {
-      const y = rect.y + 1 + row
-
-      if (!line.fields && !line.right) {
-        c.text(colX, y, line.text, line.color, line.bg, text)
-
-        return
-      }
-
-      const tail = line.right ?? []
-      const tailW = tail.length > 0 ? widthOf(tail, 2) : 0
-
-      drawFields(c, colX, y, Math.max(0, text - (tailW > 0 ? tailW + 2 : 0)), line.fields ?? [], 2)
-
-      if (tailW > 0 && text > tailW + 4) {
-        drawRight(c, colX + text, y, tail, 2)
-      }
-    })
-
-    if (total > rows) {
-      paintScrollbar(c, colX + block, rect.y + 1, rows, pane, base + i, hotspots)
-    }
-
-    // The rule between two columns runs the height of the row, so the blocks
-    // read as columns rather than as text that happens to line up.
-    if (i < count - 1) {
-      for (let row = 0; row < rect.h; row++) {
-        c.put(colX + each + 1, rect.y + row, 0x2502, COLORS.track)
-      }
-    }
-  })
-
-  return panes
-}
-
-/**
- * Every block of a column, one after another, each under its own heading.
- *
- * The first block's heading is the column's own, drawn in the rule above it, so
- * only the ones after it carry a heading in the text — with a blank line before
- * it, since a heading against the last line of the block above reads as part of
- * it.
- */
-function linesOf(group: Section[], text: number): DetailLine[] {
-  return group.flatMap((s, i) =>
-    i === 0
-      ? s.lines(text)
-      : [{ text: '', color: COLORS.dim }, { text: s.title, color: COLORS.dim }, ...s.lines(text)],
-  )
-}
-
-/**
- * The narrowest a block's prose is still worth reading at.
- *
- * Below this a wrapped sentence breaks about every four words, which costs more
- * rows than the narrowing saved and reads as a column of fragments.
- */
-const MIN_TEXT = 30
-
-/**
- * How many cells a column can give up without needing another row to say the
- * same thing in.
- *
- * Only a block whose lines are settled may give anything: see `Section.fixed`.
- * The count of wrapped lines never falls as the width narrows, so the narrowest
- * width that still fits is found by halving rather than by trying each one —
- * this runs on every frame of a live run.
- */
-function slackOf(group: Section[], text: number, rows: number): number {
-  const only = group.length === 1 ? group[0] : undefined
-
-  if (!only || only.fixed !== true || text <= MIN_TEXT || only.lines(text).length > rows) {
-    return 0
-  }
-
-  let narrow = MIN_TEXT
-  let wide = text
-
-  while (narrow < wide) {
-    const mid = Math.floor((narrow + wide) / 2)
-
-    if (only.lines(mid).length <= rows) {
-      wide = mid
-    } else {
-      narrow = mid + 1
-    }
-  }
-
-  return text - narrow
-}
-
-/**
- * How many of the sections fit side by side. Each needs about forty cells to
- * carry a wrapped line without breaking mid-phrase; below that the dialog shows
- * fewer blocks rather than three unreadable ones.
- */
-function columnsFor(width: number, sections: number): number {
-  return Math.max(1, Math.min(sections, Math.floor((width - 2) / BLOCK_W)))
 }
 
 /** The colour a run's status reads in. */
@@ -6558,6 +8740,14 @@ function phaseFactsOf(
  * set to one end of something drifts away from what it names as that thing
  * changes width. Answers the cells it wrote in, so a rule it is set into can
  * keep a space either side of it.
+ *
+ * The *name* takes the middle, not the caption. The count, the loop mark and a
+ * nested run's handle trail off its right, so a reader running down a stack of
+ * bands finds every name on the same column — which is what a centred title is
+ * for. Centring the group instead balanced the block on its rule and moved the
+ * name by half of whatever came after it, so `Setup 1/1` and `Lint ∥ Build ∥
+ * Unit Test 3/3` started their names three cells apart and the column a reader
+ * was scanning down wandered from band to band.
  */
 function paintPhaseLabel(
   c: Canvas,
@@ -6567,30 +8757,44 @@ function paintPhaseLabel(
   facts: PhaseFacts,
   /** Cells kept for the blanks either side of a label set into a rule. */
   inset = 0,
-  /** Where to stand the label, given how wide it turned out. */
-  place?: (w: number) => number,
-): { x: number; w: number } {
+  /**
+   * Cells something else will write immediately after the label.
+   *
+   * Counted when the label is placed and not when it is drawn, so a caption
+   * carrying the handle that folds its run back is centred as the group it
+   * reads as. Left out, the name sat where it would have sat alone and the
+   * handle hung off its right, which left the rule longer on one side of the
+   * group than the other — the one measurement a centred title has.
+   *
+   * Asked for and not taken if the name would have to give up cells for it: a
+   * phase column narrow enough to be truncating already has nowhere to put the
+   * handle, and shortening the name further to reserve room nothing can use
+   * loses letters twice over.
+   */
+  extra = 0,
+): { x: number; w: number; used: number } {
   const tail = (facts.count ? facts.count.length + 1 : 0) + (facts.loop ? facts.loop.length + 1 : 0)
   const fields: Field[] = [
-    { text: truncate(facts.name, Math.max(1, width - tail - inset)), color: facts.tone },
+    { text: runName(facts.name, Math.max(1, width - tail - inset)), color: facts.tone },
     ...(facts.count ? [{ text: facts.count, color: COLORS.dim }] : []),
     ...(facts.loop ? [{ text: facts.loop, color: mix(COLORS.dim, COLORS.accent, 0.5) }] : []),
   ]
-  const w = Math.min(width, widthOf(fields, 1))
-  const at = place ? place(w) : x + Math.max(0, Math.floor((width - w) / 2))
+  const used = Math.min(width, widthOf(fields, 1))
+  const w = used + extra <= width ? used + extra : used
+  const at = x + Math.max(0, Math.floor((width - w) / 2))
 
   // A label set into a rule clears the cells it stands in, its own gaps
   // included: a stroke showing through between the name and the count joins
   // them into one word with a line in it.
   if (inset > 0) {
-    for (let dx = -1; dx <= w; dx++) {
+    for (let dx = -1; dx <= used; dx++) {
       c.put(at + dx, y, 0x20, facts.tone)
     }
   }
 
   drawFields(c, at, y, width - (at - x), fields, 1)
 
-  return { x: at, w }
+  return { x: at, w, used }
 }
 
 /**
@@ -6682,17 +8886,17 @@ function paintHeader(
   c: Canvas,
   run: RunState,
   lanes: LaneBox[],
-  laneAgents: { phase: string; agents: AgentRow[] }[],
+  laneAgents: FoldedLane[],
   nowMs: number,
   tick: number,
-  orientation: 'flow' | 'stack',
+  orientation: 'horizontal' | 'vertical',
   headerRows: number,
   columns = c.columns,
   passes: Map<string, Pass> = new Map(),
   hotspots?: Hotspot[],
   picker?: 'shut' | 'open',
 ): void {
-  const barRows = Math.max(2, headerRows - (orientation === 'flow' ? 2 : 1))
+  const barRows = Math.max(2, headerRows - (orientation === 'horizontal' ? 2 : 1))
   const quiet = quietOf(c.background)
 
   paintBar(c, run, nowMs, tick, barRows, columns, hotspots, picker)
@@ -6705,7 +8909,7 @@ function paintHeader(
 
   // Stacked, each band opens with a rule of its own carrying its name: see
   // `paintSections`. There is nothing left for the header to say about them.
-  if (orientation === 'stack') {
+  if (orientation === 'vertical') {
     return
   }
 
@@ -6724,21 +8928,61 @@ function paintHeader(
   }
 
   lanes.forEach((lane, place) => {
-    const agents = laneAgents[lane.index]?.agents ?? []
-    const facts = phaseFactsOf(lane.phase, lane.index, agents, passes, overOf(run))
+    const fold = laneAgents[lane.index]
+    // The same mark, the same press and the same state as a stacked band's:
+    // see `paintSections`. A phase's caption is the one row of it that says
+    // what the phase *is* rather than what ran in it, so a nested run's way in
+    // belongs on the caption in every layout that draws one — across the pane
+    // it is a column head, down the pane it is a rule, and a reader who learns
+    // the ▸ in one should not have to find it again in the other.
+    const open = fold?.nested === true && fold.shut !== true
+    const facts = phaseFactsOf(
+      open ? FOLD_OPEN + lane.phase.slice(FOLD_SHUT.length) : lane.phase,
+      lane.index,
+      fold?.agents ?? [],
+      passes,
+      overOf(run),
+    )
+    const handle = fold?.nested === true ? foldHandle(!open, fold.agents.length, lane.w) : ''
+    const label = paintPhaseLabel(
+      c,
+      lane.x,
+      captionRow,
+      lane.w,
+      facts,
+      0,
+      handle.length > 0 ? HANDLE_GAP + handle.length + 1 : 0,
+    )
 
-    paintPhaseLabel(c, lane.x, captionRow, lane.w, facts)
+    if (fold?.nested && hotspots) {
+      const after = label.x + label.used + HANDLE_GAP
+      const drew = paintFoldHandle(
+        c,
+        lane.phase,
+        after,
+        captionRow,
+        lane.x + lane.w - after,
+        facts.tone,
+        !open,
+        fold.agents.length,
+        hotspots,
+      )
 
-    if (facts.total === 0) {
-      return
+      if (!drew) {
+        hotspots.push(markSpot(lane.phase, label.x, captionRow, lane.x))
+      }
     }
 
     // A phase's length of the rule is its own progress, filled to the fraction
     // that has landed, which ties the measurement to the column it measures.
-    const filled = Math.round((facts.landed / facts.total) * lane.w)
+    const filled = facts.total > 0 ? Math.round((facts.landed / facts.total) * lane.w) : 0
+    const nested = fold?.nested === true
 
-    for (let dx = 0; dx < filled; dx++) {
-      c.put(lane.x + dx, ruleRow, RULE_DONE, quiet)
+    // Only a nested phase redraws the length it did not fill: the rule was laid
+    // down the whole width before the lanes were walked, and the stroke it was
+    // laid in is the one every other phase wants.
+    for (let dx = nested ? 0 : filled; dx < (nested ? lane.w : filled); dx++) {
+      c.put(lane.x + dx, ruleRow, ruleOf(nested, dx < filled), quiet)
     }
 
     // The joint between a filled length of rule and the border under it is
@@ -6746,9 +8990,9 @@ function paintHeader(
     // stop either side of the gutter.
     const next = borders[place + 1] ?? -1
 
-    if (filled >= lane.w && next >= 0) {
+    if (filled > 0 && filled >= lane.w && next >= 0) {
       for (let x = lane.x + lane.w; x <= next; x++) {
-        c.put(x, ruleRow, x === next ? TEE_DONE : RULE_DONE, quiet)
+        c.put(x, ruleRow, x === next ? TEE_DONE : ruleOf(nested, true), quiet)
       }
     }
   })

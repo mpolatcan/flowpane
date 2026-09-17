@@ -38,9 +38,12 @@ word, whether a word was written over one of the pieces only a wire is drawn
 with, whether an arrowhead has a stem behind it, and whether every arm of every
 line piece reaches something. Each cell remembers which function drew the line
 in it, read off the stack, so a fault comes back with the painter to go and
-look at. The three lines that are *meant* to be broken — a card's edge under its
-name, the bar's top rule under the surface's close control, the borders and band
-rules — are quiet by default and `--all` shows them.
+look at. The five lines that are *meant* to be broken are quiet by default and
+`--all` shows them: a card's edge under its name, the bar's top rule under the
+surface's close control, the borders and band rules, the timeline ruler's rule
+under the tick labels written along it, and the timeline's grid, whose dashed
+columns are dropped into blank cells wherever the bars left any and so reach
+nothing at either end by design.
 
 `dev/shot.ts` is the one to reach for when the question is about a cell, or
 about what happens on the third press. A terminal is a poor place to debug a
@@ -87,24 +90,57 @@ hook fires and reads the journal. `tests/pane.test.ts` drives the whole thing
 over the engine with `claude plugin test` — a launch opens the pane, a journal
 fills it, the drawing comes back as bands, pressing a node's Button opens its
 detail, and every row of the tree measures the same width as the Rasters beside
-it and sits on the same ground, to the value. `tests/scroll.test.ts` presses a block's own scroll arrows
-the same way — including the case that reported the scroll as broken, where the
-column pressed moves and the short column beside it stays where it was. It also
-presses the dialog's close mark, and checks that opening a node leaves the
-layout the reader chose where it was. `tests/run.test.ts`
+it and sits on the same ground, to the value. `tests/scroll.test.ts` presses the dialog's tabs and its
+scroll arrows the same way — including the case that reported the scroll as
+broken, where the pane pressed moves and the one behind the tab beside it keeps
+the lines the reader left it on. It also presses the dialog's close mark, and
+checks that opening a node leaves the layout the reader chose where it was.
+`tests/fold.test.ts` checks the four things a looping run turned up: that a
+phase entered three times is one row with three marks on it, that the phases
+which went round together are tied by a rail down the gutter while the ones at
+either end are not, that a drawing taller than the pane gets a scroll rail and
+scrolls under a header that does not move, and that a live run opens on the
+phase it is working in while a finished one opens at its start. `tests/run.test.ts`
 rebuilds a run from the two files it is written to and checks the facts a node
 must always carry survive the trip — and rebuilds one that has no summary yet,
 where the script's name gives the run its own and the mtimes of each agent's two
 files give it a clock, an agent still working taking a last-heard-from rather
 than an end — and `tests/header.test.ts` measures the
-header block on the canvas — three rows, a phase name centred over each column
-and into each stacked band's rule, and the run menu opening below the bar
-rather than through it. `tests/dialog.test.ts` opens a detail and measures the
+header block on the canvas — three rows, a phase caption centred over each column
+across the pane and in each stacked band's rule down it, with equal rule either
+side and measured against the drawing rather than the pane, which are two
+different widths once a scrolling run puts a rail down the right edge; and the
+run menu opening below the bar rather than through it. `tests/dialog.test.ts` opens a detail and measures the
 box: inset on all four sides, the graph above and below it unchanged, the
 agent's own words in it and not on its card, the calls block saying what
 each call was rather than what it came back with — except the one that failed,
-which keeps its error — and a rule between one call and the next, inside the
-block and never above the first. It opens each dialog in turn — the detail, the
+which keeps its mark — every call on one row with the arguments starting at one
+column and no rule between them, and a row pressed opening that call in a dialog
+of its own: the argument whole with its own line breaks, what came back under a
+rule of its own, the way back in the corner, and the list it came from not drawn
+behind it. It reads a call row back to check that the argument shown is
+the field that identifies the call and not whichever field the tool's schema
+puts first. It checks the reading's two compartments — that each shelf ties
+into the frame at both ends, that the first says `command` for a shell line and
+`argument` for named fields and the second `output`, that moving one leaves the
+other where it was, and that a box too short for two compartments rules the
+sections off inside one block instead — and that a four-hundred-line answer keeps
+both its ends with a count of what was left out between them, cut where the
+answer already broke a line. It reads the weights back off the canvas rather than off the text: that
+the word that ran, what it ran on and the punctuation between them come out in
+three tones of one grey and no fourth colour. And it narrows the tab strip to
+watch it go down its ladder — `Tool Calls (4)`, then `Tool Calls`, then
+`Calls` — since the name is what a reader presses and the count is what they
+would have found by pressing it. It opens a nested run's name to check that every agent it ran is
+listed and not only the one that decided the trip, that a row of that list opens
+that agent with the way back to the run in the corner, and that a long answer
+still leaves every row one line high. It opens a card fed from further back and
+checks that the dialog says `from` and the phase, which is the word the card
+itself carries wherever the row beside it has the cells for it. It reads a markdown prompt back off the
+canvas — the heading on its own line, the quote and the list items where they
+were written, the writer's blank lines kept — and reads a four-hundred-line one
+to its last line, since the wrapper it shares with a call's argument used to
+stop at two hundred. It opens each dialog in turn — the detail, the
 run menu, the settings, a setting's unrolled list and About — and checks that
 every one of them pushes the drawing behind it toward the ground and carries
 none of it forward, and that a detail already open goes back with the graph once
@@ -122,8 +158,24 @@ carrying its state's own mark and a rule, and the headings dropped before a run
 is when the pane is short. It measures the idle pane the same way — the bar, the
 runs under it headed as the menu heads them, every one of them pressable, and
 the line a session with nothing to list gets instead. `tests/wires.test.ts`
-counts the arrowheads into a phase — one where its agents ran one at a time, one
-per agent where they ran at once — and checks that four carries out of two nodes
+counts the arrowheads into a phase — one per agent where they all ran at once,
+one where they ran one at a time, and one again where the phase ran in waves,
+which is neither and is the shape a nested run opened out always has — checks that the arc is only ever drawn where
+one wire steps over another, with a line above it and a line below it and never
+a phase's own border under it, that every point a wire leaves a card by is
+marked even where the bus stands hard against the card, and that a card fed from
+further back says so in words — `from` and the phase, named by that phase's place
+in the run, which is not where it stands in a picture that left a phase out, and
+without the `▸` the engine writes in front of a nested run's name, which is a
+control this pane puts on the band's caption and nowhere else. It checks that
+the label stands above the card in either layout, never under it, that it stands
+centred on that card with the same blank either side of it, and that where the
+row is too short for the word and the name together the word is what goes: the
+name comes through whole either way. It checks that a band's
+caption stands where it is centred whatever crosses its rule, with equal rule
+either side of it, and that the wire it covers gives way for that one row alone —
+whole above the rule and whole below it, on the same column. It checks that four
+carries out of two nodes
 turn in one shared line, with no junction glyph anywhere along it and never two
 turns on one row: a junction there is two carries in one cell and an arm a
 reader cannot assign to either of them, and departures on the cards' own edges
@@ -135,9 +187,73 @@ middle of the one it owns, to a cell — and where the phases it could not fit a
 named: a strip at the end of the drawing across, a dashed band of their own
 under the last phase the run entered down the pane and along a timeline, never
 an empty band each — and the row it gives up when the pane is too short for
-two. `tests/press.test.ts` presses the controls
+two. It measures how many sections the pane divides itself into: a run of
+seventeen phases across a hundred and ten columns draws whole columns wide
+enough to name, cut between two of them rather than through one, with the rest
+to scroll to; a wider pane names more phases rather than drawing fatter ones; a
+run whose slices were already legible keeps every phase on the pane; and down
+the pane a band of eight agents stands as many of them as it can name, every
+band opening at the left edge while it does. It measures the height's half of
+the same bargain in both directions: a column of twelve agents keeps its cards
+and scrolls down to the rest of them rather than flattening every node in the
+drawing to a row, the phase names hold their row while it does, a pane too short
+for two cards falls back to a row each, and a run too tall for cards down the
+pane keeps its cards there too and scrolls. It measures what a band gives its
+node room for: three rows above it — the one the wires gather on, the one a card
+fed from further back names that phase on, and the one the arrowheads land in —
+two below, and the node standing in the middle of them. It pins `scrolled()` itself, which
+moves a band's spine the way the drawing runs — down the pane with the rows,
+across the pane with the columns. Moved the one way in both, a band scrolled down
+the pane kept its spine on the row it was laid out at while its cards went with
+the scroll, and every wire into that band ran the depth of the drawing through
+the cards in between. And it rules the timeline: that the axis carries a tick
+row with elapsed times on it and dashed columns down the rows under them, and
+that a run whose agents are all far shorter than the run asks for a scale wider
+than the pane and gets a rail along the foot to move along it. `tests/press.test.ts` presses the controls
 directly, where a press is one call over a plain object rather than a run driven
-to the point the button appears; `tests/foot.test.ts` reads the row under the
+to the point the button appears — including the peek: a scroll stops the body
+following, the same phase still at work leaves the reader where they went, and a
+different phase takes the window back — and the wheel's axis, which the event
+does not carry: over the rail along the foot it goes sideways, over a drawing
+with no rows to give it goes sideways there too, and over anything else it goes
+down. Over an open call it checks the wheel picks its compartment from the row
+the pointer was on, since a scroll carries rows and nothing else. It presses a row of the Tool Calls list and checks that the call takes the
+dialog's rectangle and not its state — the tab where it was, its scroll where it
+was, the call keeping its own place in its own payload under its own number —
+that `◂ Back` returns to both, and that moving to another agent shuts a call the
+last one made. It reads a nested run's own dialog the same way: that the row
+standing for the run answers to the run rather than to the agent its figures came
+from, that opening it stands every agent the run ran with what each answered,
+that the rows are four consecutive rows however long the answers are, that the
+foot counts the agents, and that a row pressed opens that agent with `◂ Back` in
+its corner and the list not drawn behind it. `tests/press.test.ts` keeps the
+state that goes with it: that the run is selected by its phase, that an agent
+opened from the list remembers it, that Back returns to the list rather than out
+of the reading, and that an agent pressed in the drawing is offered no way back
+to a list it did not come from. `tests/fold.test.ts` reads a nested run back off the canvas — that a run
+a reader opened stands behind a dashed gutter its calling run's rows do not,
+that the gutter closes on the run's own totals, that the mark says whether it is
+open, and that folding it back takes the gutter with it. It measures the way in and the way back
+out, which are one control on the band's caption in every layout: that the
+handle reads `▸ 3 agents` shut and `▾ 3 agents` open, that the run's own card
+carries neither — its bottom edge says its model, the way every card's does — that it is the same width either way, that the word
+`collapse` appears in neither, that the rule shows between the caption and the
+handle, that the name comes first with the handle trailing off its right, and
+that the handle counts towards what gets centred — the rule comes out the same
+length either side of the caption and its handle together. It measures what one press on a nested run stands:
+every agent it ran, with no step left rolled up behind a count; a step folded
+back standing as one row saying how many agents are behind it; and a phase of
+the calling run that fanned out to the same shape keeping every card. It measures the nested
+register across the three layouts: that a nested phase's rule is drawn in the
+dashed stroke and the same run with the marker off its name draws none; that the
+▸ takes a press laid out across, where there was none; that a shut nested run
+stands one bar a trip on the timeline rather than one an agent, and opened
+stands every agent on a row of its own with a press each. It measures the two
+places the pane used to answer with a number instead of a place — a timeline
+taller than the pane gets a rail, not a count — and the fork the flat list draws
+out of a phase's rule, which a phase of one agent does not get. It also walks the
+name ladder in both directions: a half that repeats the other goes at every width,
+and the plugin half goes before the workflow half is cut. `tests/foot.test.ts` reads the row under the
 drawing back off the tree — two buttons, keyed `@settings` and `@about`, each
 carrying a hover scope that lifts the dim under the pointer, with a quiet line
 between them naming each setting and its value in the dialog's own words and in

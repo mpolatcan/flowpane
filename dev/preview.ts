@@ -7,13 +7,16 @@
  *   bun dev/preview.ts --animate             the run playing out
  *   bun dev/preview.ts --journal <dir>       a real run's transcript directory
  *   bun dev/preview.ts --cols 120 --rows 30
- *   bun dev/preview.ts --orientation time    the timeline instead of the graph
+ *   bun dev/preview.ts --orientation timeline  the timeline instead of the graph
  *   bun dev/preview.ts --quiet               with one agent gone quiet
  *   bun dev/preview.ts --select verify:perf  with that agent's detail dialog open
  *   bun dev/preview.ts --pick | --picking    with the run menu shut, or open
  *   bun dev/preview.ts --settings            with the settings dialog open
  *   bun dev/preview.ts --menu theme          with that setting's list unrolled
  *   bun dev/preview.ts --about               with the About dialog open
+ *   bun dev/preview.ts --scrolly 12          the drawing scrolled down 12 cells
+ *   bun dev/preview.ts --follow              the window on the phase the run is in
+ *   bun dev/preview.ts --open '▸ name'       with that nested run unfolded
  *   bun dev/preview.ts --plain               the glyphs only, no colour
  */
 
@@ -127,6 +130,20 @@ if (has('animate')) {
     orientation: (arg('orientation', 'auto') as any),
     selectedId,
     detailRows: Number(arg('detailRows', '24')),
+    detailTab: Number(arg('tab', '0')),
+    openCall: arg('call'),
+    callScroll: Number(arg('callscroll', '0')),
+    callOutScroll: Number(arg('outscroll', '0')),
+    fromRun: arg('fromrun'),
+    bodyScroll: { x: Number(arg('scrollx', '0')), y: Number(arg('scrolly', '0')) },
+    follow: has('follow'),
+    // A step inside a nested run is keyed with a null between the run's name and
+    // the step's number, which nothing can type. `--open '▸ name#2'` says
+    // the same thing.
+    opened: arg('open', '')
+      .split(',')
+      .filter(Boolean)
+      .map(name => name.replace(/#(\d+)$/, '\u0000$1')),
     detailScroll: arg('scroll', '')
       .split(',')
       .filter(Boolean)

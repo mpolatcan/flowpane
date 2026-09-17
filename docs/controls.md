@@ -8,16 +8,137 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | --- | --- |
 | A node's label | opens that agent's detail dialog; click again to close |
 | ⚙ Settings | opens the settings dialog over the drawing |
-| `flowpane 0.3.1` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
+| `flowpane 0.5.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
 | A setting's value | unrolls that setting's list where it stands; press it again to roll the list up |
 | The graph, with any dialog open | takes no presses — it is pushed back behind the dialog until the dialog shuts |
-| Layout | across, down, timeline, or fits the shape — picked by name |
+| Layout | horizontal, vertical, timeline, or fits the shape — picked by name |
 | Detail height `−` `+` | rows the detail dialog takes, 5 to 32; grey at either end of the range |
 | Theme | twelve palettes, nine dark and three light — each listed beside three cells of its own |
 | ✕ (in a dialog) | closes it, from the dialog's own top corner |
-| ▴ / ▾ | scrolls one block of the detail dialog three lines. Each block has its own pair, at the ends of its own bar. Grey at either end |
+| A tab in the detail dialog | shows that pane across the dialog's whole width. Which tab is open is kept as the reader moves from node to node |
+| A pass number on a node's row | opens that attempt's detail: `✔ 1  ✔ 2  ✖ 3` is one row and three presses |
+| The ▸ on a nested run's name | unfolds that run into every agent it ran, each one a press of its own, in one press. It is on the band's rule — the column head across, the band rule down the pane and along the timeline — which is the one row of the drawing that is about the run rather than about the agents in it. Down the pane the agents stand one step in, behind a gutter of their own, closed by what the whole of the run came to. The mark turns ▾ while it is open, and takes the cell either side of it as a press |
+| A nested run's own name, on its row or its card | opens the run as the list of every agent it ran: state, name, what it answered, what it took and spent, one row each. The row stands for a whole workflow and has no agent of its own, so this used to open the one agent whose figures the row was drawn from. Pressing a row of the list opens that agent in full |
+| `◂ Back`, in an agent's dialog | returns to the nested run's list it was opened from, at the row it was left on. Offered only where there is a list behind: an agent pressed in the drawing has the drawing behind it |
+| The `▸ 23 agents` handle after a nested run's caption | opens the run, and folds it back once it is open, when it reads `▾ 23 agents`. One control, the same shape in both states, and the only one: the node used to carry the same count as a second way in, on a row in the slot that says what the agent is saying and on a card in the edge that says its model, and it overlapped both. It gives way to `▸ 23` and then to `▸`; a column with room for none of them leaves the press on the mark the name opens with |
+| ▴ / ▾ (in a dialog) | scrolls the open pane three lines. Grey at either end |
+| ▴ / ▾ (at the pane's right edge) | scrolls the drawing three rows, where the drawing is taller than the body. While a run is live this is a peek: the window goes back to the phase at work when the run enters a new one. The timeline scrolls its bands the same way, under the fixed run line and ruler |
+| The wheel, over the pane | moves the drawing by the rows the wheel asks for; moves the open dialog instead while one is open |
+| The wheel, over the rail along the foot | moves the drawing eight cells sideways a tick. A drawing that can only go sideways — horizontal, where the phases run in a row — takes the wheel this way wherever it is turned |
+| The `▾ 6 agents` on a step of an opened nested run | folds the rows that ran at once in that step into one row saying how many; press it again to stand them out. Only a step holding more than one row carries it, and only inside a nested run: a phase of the calling run that fanned out to six agents is six cards either way. Folding the run itself back forgets every fold made inside it |
+| A row of the Tool Calls list | opens that call in a dialog of its own, over the agent's: what it was passed and what came back, each in a compartment of the box with its own shelf, its own bar and its own place kept, and the middle of a long value left out and counted. The wheel moves whichever compartment the pointer is over. `◂ Back` in the top corner returns to the list at the row it was left on; `✕` shuts the reading altogether |
+| ◂ / ▸ (on the pane's last row) | scrolls the drawing eight cells sideways, where it is wider than the body. On the timeline this moves the time axis, which has a scale of its own and is usually wider than the pane; the labels and the figures stay put |
 | The run's name | opens the session's other runs as a menu under it, once there is more than one; grouped by state, most recent first, each with the second it started on. Picking one moves the drawing to it, live or finished |
 | A run on the idle pane | draws it. With nothing running the pane lists the session's runs in place of the graph, grouped and timed the same way |
+
+## The body scrolls to the rest of the run
+
+A drawing larger than the pane is not cut down to fit. It is laid out whole and
+the body shows a window on to it, with a rail down the right edge where it is
+taller than the pane and one along the foot where it is wider:
+
+```
+──────────────────────────── Commit (code) 3/3 ↻3 ──────────────────────── █
+  ▌✔ Commit (code)  ✔ 1  ✔ 2  ✔ 3                    1m48s  ∑25k  Haiku 4.5 █
+╍╍╍╍╍╍╍╍ ▸ code-review:ai-review-agentic 23/23 ↻3 ╍╍ ▸ 23 agents ╍╍╍╍╍╍╍╍╍ █
+  ▌✔ code-review:ai-review-agentic  ✔ 1  ✔ 2  ✔ 3            ∑198k   ▾
+```
+
+The pane used to answer a drawing it could not fit with `… 38 more` on its last
+row: a number a reader could read and do nothing with. A rail is the same fact
+told as a place, and a place can be moved. The thumb says how much of the run is
+on the pane and whereabouts in it, so the two questions the count could not
+answer — how much is there, and where am I — are answered by looking.
+
+The header does not move. Which run this is, how far along it is and what it has
+spent are the pane's own furniture, not part of the drawing, and they hold
+whatever the body is showing.
+
+The wheel moves it too, and has to be answered rather than left to the engine.
+The pane paints exactly one screenful, so the engine's own window over the tree
+has nowhere to go — the tree is as tall as the body — and a reader turning the
+wheel over the drawing got nothing at all. `ui.scroll` still fires, and the pane
+answers it by moving its own window and not calling `next`, so the engine's
+window stays where it is. `by` arrives signed and already accelerated, a tick at
+rest one row and a burst more, so it is used as given rather than multiplied up
+to the arrow's step: an arrow is pressed once for a deliberate move, a wheel is
+turned until the reader sees what they want.
+
+The arrows in the margin stay. A wheel is what a reader reaches for without
+looking; a control that can be pressed is what says the drawing goes on past the
+edge of the pane at all.
+
+Sideways, the wheel has no axis of its own to read. `ui.scroll` carries one
+signed number of rows, and a terminal hands the engine no shift-wheel to widen
+it, so which way a tick goes is decided by where the pointer was — the one other
+thing the event carries. Two things ask for a sideways move:
+
+- **The wheel over the rail along the foot.** A wheel over a scrollbar moves
+  what that scrollbar moves, everywhere else a person has used one, and the rail
+  is on the pane's last row where the pointer's row can be read against it.
+- **The wheel over a drawing that can only go sideways.** Across, a run is laid
+  out in a row of phases: the seventeen-phase pipeline overruns by two hundred
+  and thirty-four columns and by no rows at all. Sending that wheel down the
+  drawing would make the widest picture the pane draws the one picture whose
+  wheel did nothing.
+
+A tick sideways is the arrow's own eight cells rather than the row's one. The
+two are not the same distance — a cell is about half as wide as it is tall — and
+two hundred columns at a column a tick is a reader turning the wheel two hundred
+times to reach the end of a run.
+
+The scroll moves the boxes, not the cells: every wire, barrier, rail and
+arrowhead the painter draws comes from where the boxes are, so moving the boxes
+moves the whole picture and keeps it consistent with itself. A node scrolled off
+the top takes no press — it drew nothing, and a press target left on the header
+row above it would open an agent the reader cannot see.
+
+The offset is clamped against what the last frame measured, so a pane that grows,
+a run that ends, or a layout that changes shape brings the drawing back into
+view on its own. Changing the layout, or moving to another run, starts at the
+top: a cell offset into the drawing it replaced means nothing in the new one.
+
+## While the run is live, the window is on the phase it is working in
+
+A pane that opened at the first phase showed a reader a phase that finished an
+hour ago, while the agent actually running was off the drawing entirely. On a
+run of seventeen phases the present was the one thing the pane would not show.
+
+So a live run is drawn with the window centred on the phase it is working in —
+the lane holding the most recently started agent that is still running — and the
+window moves when that phase does. A finished run has no front to follow and
+opens at its start, which is where a reader coming to it after the fact begins.
+
+Scrolling away is a peek rather than a decision. The pane stays where it is put
+while the run gets on with the same phase, and goes back to the front when the
+run enters a different one. The two other rules were both worse: snapping back
+on every tick makes a live pane unreadable, and never going back needs a control
+that says *resume* — a control nobody presses while reading, and a pane left
+showing the past. Nothing is lost by going back, because the run is still going
+and what was being read is still there to scroll to.
+
+Unfolding a nested run stops the following too, and keeps the offset where it
+was: the extra rows go *inside* the band, so everything above it holds and the
+reader is still looking at the band they pressed. Someone who opened a nested
+run is reading that run, and a pane that returned to the front would close it.
+
+A pane with no room for a rail — fewer than four rows of body, or fewer than
+four columns — draws none and keeps the cells for the drawing. A drawing overruns
+such a pane whatever is done about it.
+
+Across, this is what makes the layout readable at all on a long run. The columns
+used to divide the pane however many phases there were, so seventeen phases in a
+hundred and twelve cells came out as seventeen columns of `P 1…` — every phase
+present and none of them named. They take the width a card needs instead, and
+the body scrolls to the ones past the edge. A pane too narrow to show two whole
+columns has nothing to scroll between, and packs as tightly as it always did.
+
+The timeline scrolls on the same rail, for the same reason. It used to end at
+`… 48 more` on its last row — a number a reader could read and not act on — on
+the one layout that cannot fold a phase's repeats onto a single node, because
+every trip through a phase is a different stretch of clock. It scrolls down only:
+a bar is scaled to the pane's own width, so there is never anything off the side
+of it. See [graph.md](graph.md).
 
 ## The bottom row
 
@@ -26,7 +147,7 @@ them.
 
 ```
 ────────────────────────────────────────────────────────────────────────────────────────
-⚙ Settings │ Layout: fits │ Theme: tokyo-night │ Detail height: 24 rows   flowpane 0.3.1
+⚙ Settings │ Layout: fits │ Theme: tokyo-night │ Detail height: 24 rows   flowpane 0.5.0
 ```
 
 A line divides it from the drawing. Everything above the line is one canvas and
@@ -49,9 +170,9 @@ and still could not show them what they were choosing.
 
 What replaced it is the part worth having on screen the whole time: what the
 pane is currently set to, in the same words the dialog offers and in the order
-the dialog lists them. A footer reading `Layout: down` beside a dialog offering
-`across down timeline fits` would be two names for one setting, and a footer
-reading them back in a different order would be two lists.
+the dialog lists them. A footer reading `Layout: vertical` beside a dialog offering
+`horizontal vertical timeline fits` would be two names for one setting, and a
+footer reading them back in a different order would be two lists.
 
 Each fact is named, in the dialog's own word for it. `tokyo-night` on its own is
 an answer to a question that is not on screen: a reader who has never opened the
@@ -75,10 +196,10 @@ which is the one a reader changes most.
 The same pane at 88, 72, 44, 30 and 22 columns:
 
 ```
-⚙ Settings │ Layout: fits │ Theme: tokyo-night │ Detail height: 24 rows   flowpane 0.3.1
-⚙ Settings │ Layout: fits │ Theme: tokyo-night            flowpane 0.3.1
-⚙ Settings │ Layout: fits     flowpane 0.3.1
-⚙ Settings      flowpane 0.3.1
+⚙ Settings │ Layout: fits │ Theme: tokyo-night │ Detail height: 24 rows   flowpane 0.5.0
+⚙ Settings │ Layout: fits │ Theme: tokyo-night            flowpane 0.5.0
+⚙ Settings │ Layout: fits     flowpane 0.5.0
+⚙ Settings      flowpane 0.5.0
 ⚙ Settings            
 ```
 
@@ -104,7 +225,7 @@ reader presses to find out what this is, is what it is called.
 ## What the pane is
 
 ```
-╭─────────────────── flowpane 0.3.1 ───────────────────── ✕ ─╮
+╭─────────────────── flowpane 0.5.0 ───────────────────── ✕ ─╮
 │                                                            │
 │ A live picture of the agents a workflow runs: what each    │
 │ one is doing, what it has spent, and what it answered.     │
@@ -140,7 +261,7 @@ because two copies drift: the dialog gains a line the command never learned, and
 the reader with the fewest ways to find out is told the least. The version comes
 from there too, and `bun dev/checkmeta.ts` fails if it has drifted from
 `.claude-plugin/plugin.json` — a pane claiming 0.3.0 while the marketplace
-serves 0.4.0 is worse than a pane that names no version at all.
+serves 0.5.0 is worse than a pane that names no version at all.
 
 Short of the room for all of it, the end goes first: what the pane is and what
 presses it are what the dialog was opened for, and the path it reads from is the
@@ -149,13 +270,13 @@ line a reader comes back for later. It draws down to 26 columns.
 ## The settings dialog
 
 ```
-╭─────────── ⚙ Settings ──────── ✕ ─╮
-│                                   │
-│ Layout            [across      ▾] │
-│ Theme         ▮▮▮ [tokyo-night ▾] │
-│ Detail height  −  [24 rows]  +    │
-│                                   │
-╰───────────────────────────────────╯
+╭────────── ⚙ Settings ─────── ✕ ─╮
+│                                 │
+│ Layout          [horizontal  ▾] │
+│ Theme       ▮▮▮ [tokyo-night ▾] │
+│ Detail height  −  [24 rows]  +  │
+│                                 │
+╰─────────────────────────────────╯
 ```
 
 A dialog over the drawing, like a node's detail, and for the same reason: it
@@ -266,7 +387,7 @@ back to:
 | `/flowpane` | opens the pane, or closes it if it is already open |
 | `/flowpane runs` | lists this session's runs, numbered |
 | `/flowpane <n>` | shows run `<n>` from that list |
-| `/flowpane across` \| `down` \| `timeline` \| `fits` | lays the graph out |
+| `/flowpane horizontal` \| `vertical` \| `timeline` \| `fits` | lays the graph out |
 | `/flowpane detail <n>` | rows the detail dialog takes (5–32) |
 | `/flowpane about` | what the pane is, and what presses it — the About dialog's own lines |
 | `/flowpane theme` \| `/flowpane theme <name>` | lists the palettes, or paints in one |

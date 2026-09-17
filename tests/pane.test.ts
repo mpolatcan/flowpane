@@ -254,7 +254,9 @@ test('the drawing is cut into bands so a node can be pressed', async ($, on) => 
 
   const opened = paneOf(await renderPane($)).lines.join('\n')
 
-  expect(opened).toContain('▮ color:red')
+  // Headed by the agent and by its state: the dialog's mark is the node's mark,
+  // so a dialog cannot disagree with the card it was opened from.
+  expect(opened).toContain('✔ color:red')
   expect(opened).toContain('Response')
 })
 

@@ -26,12 +26,25 @@ export type ToolCall = {
   /** The call's `tool_use_id`, or a counter when the engine gave none. */
   id: string
   name: string
-  /** The argument that says what the call was about: a command, a path, a query. */
+  /**
+   * The argument that says what the call was about: a command, a path, a query.
+   *
+   * Held whole, its own line breaks included, up to `INPUT_MAX` — the Tool Calls tab
+   * draws it as it was written, and a command cut down to its first line is a
+   * command nobody can check.
+   */
   input: string
   startedMs: number
   endedMs?: number
   isError?: boolean
-  /** First line of what the tool answered. */
+  /**
+   * What the tool answered, held the same way its argument is, up to `INPUT_MAX`.
+   *
+   * One line of it used to be kept, which made the reading a header with nothing
+   * under it: a test run's line one is `RUN  v2.1.9` and the verdict is thirty
+   * lines down. A run watched live and the same run replayed keep the same
+   * amount, so the two say the same thing.
+   */
   result?: string
   /** The model request (1-based) that issued it, and what that request wrote. */
   step?: number
@@ -590,15 +603,36 @@ const RESERVED_KEYS = new Set([
   'effort',
 ])
 
-/** The argument that says what a call is about, as one line. */
-export function inputPreviewOf(event: Record<string, unknown>): string {
+/**
+ * The cells of a call's argument the run holds on to.
+ *
+ * A command is the thing a reader opens a detail dialog to read, and it used to
+ * arrive here as the first line of itself cut to a hundred and seventeen cells
+ * — so a heredoc, a pipeline written over three lines, or any `gh api` call with
+ * its flags wrapped was unrecoverable from the moment the chain saw it. No
+ * dialog can undo that, however wide it is drawn.
+ *
+ * The cap is what a person will read rather than what a tool may be handed: an
+ * `Edit` carrying a file's whole new text is not a command anybody reads in a
+ * pane, and holding megabytes of it per call on a seventy-eight agent run is
+ * memory spent on something never drawn. The transcript reader is capped the
+ * same way, so a run watched live and the same run replayed say the same thing.
+ */
+const INPUT_MAX = 4_000
+
+function heldOf(value: string): string {
+  return value.length > INPUT_MAX ? `${value.slice(0, INPUT_MAX)}…` : value
+}
+
+/** The argument that says what a call is about, with its own line breaks kept. */
+export function inputOf(event: Record<string, unknown>): string {
   const preferred = ['command', 'file_path', 'path', 'pattern', 'query', 'url', 'prompt', 'description']
 
   for (const key of preferred) {
     const value = event[key]
 
     if (typeof value === 'string' && value.trim()) {
-      return previewOf(value)
+      return heldOf(value)
     }
   }
 
@@ -607,7 +641,7 @@ export function inputPreviewOf(event: Record<string, unknown>): string {
       continue
     }
 
-    return previewOf(typeof value === 'string' ? value : JSON.stringify(value))
+    return heldOf(typeof value === 'string' ? value : JSON.stringify(value))
   }
 
   return ''
@@ -652,7 +686,7 @@ export function noteCallEnd(
   const said = typeof outcome.text === 'string' ? outcome.text : outcome.result
 
   if (said !== undefined) {
-    call.result = previewOf(said)
+    call.result = heldOf(typeof said === 'string' ? said : JSON.stringify(said) ?? '')
   }
 
   return true
@@ -860,7 +894,7 @@ export function readAgentTranscript(text: string): {
         const call: ToolCall = {
           id: typeof part.id === 'string' ? part.id : `call-${calls.length + 1}`,
           name: part.name,
-          input: payloadOf(part.input),
+          input: heldOf(payloadOf(part.input)),
           startedMs: at,
         }
 
@@ -879,7 +913,7 @@ export function readAgentTranscript(text: string): {
         const call = byId.get(String(part.tool_use_id))
 
         if (call) {
-          call.result = answerOf(part.content)
+          call.result = heldOf(answerOf(part.content))
           call.isError = part.is_error === true
 
           if (at > 0 && call.startedMs > 0 && at >= call.startedMs) {

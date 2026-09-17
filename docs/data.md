@@ -40,6 +40,24 @@ module never watched still shows its last tool call and the model it ran on, and
 a finished run with no return value shows the last thing the script `log()`ged in
 the header.
 
+## What a tool call was passed is kept whole
+
+The argument that says what a call is about — `command`, `file_path`, `pattern`,
+`query`, `url`, `prompt`, whichever the call carries — is kept as it was
+written, line breaks included, up to 4,000 characters, whether it was watched
+live or read back off a transcript.
+
+It used to be cut at capture: the first non-blank line, and then 117 characters
+of that. Nothing downstream could show more, however wide the dialog was, and a
+`Bash` call of four lines came back as the first of them — `set -e` — which says
+nothing about what the call did. The cap that replaced it is high enough that
+what gets cut is a payload no one was going to read in a pane, and the dialog
+wraps the rest rather than eliding it. See `inputOf` and `INPUT_MAX`.
+
+A call's *result* is still cut to a preview: that is the agent's own material,
+and a list of answers buried the calls themselves. See `previewOf`, which the
+run's logs, its result and each call's result still go through.
+
 The two files are read in that order and never the other way round. A journal
 line says an agent landed but not when, so the reader stamps it with the moment
 it read the line — which for a run rebuilt after a module reload is now. The

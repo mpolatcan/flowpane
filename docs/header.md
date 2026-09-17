@@ -310,7 +310,8 @@ shape for one thing, wherever it is drawn.
 
 A phase in the middle of a run that later phases passed keeps its section, since
 dropping it to the foot would put it after work it came before. It draws the same
-row there, cut to what it has to say and centred in the band:
+row there, cut to what it has to say and centred in the band, under a rule
+carrying its name the way every other band's does:
 
 ```
 ─────────────────────────────────────────── Escalate ───────────────────────────────────────────
@@ -438,7 +439,9 @@ on one line once, `Verify ▸ Escalate ▸ Report`, which read as the rest of th
 in order but had room for nothing except the names. A row each pays for the
 detail and the model, and a phase that never ran is the thing on the pane a
 reader otherwise knows least about. More phases than rows and the last row counts
-the rest: `… 3 more`.
+the rest: `… 3 more`. The band itself scrolls with the drawing, so a run whose
+phases run past the foot of the pane still reaches it — see
+[controls.md](controls.md#the-body-scrolls-to-the-rest-of-the-run).
 
 Before that they were spread one to a share of the width, so a phase stood where
 its own section would have been drawn. Down the pane that is the wrong axis: the
@@ -483,13 +486,79 @@ filled to the same fraction:
   ▌⊘ paint:correctness                                                        2m45s  ∑91k  Sonnet 5
 ```
 
+The heavy stroke says *progress*, not *done*. A band with work still in it fills
+to the share of it that has landed; a band that has all landed, and one nothing
+has entered, draw the plain rule every other divider on the pane is drawn with.
+It used to fill by the same share whatever the state, so a finished run of
+seventeen phases was seventeen rules of heavy stroke across the whole pane —
+seventeen hundred cells of the loudest ink the drawing has, saying of each band
+that it was finished, which is the one thing the row of `✔` marks underneath
+already said. The stroke is for the band a reader is watching.
+
 One device in both axes: the name is set into the rule the way a card's name is
 set into its top edge, centred, with a blank cell either side of it, so the rule
 reads as one line broken by a word rather than as two lines with a word between
-them. It replaced three things at once — a fourteen-column caption rail down
-the left of the stacked layout, the dotted rule that divided one band from the
-next, and the header's own progress bar — and gave a narrow pane those fourteen
+them. It replaced three things at once — a fourteen-column caption rail down the
+left of the stacked layout, the dotted rule that divided one band from the next,
+and the header's own progress bar — and gave a narrow pane those fourteen
 columns back.
+
+**Centred in both axes, and that is the point.** Across the pane a phase is a
+column and its name is that column's head, so the centre means *this column*.
+Down the pane the rule spans the whole width and names the rows under it, and
+the centre means less on its own — but a reader crosses layouts, and a caption
+flush left down the pane and centred across it is the same fact told two ways.
+The pane stops reading as one drawing seen from two sides.
+
+Down the pane it has to be fought for, because the cards are centred too and the
+spine therefore runs down the middle of every band rule — the one column a
+centred caption wants. One of the two has to give way there, and for a long
+while it was the caption: it walked to whichever end came free first, which put
+four bands of one drawing at four different columns.
+
+**The wire gives way, and the caption stands where it is centred.** A caption set
+into a rule clears the cells it stands in, so a wire crossing there simply loses
+this one row of itself and runs on above and below. That is the same break the
+rule takes for the wire everywhere else on the pane, read the other way round,
+and a one-cell gap in a line whose two halves are on the same column is a gap the
+eye closes without being asked.
+
+```
+the caption gave way                     the wire gives way
+──────────── Preflight 1/1 ──────        ───────── Preflight 1/1 ────────
+──────────────────•  Setup 1/1 ──        ─────────── Setup 1/1 ──────────
+──────────────────•  Develop 1/1 ─       ────────── Develop 1/1 ─────────
+──────────────────•  Verify 1/1 ──       ─────────── Verify 1/1 ─────────
+     names on four columns                    rule equal on both sides
+```
+
+**The whole caption is centred, not the name in it.** The count, the loop mark
+and a nested run's fold handle all trail off the name's right, and all of them
+count towards the block that gets placed. Centring the name alone and letting the
+rest hang off it left more rule on one side of the caption than the other, by
+half of whatever followed the name — and the rule either side is the one
+measurement a centred title has. A reader does not measure a name against the
+middle of the pane; they see two runs of rule and compare them.
+
+The handle is asked for and given up rather than paid for out of the name: a
+phase column narrow enough that the name is already being truncated has nowhere
+to put a handle, and shortening the name further to reserve room nothing can use
+loses letters twice over.
+
+**Centred in the drawing, not in the pane.** A stack taller than the body gets a
+scroll rail down the right edge, and the rail is painted over the last two
+columns of every row it crosses — the band rules among them. Measured against the
+pane, every caption on a scrolling run stood two cells left of the middle of the
+rule a reader could actually see. The rules are drawn to the width the rail
+leaves and the captions are centred in that same width, so what is measured and
+what is seen are the same line.
+
+What this costs is the cell itself. Across the corpus about two band rules in
+five have a wire somewhere under their caption, and there the wire has no mark on
+the rule row — including, where it falls under the caption, a card's own exit
+point. A wire whose halves line up is still one wire; four bands of one drawing
+with their names on four different columns is a caption that has stopped being a
+title.
 
 ## Sections of one size
 
@@ -500,9 +569,40 @@ cards it spends on the wires arriving at them — so the room goes where the
 drawing is rather than into a margin at the foot of the pane.
 
 A band's rows, top to bottom: the rule carrying its name, the row the wires into
-it gather on, the row their arrowheads land in, the three the card takes, the row
-the cards' own points stand on, and whatever is left before the rule that opens
-the band below.
+it gather on, the row a card fed from further back names that phase on, the row
+their arrowheads land in, the three the card takes, the row the cards' own points
+stand on, one of air, and whatever is left before the rule that opens the band
+below. Nine rows at the floor, and the node centred in them.
+
+The two rows under the node are what make the centring possible, and they were
+not always there. A band used to stop at the node — rule, two rows of wire,
+card — so all of its air was above and every card in the drawing lay on the line
+under it rather than standing in its own band. The exit point had nowhere to go
+either: it landed on the rule, where the caption clears the cells it stands in,
+so the one mark saying which card a wire left was rubbed out whenever it fell
+under the name. Two rows cost two rows a band, which is a band fewer on a short
+pane; the body scrolls to the rest, the way it does for width.
+
+The row between the bundle and the arrowheads is the third of them, and it is the
+one a card fed from further back writes on — `▾ from Preflight`, centred on that
+card. It was not there either, and without it the only row above a card was the
+one the arrowheads land in. An arrowhead stands in the middle of that row, so the
+label had half a card's width: it gave up its word for its name, a long phase
+name came back cut, and on a narrow pane the label a card carried across the pane
+went missing from the same card drawn down it. One more row, and the label stands
+down the pane exactly as it stands across it. The wire running down the row gives
+way for it and runs whole above and below — which is what the band's own caption
+does to the wire it covers. See [nodes.md](nodes.md).
+
+Where a wire does cross the rule anyway, the rule breaks and the wire runs
+through whole. It used to arc over the wire instead, and an arc is the mark for
+*two lines, and this is the one in front* — said about a boundary nothing
+travels along, so a reader followed it looking for a second line to follow and
+found the edge of a phase. The wire is the thing being followed; a border is a
+gap the eye closes without being asked. The same holds for a card's own exit
+point, which keeps its cell when the rule wants it: the point says which card
+the wire came out of, and the rule either side of it says the rest. The caption
+is the one thing on that row it does not outrank — see above.
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Survey 5/5 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -514,7 +614,7 @@ the band below.
                  •             •             •             •
           ╭┄┄┄┄┄┄╯      ╭┄┄┄┄┄┄╯             ╰┄┄┄┄┄┄╮      ┆
           ┆             ┆                           ┆      ┆
-━━━━━━━━━━◠━━━━━━━━━━━━━◠━━━━━━━━━━━ Review 3/6 ↻3 ─◠──────◠────────────────────────────
+━━━━━━━━━━┆━━━━━━━━━━━━━┆━━━━━━━━━━━ Review 3/6 ↻3 ─┆──────┆────────────────────────────
           │             │                   ╭┄┄┄┄┄┄┄│┄┄┄┄┄┄╯
           ▾             ▾                   ┆       ▾
     ╭─ ⊘ pai… ─╮  ╭─ ✔ lay… ─╮  ╭─ ⊘ lay… ─╮┆ ╭─ ✔ jou… ─╮  ╭─ ✔ jou… ─╮  ╭─ ⊘ jou… ─╮
@@ -594,7 +694,7 @@ by.
 This is the step the phases-across layout has always taken, and taking it down
 the pane as well is what keeps one run looking like the next. Without it a run
 of twenty-six agents fell from a graph straight to a list of rows with no edges
-in it, while the same run under `across` on the same seat kept every one — so
+in it, while the same run under `horizontal` on the same seat kept every one — so
 the lines on the pane changed colour with the setting rather than with the run:
 a list is drawn in the one quiet tone the rules take, and a graph adds the
 wires' own hue on top of it. A reader flipping between two runs read that as
@@ -602,8 +702,38 @@ the pane being inconsistent, which is exactly what it was.
 
 Below even a four-row band the pane draws the phases as a flat list of rows: one
 agent per row, in the run's order, with no edges between them. That is what a
-short seat gets, and there the order down the page is the only thing left to say
-what fed what.
+short seat gets.
+
+### The list keeps one line: the fork out of the phase's rule
+
+Order down the page is not enough on its own. Three agents that ran at once and
+three passes that ran in turn are the same three rows in the same order, and the
+list had no way to tell them apart — the one fact it kept was sequence, which is
+the one fact its order already gave.
+
+So it keeps the one line it has room for. A phase of more than one agent branches
+out of its own rule, down a stem in the gutter, into each of its rows, and closes
+under the last:
+
+```
+├┬────────── Lint ∥ Build ∥ Unit Test 9/9 ↻3 ───────────
+│├▌✔ Lint       ✔ 1  ✔ 2  ✔ 3           19.0s  ∑16k  Haiku 4.5
+│├▌✔ Unit Test  ✔ 1  ✔ 2  ✔ 3           14.5s  ∑17k  Haiku 4.5
+│╰▌✔ Build      ✔ 1  ✔ 2  ✔ 3           21.8s  ∑17k  Haiku 4.5
+├─────────────── CLAUDE.md Revise 1/1 ──────────────
+│ ▌✔ CLAUDE.md Revise                     1m40s  ∑35k   Opus 4.8
+```
+
+A phase that ran a single agent gets no stem. A fork with one tine says nothing
+a reader could not already see, and the absence is itself the reading: a phase
+with a stem fanned out, a phase without one did not. That is the same fact the
+stacked band draws as a barrier and a wire into every card, in the one column
+the list can spare for it.
+
+The stem stands in the gutter beside the rows rather than pushing them across,
+so it costs the names nothing. It is drawn before the rules, because a rule
+gives way to whatever is already in its cells — the branch off the rule has to
+survive the rule being laid across the pane afterwards.
 
 The same question is asked across. A card is a frame with its name set into the
 top edge, and `╭─ ✔ n ─╮` is eight cells: two corners, a dash either side of the
@@ -613,6 +743,114 @@ six came out as `╭ ✔ r` — a box with three sides and its name standing out
 it. A row that narrow still carries the state, the mark and the first letters of
 the name, so a column too narrow to close a card is drawn as rows, whatever room
 the pane has down the page.
+
+### How many sections the pane divides itself into
+
+Every phase gets a section the same size as every other, and it gets one only
+while the pane has room to give it a name. Seventeen phases divided into a
+hundred and ten columns is six cells each, and a column of six carries no name
+at all.
+
+The floor was twelve cells, which is where a *row* stops being legible. A card
+is a row inside a frame, and the frame costs four cells more than the rule and
+mark a row is drawn with: `╭─ ✔ name ─╯` spends eight cells before a letter of
+the name, where `▌✔ name` spends four. So a twelve-cell floor left a card four
+cells of name, and a phase called `Base Branch Health` came out `Bas…` on every
+card in it — the floor was being paid to the frame.
+
+And the squeeze bought nothing, because the drawing overran the pane anyway:
+seventeen columns of twelve cells and their gutters is three hundred and
+twenty-three, on a pane of a hundred and ten. The reader got both — a drawing
+squeezed to fit *and* a drawing to scroll.
+
+So the pane divides itself only among the sections it can name. Past that the
+sections stop dividing the pane and take the width they need: the columns that
+are drawn fill the pane exactly, at a width whose card carries the twelve cells
+the floor promised, and the body scrolls to the rest of them.
+
+```
+ 60 columns   3 of the run's 17 phases          200 columns   7 of them
+ 80              4                              a card of 20 to 26 cells,
+110              4                              cut between two columns
+140              5                              rather than through one
+```
+
+The same rule runs down the pane, where a section is a band and the division is
+between the agents standing side by side inside one. A band of eight agents on
+a hundred and ten columns gave each card twelve cells for the same reason; it
+now stands five of them and scrolls sideways to the other three. Every band
+goes to the left edge rather than centring while that is true: centred, a band
+of two would stand in the middle of a drawing whose own first column is off at
+the left, and a reader scrolling to the wide band's tail would lose the narrow
+bands on the way there.
+
+A drawing wider than the pane is what the wheel over the foot rail moves — see
+[controls.md](controls.md) — and a live run's window is already centred on the
+phase at work, so a reader arrives where the run is rather than at the start of
+one that finished an hour ago.
+
+### The height keeps the same bargain
+
+A card is three rows and the gap under it a fourth, so a column of thirteen
+agents wants fifty-two. The pane used to answer that by giving up the card: if
+the tallest column did not fit as cards, every node in the drawing became a row
+— no frame, no model, no state on a border, the clock and the tokens squeezed
+into the cells a name left over. One phase decided it for all seventeen, and the
+phase that decided it was usually a nested run somebody had just opened. The
+reader asked to see inside one column and paid for it with every other column on
+the pane.
+
+That is the trade the width refuses, and the height refuses it now too. The
+nodes keep their height, the drawing runs past the pane's foot, and the body
+scrolls down to the rest of it — the rail down the right edge, the same one a
+stack of bands gets, and the same wheel.
+
+```
+110 × 30, one column opened to 13 agents
+
+before                          after
+▌✔ inflight…  ∑15k              ╭── ✔ inflight claim ──╮   ▴
+▌✔ context    ∑55k              │   ⧖ 15.1s  ∑ 15.4k   │   █
+▌✔ panel-t0   ∑14k              ╰───── Haiku 4.5 ──────╯   █
+▌✔ reviewer   ∑37k                                         █
+…  every card in the run        ╭───── ✔ context ──────╮   █
+   flattened with it            │   ⧖ 3m21s  ∑ 55.2k   │   │
+                                ╰────── Opus 4.8 ──────╯   ▾
+```
+
+The floor is two cards. Two is what it takes to have anything to scroll
+between; below that the pane shows one card and a sliver of the next, and there
+a row each says more than a frame does. So a short pane still falls to rows —
+and then scrolls, which it did not before either.
+
+The phase names do not move. They are column heads, and a column head that
+scrolled away would leave a reader looking at four columns of cards with nothing
+to say which phase each belongs to. The strip naming what the run skipped is
+captioned on the same row, so its caption is drawn with the header rather than
+with the strip; drawn with the strip, it forced the body's window two rows
+higher than the drawing, and a card carried far enough up landed on the names.
+
+Two numbers rather than one, because the width a column is *given* and the
+width below which it stops dividing are different questions. Nineteen cells is
+a card with eleven of name, which is every label on the pipeline this was built
+for; treating nineteen as too narrow would have spent a scroll to buy five
+cells nobody needed. So the pane gives up dividing at sixteen and widens to
+twenty.
+
+Down the pane the same bargain was struck the other way round, and lost for
+longer. There a phase is a band of rows and the bands share the body between
+them, so the depth each got was the body divided by the number of phases — and a
+run of seventeen phases in a body of twenty-five gave every band one row, which
+is a row, not a card. The layout then fell to the flat list for the whole
+drawing. It was not a rare case: any run with more phases than a third of the
+pane's rows hit it, which is most of them, so the vertical layout was in
+practice a list that could not scroll.
+
+The test is the width's test now: whether the body can stand two whole bands of
+cards. Past that the bands keep the depth their cards need, the drawing runs
+past the foot of the pane, and the body scrolls down to the rest — the same rail,
+the same wheel, the same floor of two. What is left of the list is the narrow
+case: a pane too narrow to name a phase, or too short to stand one band.
 
 ## The borders between phases
 
@@ -669,14 +907,20 @@ wire runs down and the phase's rule runs across, so the rule hops. Either way
 both lines keep their own shape on both sides of the arc.
 
 Down the pane the rule also carries the band's name, and a name set into a rule
-clears the cells it stands in. Centred, it stood on the arcs: the wire above the
-rule and the wire below it stopped dead against a word, a cell apart, with
-nothing left to say they were one line. So the name gives way instead of the
-wire. It starts centred and steps out a cell at a time until the window it needs
-— its own blanks included — holds nothing but rule, which in a band of five
-carries it a few cells left or right and no further. A rule with no clear window
-anywhere keeps its name centred: a band every column of which carries a wire has
-nowhere better to put it, and the name is the thing that has to be readable.
+clears the cells it stands in — so a caption standing on an arc takes a carry's
+only cell in that row. The caption is the one that keeps the cell. The wire loses
+this row of itself and is whole above the rule and whole below it, on the same
+column, which is what says the two halves are one line; the alternative was a
+caption that walked away from the middle by a different amount on every band.
+
+The name used to give way instead, stepping out a cell at a time until the window
+it needed, its own blanks included, held nothing but rule. It went with two
+guards that only that stepping needed: one reading a nested band's dashed stroke
+as rule rather than as something in the way, and one refusing a window whose left
+blank would leave an arm reaching for nothing — `├ Coverage` rather than
+`├─ Coverage`, a loop rail that reads as stopping short of the band it is tying.
+Nothing steps now, so nothing needs them, and across the corpus no rule down the
+pane has an arm ending in air.
 
 The border used to break instead. Two lines that cross have to be drawn as two,
 and without an arc the way a drawing says so is to put one in front: the one in

@@ -1,6 +1,6 @@
 {
   "name": "flowpane",
-  "version": "0.3.1",
+  "version": "0.5.0",
   "description": "A live workflow pane: replaces the default Workflow progress list with a phase-by-phase graph or a timeline beside the transcript, showing each agent's state, timing, live token spend, tool calls, what it is saying, and prompt.",
   "author": {
     "name": "Mutlu Polatcan",

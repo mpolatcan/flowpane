@@ -27,7 +27,7 @@ import {
   applyJournal,
   applyRunFile,
   readAgentMeta,
-  inputPreviewOf,
+  inputOf,
   noteCallEnd,
   noteCallStart,
   noteStep,
@@ -48,13 +48,15 @@ import {
   quietOf,
   SETTINGS,
   useTheme,
+  type BodyScroll,
   type DetailView,
   type Hotspot,
   type PaintOptions,
+  type PaintResult,
   type RunEntry,
   type SettingMenu,
 } from './paint'
-import { applyPress, MAX_DETAIL, MIN_DETAIL, ORIENTATIONS, showDetail } from './press'
+import { applyPress, drew, MAX_DETAIL, MIN_DETAIL, ORIENTATIONS, showDetail, wheel } from './press'
 import { DEFAULT_THEME, hexOf, paletteOf, themeOf, THEMES } from './theme'
 import { bandsOf, pictureOf, type Band } from './tree'
 
@@ -143,8 +145,15 @@ const state: {
   /** Whether this build's terminal table has a Raster (2.1.271 and after). */
   hasRaster: boolean
   hotspots: Hotspot[]
-  /** The agent whose detail dialog is open. */
+  /** The agent whose detail dialog is open, or `@run:<phase>` for a nested run. */
   selectedId: string | null
+  /** The nested run an open agent was reached from, for the way back. */
+  fromRun: string | null
+  /** The tool call opened out of that agent's Calls list, by its own id. */
+  openCall: string | null
+  /** The first line on screen in the opened call. */
+  callScroll: number
+  callOutScroll: number
   /** Set by a Button's onPress, acted on by the `ui.press` hook, which has `$`. */
   pressed: string | null
   /** Agents whose transcript has been read, so it is read once. */
@@ -166,8 +175,20 @@ const state: {
   nowMs: number
   /** The first line on screen in each block of the detail dialog. */
   detailScroll: number[]
+  /** Which of the detail dialog's tabs is on top; kept across nodes. */
+  detailTab: number
   /** What the last paint said about the detail list, for clamping a scroll. */
   detailView: DetailView | null
+  /** Where the body is in a drawing larger than it, in cells. */
+  bodyScroll: { x: number; y: number }
+  /** The nested runs the reader has unfolded, by phase name. */
+  opened: string[]
+  /** What the last paint said the drawing overruns the body by, for clamping. */
+  bodyView: BodyScroll | null
+  /** Whether the body follows the phase the run is working in. */
+  following: boolean
+  /** The phase the last paint said the run was working in, to see it change. */
+  front: string | null
   /** True while the run name's list is unrolled under the top bar. */
   picking: boolean
   /** True while the settings dialog is open over the drawing. */
@@ -191,6 +212,10 @@ const state: {
   hasRaster: true,
   hotspots: [],
   selectedId: null,
+  fromRun: null,
+  openCall: null,
+  callScroll: 0,
+  callOutScroll: 0,
   pressed: null,
   loaded: new Set(),
   models: new Set(),
@@ -201,7 +226,13 @@ const state: {
   paneRows: null,
   nowMs: 0,
   detailScroll: [],
+  detailTab: 0,
   detailView: null,
+  bodyScroll: { x: 0, y: 0 },
+  opened: [],
+  bodyView: null,
+  following: true,
+  front: null,
   picking: false,
   settings: false,
   menu: null,
@@ -548,14 +579,44 @@ function canPickRun(): boolean {
  * The blit between renders has to produce the same hotspots the render did, so
  * both paints read their options from here rather than each listing their own.
  */
+/**
+ * The body row the rail along the foot is on, when the drawing has one.
+ *
+ * The canvas is painted into the top of the pane's body and the footer rule and
+ * row come under it, so the canvas's own last row is the body row a pointer
+ * reports — and the rail is drawn on that row whenever the drawing overruns
+ * sideways. A wheel over it scrolls sideways; anywhere else is a wheel over the
+ * drawing.
+ */
+function footRow(): number | null {
+  return state.canvas && (state.bodyView?.spanX ?? 0) > 0 ? state.canvas.rows - 1 : null
+}
+
+/** What the paint just decided, kept for the next press and the next paint. */
+function kept(drawn: PaintResult): void {
+  state.hotspots = drawn.hotspots
+  state.detailView = drawn.detail ?? null
+  state.bodyView = drawn.body ?? null
+
+  drew(state, drawn)
+}
+
 function paintOptions(nowMs: number): PaintOptions {
   return {
     nowMs,
     tick: state.tick,
     orientation: state.orientation,
     selectedId: state.selectedId ?? undefined,
+    fromRun: state.fromRun ?? undefined,
+    openCall: state.openCall ?? undefined,
+    callScroll: state.callScroll,
+    callOutScroll: state.callOutScroll,
     detailRows: state.detailRows,
     detailScroll: state.detailScroll,
+    detailTab: state.detailTab,
+    bodyScroll: state.bodyScroll,
+    follow: state.following,
+    opened: state.opened,
     runPicker: canPickRun() ? (state.picking ? 'open' : 'shut') : undefined,
     runs: state.picking ? state.runs.map(runEntry) : undefined,
     settings: state.settings,
@@ -570,10 +631,7 @@ function repaint($: EngineInterface, run: RunState, nowMs: number): void {
     return
   }
 
-  const drawn = paint(state.canvas, run, paintOptions(nowMs))
-
-  state.hotspots = drawn.hotspots
-  state.detailView = drawn.detail ?? null
+  kept(paint(state.canvas, run, paintOptions(nowMs)))
 
   // Without a Raster there is nothing to blit into: the tree itself carries the
   // picture, so the redraw has to go through the renderer.
@@ -586,7 +644,7 @@ function repaint($: EngineInterface, run: RunState, nowMs: number): void {
   // puts a node's label on a different row, those Rasters no longer cover the
   // rows they did, so the tree has to be built again before anything is written
   // into it.
-  const bands = bandsOf(state.canvas.rows, drawn.hotspots)
+  const bands = bandsOf(state.canvas.rows, state.hotspots)
 
   if (!sameBands(bands, state.bands)) {
     // The Rasters this frame would have written into are about to be replaced,
@@ -737,7 +795,11 @@ async function actOnPress($: EngineInterface): Promise<void> {
 
   // What the press means to the view is decided in `press.ts`, which knows
   // nothing about the engine; what is left here is the part that needs one.
-  const result = applyPress(state, pressed, { hasRun: state.shown !== null, detail: state.detailView })
+  const result = applyPress(state, pressed, {
+    hasRun: state.shown !== null,
+    detail: state.detailView,
+    body: state.bodyView,
+  })
 
   for (const key of result.store ?? []) {
     await $.store.set(key, state[key])
@@ -768,12 +830,23 @@ async function actOnPress($: EngineInterface): Promise<void> {
   $.ui.invalidate('ui.render')
 }
 
-/** The layout words `/flowpane` takes, against the orientations they name. */
+/**
+ * The layout words `/flowpane` takes, against the orientations they name.
+ *
+ * The first three name the axis the run reads along, which is what a reader
+ * picking between them is choosing. They were `across` and `down`, which name
+ * the same two axes in words the pane uses for a dozen other things — a card's
+ * frame is drawn `across` and `down`, a band's rule runs `across` — so the one
+ * place the word had to mean the layout was the one place it did not stand out.
+ * `across` and `down` still work, unlisted, for anyone who learned them.
+ */
 const LAYOUT_WORDS: Record<string, Orientation> = {
-  across: 'flow',
-  down: 'stack',
-  timeline: 'time',
+  horizontal: 'horizontal',
+  vertical: 'vertical',
+  timeline: 'timeline',
   fits: 'auto',
+  across: 'horizontal',
+  down: 'vertical',
 }
 
 /**
@@ -791,7 +864,7 @@ const HELP = ((forms: [string, string][]) => {
   ['', 'open the pane, or close it'],
   ['runs', 'list this session’s runs'],
   ['<n>', 'show run <n>'],
-  ['across|down|timeline|fits', 'lay the graph out'],
+  ['horizontal|vertical|timeline|fits', 'lay the graph out'],
   ['detail <n>', 'rows the detail dialog takes (5–32)'],
   ['theme [name]', 'list the palettes, or paint in one'],
   ['about', 'what the pane is, and what presses it'],
@@ -940,7 +1013,7 @@ async function applyArgs($: EngineInterface, args: string): Promise<string> {
 
 /**
  * A layout by either name. The button and `/flowpane` say what the layout looks like
- * — across, down, timeline, fits — and the setting is named after the axis it
+ * — horizontal, vertical, timeline, fits — and the setting is named after the axis it
  * uses. One vocabulary would be better; until the stored values can change, both
  * are read wherever a layout is named.
  */
@@ -1062,7 +1135,7 @@ export function register(on: On, options: PluginOptions) {
     const id = (e as { tool_use_id?: string }).tool_use_id ?? `call-${++callCounter}`
 
     noteToolCall(run, agentId, tool, startedMs, true)
-    noteCallStart(run, agentId, { id, name: tool, input: inputPreviewOf(e as Record<string, unknown>) }, startedMs)
+    noteCallStart(run, agentId, { id, name: tool, input: inputOf(e as Record<string, unknown>) }, startedMs)
 
     let outcome: { result?: unknown; text?: unknown; isError?: boolean } = {}
 
@@ -1155,10 +1228,7 @@ export function register(on: On, options: PluginOptions) {
     }
 
     if (run) {
-      const drawn = paint(state.canvas, run, paintOptions(await $.clock.now()))
-
-      state.hotspots = drawn.hotspots
-      state.detailView = drawn.detail ?? null
+      kept(paint(state.canvas, run, paintOptions(await $.clock.now())))
     } else {
       // Idle the pane draws what the session has run, so the last run's picture
       // is cleared and the list takes its place.
@@ -1166,6 +1236,8 @@ export function register(on: On, options: PluginOptions) {
 
       state.hotspots = paintIdle(state.canvas, state.runs.map(runEntry), nowMs, paintOptions(nowMs))
       state.detailView = null
+      state.bodyView = null
+      state.front = null
     }
 
     // A Raster is a leaf, so a pane drawn as one whole has nothing to click.
@@ -1232,6 +1304,33 @@ export function register(on: On, options: PluginOptions) {
     await actOnPress($)
 
     return result
+  })
+
+  // The wheel over the pane. The pane paints one screenful and keeps its own
+  // window, so the engine's scroll has nowhere to go — its tree is exactly as
+  // tall as its body, and a reader turning the wheel over the drawing got
+  // nothing. This answers instead, and deliberately does not call `next`: the
+  // engine's own window stays where it is and the pane moves its own.
+  //
+  // The arrows in the margin stay. A wheel is what a reader reaches for without
+  // looking, and a control that can be pressed is what says the drawing goes on
+  // past the edge of the pane at all.
+  on('ui.scroll', { requestId: PANE_ID }, async ($, e) => {
+    if (!state.shown) {
+      return {}
+    }
+
+    wheel(
+      state,
+      { detail: state.detailView, body: state.bodyView, foot: footRow() },
+      e.by,
+      e.pointer?.row,
+    )
+
+    state.nowMs = await $.clock.now()
+    repaint($, state.shown, state.nowMs)
+
+    return {}
   })
 
   on('ui.close', { id: PANE_ID }, ($, e, next) => {
@@ -1487,8 +1586,8 @@ const FOOTER_GAP = 2
  * and in the order the dialog lists them.
  *
  * The row says the state and the dialog changes it, so the two have to agree
- * word for word: a footer reading `Layout: down` beside a dialog offering
- * `across down timeline fits` is two names for one setting. They agree on the
+ * word for word: a footer reading `Layout: vertical` beside a dialog offering
+ * `horizontal vertical timeline fits` is two names for one setting. They agree on the
  * order as well, so a reader scanning the row and a reader scanning the dialog
  * are reading the same list.
  */
@@ -1571,11 +1670,7 @@ function ground(): { backgroundColor?: string; width?: number } {
 function layoutWord(): string {
   return state.orientation === 'auto'
     ? 'fits'
-    : state.orientation === 'flow'
-      ? 'across'
-      : state.orientation === 'stack'
-        ? 'down'
-        : 'timeline'
+    : state.orientation
 }
 
 function layoutLabel(): string {

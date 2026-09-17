@@ -34,11 +34,14 @@ import type { Orientation } from '../hooks/layout'
 import { paint, useTheme, type DetailView, type Hotspot, type RunEntry } from '../hooks/paint'
 import {
   applyPress,
+  drew,
+  type BodyScroll,
   MAX_DETAIL,
   MIN_DETAIL,
   SETTING_MENUS,
   type PaneView,
   type SettingMenu,
+  wheel,
 } from '../hooks/press'
 import { themeOf, THEMES } from '../hooks/theme'
 import { journalRun, siblingRuns, syntheticRun } from './load'
@@ -72,7 +75,15 @@ const view: PaneView & {
   theme: 'tokyo-night',
   detailRows: 24,
   selectedId: null,
+  fromRun: null,
+  openCall: null,
+  callScroll: 0,
   detailScroll: [],
+  detailTab: 0,
+  bodyScroll: { x: 0, y: 0 },
+  following: true,
+  front: null,
+  opened: [],
   picking: false,
   settings: false,
   menu: null,
@@ -179,6 +190,9 @@ function spansOf(canvas: Canvas): string {
   return out.join('')
 }
 
+/** What the last frame said the drawing overruns the body by, for clamping. */
+let lastBody: BodyScroll | null = null
+
 /** One frame, and everything the page needs to press into it. */
 async function frame(reload: boolean): Promise<{
   html: string
@@ -200,14 +214,25 @@ async function frame(reload: boolean): Promise<{
     tick: view.tick,
     orientation: view.orientation,
     selectedId: view.selectedId ?? undefined,
+    fromRun: view.fromRun ?? undefined,
+    openCall: view.openCall ?? undefined,
+    callScroll: view.callScroll,
     detailRows: view.detailRows,
     detailScroll: view.detailScroll,
+    detailTab: view.detailTab,
+    bodyScroll: view.bodyScroll,
+    follow: view.following,
+    opened: view.opened,
     runPicker: view.picking ? 'open' : 'shut',
     runs: view.picking ? runs : undefined,
     settings: view.settings,
     menu: view.menu ?? undefined,
     about: view.about,
   })
+
+  lastBody = drawn.body ?? null
+  // The same bookkeeping the plugin does, so the page behaves as the pane does.
+  drew(view, drawn)
 
   return {
     html: spansOf(canvas),
@@ -222,10 +247,21 @@ async function frame(reload: boolean): Promise<{
   }
 }
 
+/**
+ * The wheel, against the same rules the plugin's own answers it with: the rail
+ * along the foot is on the canvas's last row, so a tick over that row scrolls
+ * sideways and a tick anywhere else scrolls the way the drawing can go.
+ */
+function turn(by: number, row: number, detail: DetailView | null): void {
+  const foot = (lastBody?.spanX ?? 0) > 0 ? view.rows - 1 : null
+
+  wheel(view, { detail, body: lastBody, foot }, by, row)
+}
+
 /** The press, against the same rules the plugin's own controls go through. */
 async function press(key: string, detail: DetailView | null): Promise<void> {
   const run = await runOf(false)
-  const result = applyPress(view, key, { hasRun: true, detail })
+  const result = applyPress(view, key, { hasRun: true, detail, body: lastBody })
 
   if (result.run !== undefined && result.run !== run.runId) {
     // The menu lists the runs beside this one by directory name; the page is
@@ -235,6 +271,8 @@ async function press(key: string, detail: DetailView | null): Promise<void> {
     if (found) {
       view.journal = found
       view.selectedId = null
+      view.fromRun = null
+      view.openCall = null
       view.detailScroll = []
     }
   }
@@ -279,7 +317,7 @@ const PAGE = `<!doctype html>
   <label><input type="checkbox" id="follow"> follow</label>
   <label><input type="checkbox" id="ruler" checked> ruler</label>
   <button id="reload">reload run</button>
-  <span class="hint">click a node · tab moves · enter presses · esc closes the dialog</span>
+  <span class="hint">click a node · wheel scrolls · tab moves · enter presses · esc closes the dialog</span>
 </header>
 <div class="sheet">
   <pre class="gutter" id="gutter"></pre>
@@ -367,6 +405,13 @@ function ring() {
   mark.style.height = h + 'px'
 }
 
+$('paper').onwheel = event => {
+  event.preventDefault()
+  const { box, w, h } = cell()
+  const row = Math.floor((event.clientY - box.top) / h)
+  send({ wheel: { by: Math.sign(event.deltaY) * Math.max(1, Math.round(Math.abs(event.deltaY) / 40)), row } })
+}
+
 $('paper').onclick = event => {
   const { box, w, h } = cell()
   const x = Math.floor((event.clientX - box.left) / w)
@@ -428,6 +473,7 @@ Bun.serve({
     const body = (await request.json().catch(() => ({}))) as {
       query?: string
       key?: string
+      wheel?: { by: number; row: number }
       tick?: number
       reload?: boolean
       set?: Record<string, string | number | boolean>
@@ -450,6 +496,12 @@ Bun.serve({
         const before = await frame(false)
 
         await press(body.key, before.detail)
+      }
+
+      if (body.wheel) {
+        const before = await frame(false)
+
+        turn(body.wheel.by, body.wheel.row, before.detail)
       }
 
       const drawn = await frame(body.reload === true)
@@ -491,7 +543,12 @@ Bun.serve({
  * land as hotspots on the drawing, not as buttons under it.
  */
 function controls(): { key: string; label: string; on: boolean; live: boolean }[] {
-  const words: Record<Orientation, string> = { flow: 'across', stack: 'down', time: 'timeline', auto: 'fits' }
+  const words: Record<Orientation, string> = {
+    horizontal: 'horizontal',
+    vertical: 'vertical',
+    timeline: 'timeline',
+    auto: 'fits',
+  }
   const state = [
     `Layout: ${words[view.orientation]}`,
     `Theme: ${view.theme}`,
@@ -510,6 +567,8 @@ function setField(name: string, value: string | number | boolean): void {
   if (name === 'journal' && typeof value === 'string') {
     view.journal = value
     view.selectedId = null
+    view.fromRun = null
+    view.openCall = null
     view.detailScroll = []
   } else if (name === 'columns' || name === 'rows') {
     view[name] = Math.max(20, Math.min(400, Number(value) || 0))

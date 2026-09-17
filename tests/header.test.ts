@@ -92,7 +92,7 @@ test('the bar is a rule, the run line, and a rule', () => {
   const run = loaded()
   const canvas = new Canvas(100, 26)
 
-  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'flow' })
+  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'horizontal' })
 
   const rows = rowsOf(canvas)
 
@@ -116,7 +116,7 @@ test('the bar is a rule, the run line, and a rule', () => {
   // and the title went several rows before that.
   const short = new Canvas(100, 9)
 
-  paint(short, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'flow' })
+  paint(short, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'horizontal' })
 
   const shortRows = rowsOf(short)
 
@@ -127,7 +127,7 @@ test('the bar is a rule, the run line, and a rule', () => {
   // Nor is it drawn where the pane has the height but not the width for it.
   const narrow = new Canvas(40, 26)
 
-  paint(narrow, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'flow' })
+  paint(narrow, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'horizontal' })
 
   expect(barRowsOf(narrow.rows, narrow.columns)).toBe(3)
   expect(rowsOf(narrow)[0]).not.toContain('FlowPane')
@@ -137,29 +137,37 @@ test('each phase name is centred over what it names', () => {
   const run = loaded()
   const canvas = new Canvas(100, 26)
 
-  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'flow' })
+  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'horizontal' })
 
-  const view = layout(run, canvas.columns, canvas.rows, 'flow', 0)
+  const view = layout(run, canvas.columns, canvas.rows, 'horizontal', 0)
   const caption = rowsOf(canvas)[barRowsOf(canvas.rows, canvas.columns)] ?? ''
 
-  expect(view.orientation).toBe('flow')
+  expect(view.orientation).toBe('horizontal')
 
   for (const lane of view.lanes) {
     const over = caption.slice(lane.x, lane.x + lane.w)
-    const lead = over.length - over.trimStart().length
-    const trail = over.length - over.trimEnd().length
 
     expect(over).toContain(lane.phase)
-    // One cell of slack: an odd amount of space cannot be split evenly.
-    expect(Math.abs(lead - trail)).toBeLessThanOrEqual(1)
+
+    // The caption as a whole takes the middle of the column — the name and the
+    // count it carries, measured together. Centring the name alone and letting
+    // the count trail off its right left more air on the caption's left than on
+    // its right, by half the count, which is the one measurement a centred
+    // title has and the thing a reader checks it by.
+    const from = over.length - over.trimStart().length
+    const to = over.trimEnd().length
+    const mid = (from + to) / 2
+
+    // One cell of slack: an odd number of cells cannot be split evenly.
+    expect(Math.abs(mid - lane.w / 2)).toBeLessThanOrEqual(1)
   }
 })
 
-test('a stacked band carries its name centred in its own rule', () => {
+test('a stacked band carries its caption centred in its own rule', () => {
   const run = loaded()
   const canvas = new Canvas(80, 30)
 
-  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'stack' })
+  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical' })
 
   const rule = rowsOf(canvas).find(row => row.includes(PHASES[0]!)) ?? ''
   // The name is set into the rule with a blank cell either side of it.
@@ -171,10 +179,55 @@ test('a stacked band carries its name centred in its own rule', () => {
   const label = found?.[1] ?? ''
 
   expect(label).toContain(PHASES[0]!)
-  expect(Math.abs((at + label.length / 2) - canvas.columns / 2)).toBeLessThanOrEqual(1)
+  // The caption is centred, the way a card's name is set into its top edge and
+  // the way a phase's caption is centred over its column across the pane. One
+  // rule for both axes: a caption flush left down the pane and centred across it
+  // is the same fact told two ways, and the pane stops reading as one drawing.
+  //
+  // The caption, not the name in it. What a reader sees is the rule either side,
+  // and a name centred with its count trailing off its right leaves the two runs
+  // of rule different lengths by half the count.
+  const left = at - 1
+  const right = canvas.columns - (at + label.length + 1)
+
+  expect(Math.abs(left - right)).toBeLessThanOrEqual(1)
   // Either side of it, rule and nothing else: the band's own border, filled to
   // the fraction of the phase that has landed.
   expect(rule.replace(found?.[0] ?? '', '')).toMatch(/^[\u2501\u2500]+$/)
+  expect(rule.slice(0, left)).toMatch(/^[\u2501\u2500]+$/)
+  expect(rule.slice(at + label.length + 1)).toMatch(/^[\u2501\u2500]+$/)
+})
+
+test('a band rule centres its caption on the drawing, not on the pane', () => {
+  const run = loaded()
+  // Short enough that the stack runs past the foot, which is what puts the
+  // scroll rail down the right edge.
+  const canvas = new Canvas(80, 18)
+
+  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical' })
+
+  const rows = rowsOf(canvas)
+  const rule = rows.find(row => row.includes(PHASES[0]!)) ?? ''
+  const found = / (\S+ \d+\/\d+) /.exec(rule)
+
+  expect(found).not.toBeNull()
+
+  const at = (found?.index ?? 0) + 1
+  const label = found?.[1] ?? ''
+  const strokes = (text: string) => (text.match(/[\u2501\u2500]/g) ?? []).length
+
+  // The rail is there, and it has taken the last of the row.
+  expect(rule.slice(-2)).not.toMatch(/[\u2501\u2500]/)
+
+  // The rule used to be drawn the pane's full width and the rail painted over
+  // its last two cells, so a caption centred on the pane stood two cells left of
+  // the middle of the rule a reader could actually see. It is centred on the
+  // drawing instead — the pane less whatever the rail takes.
+  const left = strokes(rule.slice(0, at - 1))
+  const right = strokes(rule.slice(at + label.length + 1))
+
+  expect(left).toBeGreaterThan(0)
+  expect(Math.abs(left - right)).toBeLessThanOrEqual(1)
 })
 
 test('the run menu drops below the bar, not through it', () => {
@@ -184,7 +237,7 @@ test('the run menu drops below the bar, not through it', () => {
   paint(canvas, run, {
     nowMs: STARTED + 20_000,
     tick: 0,
-    orientation: 'flow',
+    orientation: 'horizontal',
     runPicker: 'open',
     runs: [
       { id: 'wf_test', mark: '\u2714', name: 'haiku', tally: '6/6', status: 'completed', startedMs: STARTED },
@@ -213,7 +266,7 @@ test('the run line says what the agents called, and gives the names up first', (
 
   const wide = new Canvas(120, 26)
 
-  paint(wide, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'flow' })
+  paint(wide, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'horizontal' })
 
   // The total, then the two called most, divided from each other by spacing
   // alone — the strokes say where one measurement ends and the next begins.
@@ -224,7 +277,7 @@ test('the run line says what the agents called, and gives the names up first', (
   // still written out, and the count itself is the last of it to go.
   const narrow = new Canvas(84, 26)
 
-  paint(narrow, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'flow' })
+  paint(narrow, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'horizontal' })
 
   const line = runLineOf(narrow)
 
@@ -234,7 +287,7 @@ test('the run line says what the agents called, and gives the names up first', (
 
   const tighter = new Canvas(76, 26)
 
-  paint(tighter, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'flow' })
+  paint(tighter, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'horizontal' })
 
   const tight = runLineOf(tighter)
 
@@ -252,7 +305,7 @@ test('a run nobody watched counts the calls its journal counted', () => {
 
   const canvas = new Canvas(120, 26)
 
-  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'flow' })
+  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'horizontal' })
 
   expect(runLineOf(canvas)).toContain('⚙ 11')
   expect(runLineOf(canvas)).not.toMatch(/\d×[A-Z]/)

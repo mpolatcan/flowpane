@@ -11,7 +11,7 @@ workflow writes, and everything it says has to fit in cells.
 ## Commands
 
 ```bash
-claude plugin test .          # the test suite — 99 tests across 11 files
+claude plugin test .          # the test suite — 192 tests across 15 files
 bunx tsc --noEmit             # typecheck (hooks/ and types/ only; see tsconfig.json)
 ```
 
@@ -33,21 +33,32 @@ bun dev/edges.ts <dir>                             # the graph derived for a run
 bun dev/recover.ts <sessionId> [home]              # what a session's runs rebuild to
 bun dev/dryrun.ts <workflow>                       # a workflow's control flow, stubbed, no agents spent
 bun dev/checkmeta.ts                               # the version the pane shows is the one the manifest ships
+sh  dev/reload.sh                                 # install this tree as flowpane-dev, beside the released build
 ```
 
-`dev/audit.workflow.js` is the demo run: a workflow shaped to exercise every
-case the pane draws. It lives under `dev/` because it is a development tool, not
-part of the installed plugin. `bun dev/dryrun.ts` defaults to it.
+`dev/reload.sh` installs this tree *beside* the released plugin rather than in
+place of it: `~/claude-dev-marketplaces/flowpane-dev` holds a copy of the repo
+with the three names the engine keys off moved aside — the manifest's `name`,
+`COMMAND` and `PANE_ID`. Renamed, both can be enabled at once: `/flowpane` stays
+the released build and `/flowpane-dev` draws this tree. Unrenamed they collide on
+every one of them — one command, one pane id, one `tool.call` hook opening one
+pane. They are patched in the copy, never in the repo, so what ships is unchanged.
 
-`dev/load.ts` is not a command — it is the run-building library the others share.
-`dev/drive.py` gives Claude Code a pty and captures a real session (`python3`,
-not `python`).
+The title the pane draws is left alone. A build is told apart by the version it
+already prints, and a product name bent out of shape to serve a dev install is a
+dev install leaking into the picture.
 
-Real runs to draw live under
-`~/.claude/projects/<project-slug>/<sessionId>/subagents/workflows/wf_*`.
+A *copy*, not a symlink. A symlinked plugin source installs files that look
+right — the engine's cache comes out byte-identical to the tree — and then never
+loads, with no error printed anywhere: the command comes back `Unknown command`
+while `claude plugin details` still reports the plugin as installed. So the
+reload mirrors the tree in with `rsync`, then drops the engine's cached copy,
+since an install over a version already installed is a no-op. Restart the session
+afterwards: hooks are read once, when it starts.
 
-Before calling any of this done: `bunx tsc --noEmit`, `claude plugin test .`,
-`bun dev/lines.ts`, `bun dev/audit.ts`.
+Both builds watch the same journals and both open a pane on a Workflow launch,
+so with the two enabled a live run draws twice. `/flowpane` toggles the released
+one shut.
 
 ## Layout of the repo
 
@@ -56,7 +67,7 @@ Before calling any of this done: `bunx tsc --noEmit`, `claude plugin test .`,
 | `hooks/register.ts` | The plugin itself: every hook, the journal tail, the run state |
 | `hooks/journal.ts` | Reading a run off disk — journal, run file, agent transcripts |
 | `hooks/shape.ts` | The run's shape: phases, passes, what fed what |
-| `hooks/tree.ts` | Rows and segments for the timeline |
+| `hooks/tree.ts` | The canvas as elements: coloured runs per row, and a Button over every hotspot |
 | `hooks/layout.ts` | Where every band, card and column goes, at a given size |
 | `hooks/paint.ts` | Everything drawn: cards, wires, header, dialogs, settings |
 | `hooks/canvas.ts` | The grid: cells, colour mixing, line drawing, joints |
@@ -104,6 +115,33 @@ test and wrong in a terminal.
 - **A finished run stops moving.** A run that is not `running` is painted at
   `tick = -1`, which freezes every animation: no spinner, no sliding label, no
   travelling light.
+- **The arc is for two wires, and nothing else.** `◠` says *there is a second
+  line in this cell, go and find it*. A phase's border and a band's rule are
+  boundaries rather than lines anything travels along, so a wire meeting one
+  breaks the boundary and runs through whole. A card's exit point is marked
+  whatever else wants the cell.
+- **A phase is entered where it started and left where it finished.** Its
+  agents group into waves by their clocks — the ones that overlapped, in the
+  order the waves went — and the barrier above it lands on the first wave, the
+  phase below is fed from the last. One wave is a fan and keeps every wire;
+  waves of one are a chain. Feeding every agent both ways draws two gutters of
+  wire that say the phase started all of them at once; see `wavesOf`.
+- **The dashed stroke means *not this run's own work*.** The phases it skipped,
+  the strip naming the ones still ahead, and a nested run's rule and gutter —
+  three things, one register, in every layout.
+- **Time is drawn to one scale, and everything on it reads that scale from one
+  place.** The timeline's axis has a width of its own — as many cells as the
+  shortest bar in the run needs, up to four panes' — and the pane is a window on
+  it. Bars, ticks, grid columns and the now-marker all take their column from the
+  single millisecond-to-cell function, which subtracts the sideways scroll, and
+  all clip to the axis columns rather than to the pane.
+- **A section is never narrower than a name, and a node never shorter than its
+  frame.** The pane divides itself only among the phases — and, down the pane,
+  the agents — it can give a column wide enough to name. Past that the columns
+  take the width they need, the drawing runs past the pane's edge and the body
+  scrolls to the rest. The height keeps the same bargain: a column with more
+  nodes than the pane can stand as cards keeps the cards and scrolls, rather
+  than flattening every node in the drawing to a row. See `docs/header.md`.
 
 ## Conventions
 

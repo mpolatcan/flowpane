@@ -8,3 +8,6 @@ dev/latest
 
 # Serena's project index: a cache of this repo, rebuilt on demand.
 .serena/
+
+# macOS Finder metadata, written into every directory it opens.
+.DS_Store

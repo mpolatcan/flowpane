@@ -31,9 +31,9 @@ export const RELEASED = '15-09-2026'
  * The version, kept in step with `.claude-plugin/plugin.json` by a test rather
  * than by memory: the manifest is what the engine installs by and this is what
  * the reader is told, and a pane claiming 0.3.0 while the marketplace serves
- * 0.4.0 is worse than a pane that names no version at all.
+ * 0.5.0 is worse than a pane that names no version at all.
  */
-export const VERSION = '0.3.1'
+export const VERSION = '0.5.0'
 
 /** One line of the About dialog: a pair, a sentence, or the air between them. */
 export type AboutRow =

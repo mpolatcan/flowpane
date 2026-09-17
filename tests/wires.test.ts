@@ -44,7 +44,7 @@ const FORKS = ['┴', '┬', '├', '┤']
 const CROSS = '┼'
 /** The point a wire leaves a card by: one per side, in the middle of it. */
 const PORT = '•'
-/** Where the rule a band is named on gives way to a wire crossing it. */
+/** Where one wire steps over another. Drawn where they cross, nowhere else. */
 const HOP = '◠'
 /** Where a wire turns. One to a line: two would be two wires sharing it. */
 const CORNERS = ['╭', '╮', '╰', '╯']
@@ -108,6 +108,26 @@ function fanned(): RunState {
 }
 
 /**
+ * A phase that took one pass, then opened three at once, then took one more.
+ *
+ * Neither a chain nor a fan, and the shape a nested run opened out always has:
+ * a claim, a panel, a write-up. Read as a fan it takes an arrow into all five
+ * and a line out of all five; read as what it is, one of each.
+ */
+function waved(): RunState {
+  return runOf('audit', ['Survey', 'Review', 'Report'], [
+    agentOf('s1', 'survey:paint', 'Survey', 0, 4_000),
+    agentOf('s2', 'survey:layout', 'Survey', 0, 4_000),
+    agentOf('r0', 'review:plan', 'Review', 5_000, 2_000),
+    agentOf('r1', 'review:bugs', 'Review', 8_000, 3_000),
+    agentOf('r2', 'review:style', 'Review', 8_100, 2_900),
+    agentOf('r3', 'review:perf', 'Review', 8_200, 2_800),
+    agentOf('r4', 'review:write', 'Review', 12_000, 2_000),
+    agentOf('p1', 'report:join', 'Report', 15_000, 2_000),
+  ])
+}
+
+/**
  * Two sources, each feeding two targets: every agent of the later phase has a
  * named source and every agent of the earlier one feeds something, so the
  * carries draw themselves rather than bundling into a barrier.
@@ -136,6 +156,126 @@ function abreast(): RunState {
     agentOf('d1', 'draft:reefs', 'Draft', 5_000, 4_000),
     agentOf('d2', 'draft:dunes', 'Draft', 5_000, 4_000),
   ])
+}
+
+/**
+ * A run that went round three times, doing more each time.
+ *
+ * Every attempt repeats the agents of the one before it and adds one, so the
+ * carries between two attempts fan out from a lane the barrier also has to
+ * reach past — and the wires that come out of it cannot all be drawn without
+ * one passing another. Ordering a lane to follow the one before it unpicks
+ * every crossing a pipeline makes, so this is where the arc is still needed.
+ */
+function retried(): RunState {
+  return runOf('retry', ['Attempt 1', 'Attempt 2', 'Attempt 3'], [
+    agentOf('a0', 'develop', 'Attempt 1', 0, 2_000),
+    agentOf('a1', 'verify', 'Attempt 1', 2_000, 2_000),
+    agentOf('b0', 'develop', 'Attempt 2', 5_000, 2_000),
+    agentOf('b1', 'verify', 'Attempt 2', 7_000, 2_000),
+    agentOf('b2', 'lint', 'Attempt 2', 7_000, 2_000),
+    agentOf('b3', 'build', 'Attempt 2', 7_000, 2_000),
+    agentOf('c0', 'develop', 'Attempt 3', 10_000, 2_000),
+    agentOf('c1', 'verify', 'Attempt 3', 12_000, 2_000),
+    agentOf('c2', 'lint', 'Attempt 3', 12_000, 2_000),
+    agentOf('c3', 'build', 'Attempt 3', 12_000, 2_000),
+    agentOf('c4', 'unit-test', 'Attempt 3', 12_000, 2_000),
+  ])
+}
+
+/**
+ * A phase whose work nothing in the phase before it fed, with the phase before
+ * that feeding the one after — so the run has an edge over a whole lane, drawn
+ * as a rail across the gutter the skipped lane's own carries turn in. Two lines
+ * with nothing to do with each other, in one cell, which is the one case an arc
+ * is for.
+ */
+function railed(): RunState {
+  return runOf('audit', ['Gather', 'Widen', 'Draft'], [
+    agentOf('g0', 'gather:alpha', 'Gather', 0, 4_000),
+    agentOf('g1', 'gather:beta', 'Gather', 0, 4_000),
+    agentOf('w0', 'widen:one', 'Widen', 5_000, 30_000),
+    agentOf('w1', 'widen:two', 'Widen', 5_000, 30_000),
+    agentOf('w2', 'widen:three', 'Widen', 5_000, 30_000),
+    agentOf('d0', 'draft:alpha', 'Draft', 6_000, 4_000),
+    agentOf('d1', 'draft:beta', 'Draft', 6_000, 4_000),
+  ])
+}
+
+/**
+ * The same skip, with phases the run never entered declared around it.
+ *
+ * The drawing holds only the phases it can fit, and the ones with nothing in
+ * them are the first to go — so this run has six phases and the picture has
+ * three. A skip names its two ends by their place in the run, which is not
+ * their place in the picture.
+ */
+function railedPast(): RunState {
+  const run = railed()
+
+  run.phases = ['Setup', ...run.phases, 'Later', 'Last']
+
+  return run
+}
+
+/**
+ * The same skip with a phase after it, so the fed cards have a band below them.
+ *
+ * Down the pane the row under a card is the rule the next band is named on, so a
+ * source with work after it is written on the row above the card instead — which
+ * is the row the wires arrive on.
+ */
+function railedMiddle(): RunState {
+  const run = railed()
+
+  run.phases = [...run.phases, 'Final']
+  run.agents.push(agentOf('f0', 'final:one', 'Final', 12_000, 4_000))
+
+  return run
+}
+
+/**
+ * The same skip, from a nested run.
+ *
+ * A workflow engine writes `\u25b8` in front of a nested run's phase name, and this
+ * pane uses `\u25b8` for *press to unfold*. Beside a card the two collide.
+ */
+function railedNested(): RunState {
+  const run = railedMiddle()
+  const named = '\u25b8 code-review:ai-review'
+
+  run.phases = run.phases.map(p => (p === 'Gather' ? named : p))
+
+  for (const agent of run.agents) {
+    if (agent.phase === 'Gather') {
+      agent.phase = named
+    }
+  }
+
+  return run
+}
+
+/**
+ * The same skip, from a phase whose name is longer than half a card.
+ *
+ * Down the pane the arriving wire's arrowhead stands in the middle of the row
+ * the label shares with it, so a label has half a card's width and no more. A
+ * short name leaves room for the word in front of it at every size this pane is
+ * drawn at; a long one is what the ladder is for.
+ */
+function railedNamed(): RunState {
+  const run = railedMiddle()
+  const named = 'Gather the evidence'
+
+  run.phases = run.phases.map(p => (p === 'Gather' ? named : p))
+
+  for (const agent of run.agents) {
+    if (agent.phase === 'Gather') {
+      agent.phase = named
+    }
+  }
+
+  return run
 }
 
 /** The canvas back as the lines a terminal would show. */
@@ -168,16 +308,21 @@ function columnsOf(row: string, glyphs: string[]): number[] {
   return at
 }
 
-function drawn(run: RunState, columns: number, rows: number, orientation: 'flow' | 'stack') {
+function drawn(run: RunState, columns: number, rows: number, orientation: 'horizontal' | 'vertical') {
   const canvas = new Canvas(columns, rows)
+  // The painter's own layout, not a fresh one at the same size: a drawing too
+  // big for the pane gives a column to its scroll rail, and the boxes move.
+  const drawn = paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation })
 
-  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation })
-
-  return { canvas, rows: rowsOf(canvas), view: layout(run, columns, rows, orientation, 0) }
+  return {
+    canvas,
+    rows: rowsOf(canvas),
+    view: drawn.view ?? layout(run, columns, rows, orientation, 0),
+  }
 }
 
 test('a phase its agents ran one at a time is entered at its head', () => {
-  const { rows, view } = drawn(chained(), 96, 34, 'stack')
+  const { rows, view } = drawn(chained(), 96, 34, 'vertical')
   const review = view.lanes.find(l => l.phase === 'Review')
 
   expect(review?.nodes.length).toBe(3)
@@ -197,7 +342,7 @@ test('a phase its agents ran one at a time is entered at its head', () => {
 })
 
 test('a phase its agents ran one at a time is left from its tail', () => {
-  const { rows, view } = drawn(chained(), 96, 34, 'stack')
+  const { rows, view } = drawn(chained(), 96, 34, 'vertical')
   const review = view.lanes.find(l => l.phase === 'Review')
   const nodes = review?.nodes ?? []
   const last = nodes[nodes.length - 1]
@@ -211,8 +356,178 @@ test('a phase its agents ran one at a time is left from its tail', () => {
   expect(below[0]).toBeLessThan((last?.x ?? 0) + (last?.w ?? 0))
 })
 
+/**
+ * What a card says above it, out of the rows a written source may take.
+ *
+ * Across the pane that is the row against the card. Down the pane the band
+ * keeps a row of its own one further up, because the row against the card is
+ * the one the arrowheads land on.
+ */
+function saidOver(rows: string[], node: { x: number; y: number; w: number }): string {
+  for (const y of [node.y - 2, node.y - 1]) {
+    const said = (rows[y] ?? '').slice(node.x, node.x + node.w)
+
+    if (said.replace(/[\s\u2502\u2506]/g, '').length > 0) {
+      return said
+    }
+  }
+
+  return ''
+}
+
+test('a card fed from further back says which phase fed it, in words', () => {
+  const { rows, view } = drawn(railedPast(), 100, 30, 'horizontal')
+  const draft = view.lanes.find(l => l.phase === 'Draft')
+  const nodes = draft?.nodes ?? []
+
+  expect(nodes.length).toBe(2)
+
+  // Nothing is drawn between the two phases. A line long enough to span a whole
+  // lane has to be followed past everything drawn in between, and a reader who
+  // has scrolled into the middle of it sees a rule with no ends. The name goes
+  // on the card that was fed, where the reader already is, and says in words
+  // what the line would have said in a shape.
+  for (const node of nodes) {
+    const said = saidOver(rows, node)
+
+    // And it names the phase the work came from, not the one before it: a
+    // source read off the drawing's own order rather than the run's named the
+    // phase after the one it belonged to, in every run the picture left out a
+    // phase of.
+    //
+    // The word, because the mark alone was read as decoration — it is the word
+    // the detail dialog's foot uses for the same fact. The mark is the
+    // arrowhead every drawn input to a card ends in, pointing at the card from
+    // the row it landed on. It was `↰`, which is the return arrow everywhere
+    // else a developer meets it, and was read as the run rewinding to this
+    // step.
+    expect(said).toContain('▾ from Gather')
+  }
+})
+
+test('a written source stands above the card in either layout', () => {
+  // One row, one mark, whichever way the run is drawn. The row under a card is
+  // the row its wires leave by down the pane, so a name written there reads as
+  // something coming out of the card; and a label that stood under a card
+  // across the pane and over one down it was the same fact in two shapes.
+  //
+  // The mark was `↰` in both places, which is the return arrow everywhere else
+  // a developer meets it: a reader asked whether the run rewound to this step.
+  // Every input this pane draws ends in an arrowhead pointing into the card it
+  // feeds, and one it writes instead of drawing says it the same way. Where a
+  // wire is already arriving on that row, that arrowhead serves both and the
+  // source is written up against it rather than given a second one.
+  const across = drawn(railedPast(), 100, 30, 'horizontal')
+  const down = drawn(railedMiddle(), 100, 30, 'vertical')
+
+  for (const { rows, view } of [across, down]) {
+    const draft = view.lanes.find(l => l.phase === 'Draft')
+    const nodes = draft?.nodes ?? []
+
+    expect(nodes.length).toBe(2)
+
+    for (const node of nodes) {
+      const above = saidOver(rows, node)
+      const below = (rows[node.y + node.h] ?? '').slice(node.x, node.x + node.w)
+
+      expect(above).toContain('Gather')
+      expect(below).not.toContain('Gather')
+      // Whole. The name is the thing on the row that says anything, and the
+      // word in front of it is given up before a letter of it is.
+      expect(above).not.toContain('\u2026')
+    }
+  }
+})
+
+test('the word in front of a written source gives way before the name does', () => {
+  // Down the pane the arriving wire's arrowhead stands in the middle of the row
+  // the label shares with it, so the label has half a card's width and no more.
+  // `from Prefli…` names nothing while spelling out a word the reader has
+  // already met spelled out on a wider card in the same drawing — the ladder a
+  // token count runs down, for the same reason.
+  const saidIn = ({ rows, view }: ReturnType<typeof drawn>): string => {
+    const node = view.lanes.find(l => l.phase === 'Draft')?.nodes[0]
+
+    return node === undefined ? '' : saidOver(rows, node).trim()
+  }
+
+  // Wide enough for both, and the label says both.
+  expect(saidIn(drawn(railedNamed(), 100, 30, 'vertical'))).toContain('from Gather the evidence')
+
+  // Not wide enough for both. The name comes through whole and the word goes.
+  const tight = saidIn(drawn(railedNamed(), 80, 30, 'vertical'))
+
+  expect(tight).toContain('Gather the evidence')
+  expect(tight).not.toContain('from')
+  expect(tight).not.toContain('\u2026')
+})
+
+test('a written source stands centred on the card it points at', () => {
+  // The way a card centres its own name and its own model. Set against the left
+  // edge it hung off a card wider than it by the whole of the difference, which
+  // read as a label belonging to whatever was further left rather than to the
+  // card it points at.
+  const { rows, view } = drawn(railedPast(), 120, 30, 'horizontal')
+  const nodes = view.lanes.find(l => l.phase === 'Draft')?.nodes ?? []
+
+  expect(nodes.length).toBe(2)
+
+  for (const node of nodes) {
+    const over = saidOver(rows, node)
+
+    expect(over).toContain('from Gather')
+
+    // Wider than what it says, so there is something to centre.
+    expect(over.trim().length).toBeLessThan(node.w)
+
+    const left = over.length - over.trimStart().length
+    const right = over.length - over.trimEnd().length
+
+    expect(Math.abs(left - right)).toBeLessThanOrEqual(1)
+  }
+})
+
+test('a source that is a nested run is named without the mark that unfolds it', () => {
+  // `\u25b8` is this pane's press-to-unfold mark, and the engine writes it in front
+  // of a nested run's phase name. Left on, a card fed by one read
+  // `\u25be from \u25b8 code-review:ai-review` — two marks and a control a reader cannot
+  // press, since the press is on the band's own caption. The detail dialog's
+  // title strips it for the same reason.
+  const { rows, view } = drawn(railedNested(), 140, 30, 'vertical')
+  const node = view.lanes.find(l => l.phase === 'Draft')?.nodes[0]
+  const above = node === undefined ? '' : saidOver(rows, node)
+
+  expect(above).toContain('code-review:ai-review')
+  expect(above).not.toContain('\u25b8')
+})
+
+test('a phase that ran in waves is entered at its first and left from its last', () => {
+  const { rows, view } = drawn(waved(), 96, 46, 'vertical')
+  const review = view.lanes.find(l => l.phase === 'Review')
+  const nodes = review?.nodes ?? []
+
+  expect(nodes.length).toBe(5)
+
+  // One arrowhead, over the pass that started the phase. The three that ran at
+  // once were opened by it, not by the phase above, and the one after them
+  // waited on all three.
+  const heads = columnsOf(rows[(nodes[0]?.y ?? 0) - 1] ?? '', [ARROW_DOWN])
+
+  expect(heads.length).toBe(1)
+  expect(heads[0]).toBeGreaterThanOrEqual(nodes[0]?.x ?? 0)
+  expect(heads[0]).toBeLessThan((nodes[0]?.x ?? 0) + (nodes[0]?.w ?? 0))
+
+  // And one line out, from the last of them.
+  const last = nodes[nodes.length - 1]
+  const below = columnsOf(rows[(last?.y ?? 0) + (last?.h ?? 0)] ?? '', [LINE_V, DASH_V, PORT])
+
+  expect(below.length).toBe(1)
+  expect(below[0]).toBeGreaterThanOrEqual(last?.x ?? 0)
+  expect(below[0]).toBeLessThan((last?.x ?? 0) + (last?.w ?? 0))
+})
+
 test('a phase its agents ran at once is fed into every one of them', () => {
-  const { rows, view } = drawn(fanned(), 96, 34, 'stack')
+  const { rows, view } = drawn(fanned(), 96, 34, 'vertical')
   const review = view.lanes.find(l => l.phase === 'Review')
   const cardY = review?.nodes[0]?.y ?? 0
 
@@ -223,7 +538,7 @@ test('a phase its agents ran at once is fed into every one of them', () => {
 })
 
 test('the carries that change row all turn in one column', () => {
-  const { rows, view } = drawn(fannedOut(), 120, 34, 'flow')
+  const { rows, view } = drawn(fannedOut(), 120, 34, 'horizontal')
   const [from, to] = view.lanes
   const gutter = { start: (from?.x ?? 0) + (from?.w ?? 0), end: to?.x ?? 0 }
   const turns = new Set<number>()
@@ -279,7 +594,7 @@ test('the carries that change row all turn in one column', () => {
 })
 
 test('down the pane, they turn in one row', () => {
-  const { rows, view } = drawn(fannedOut(), 120, 34, 'stack')
+  const { rows, view } = drawn(fannedOut(), 120, 34, 'vertical')
   const [from, to] = view.lanes
   const band = { start: (from?.nodes[0]?.y ?? 0) + (from?.nodes[0]?.h ?? 0), end: to?.nodes[0]?.y ?? 0 }
   const turns = new Set<number>()
@@ -322,8 +637,8 @@ test('down the pane, they turn in one row', () => {
 })
 
 
-test("a band's name stands clear of the wires crossing its rule", () => {
-  const { rows, view } = drawn(abreast(), 120, 34, 'stack')
+test("a band's name stands centred, and the wire gives way for it", () => {
+  const { rows, view } = drawn(abreast(), 120, 34, 'vertical')
   const draft = view.lanes.find(l => l.phase === 'Draft')
   const y = draft?.captionRow ?? -1
 
@@ -334,24 +649,108 @@ test("a band's name stands clear of the wires crossing its rule", () => {
 
   expect(crossings.length).toBe(3)
 
-  // The rule gives way to each of them with an arc, and the name gives way to
-  // the arcs. Set into the middle of the rule the name cleared the middle one,
-  // and the wire above the rule and the wire below it stopped dead against a
-  // word with nothing to say they were one line.
-  for (const x of crossings) {
-    expect(rule[x]).toBe(HOP)
-  }
-
-  // The name is still on the rule, whole, and still as near the middle as the
-  // wires leave room for.
+  // The caption is the run of cells around the name that carry no stroke: the
+  // name, what trails it, and the blank cleared either side of the lot.
   const at = rule.indexOf('Draft')
 
   expect(at).toBeGreaterThan(0)
-  expect(Math.abs(at - Math.floor((120 - 'Draft 3/3'.length) / 2))).toBeLessThanOrEqual(10)
+
+  const strokes = ['\u2501', '\u2500', '\u254d', '\u254c']
+  let from = at
+  let to = at
+
+  while (from > 0 && !strokes.includes(rule[from - 1] as string)) {
+    from--
+  }
+
+  while (to < rule.length - 1 && !strokes.includes(rule[to + 1] as string)) {
+    to++
+  }
+
+  // Equal rule either side of it, which is the one measurement a centred title
+  // has. One cell of slack: an odd number of cells cannot be split evenly.
+  expect(Math.abs(from - (rule.length - 1 - to))).toBeLessThanOrEqual(1)
+
+  const behind = crossings.filter(x => x >= from && x <= to)
+
+  expect(behind.length).toBe(1)
+
+  // The rule gives way to every wire it does not share with the caption. It
+  // gives way by breaking, not by arcing over: an arc is the mark for *two
+  // lines, and this is the one in front*, and a rule is a boundary rather than
+  // a line anything travels along, so a reader followed the arc looking for a
+  // second line and found the edge of a phase.
+  for (const x of crossings.filter(column => column < from || column > to)) {
+    expect([LINE_V, DASH_V]).toContain(rule[x])
+  }
+
+  // Where the caption wants the same cell, the wire is the one that gives way,
+  // and it gives way for that one row alone: it is whole above the rule and
+  // whole below it, which is what says the two halves are one line.
+  //
+  // The caption used to give way instead, stepping along the rule until it
+  // found a window with no wire in it. Down a pane of centred cards the spine
+  // runs down the middle — the caption's own column — so every band stepped
+  // aside, each by a different amount, and the names came out on no column at
+  // all.
+  for (const x of behind) {
+    expect([LINE_V, DASH_V]).not.toContain(rule[x])
+    expect([LINE_V, DASH_V]).toContain((rows[y - 1] as string)[x])
+    expect([LINE_V, DASH_V, PORT, ...CORNERS, ...FORKS, ARROW_DOWN]).toContain((rows[y + 1] as string)[x])
+  }
 })
 
+test('a wire steps over a wire, and over nothing else', () => {
+  const { rows, view } = drawn(retried(), 100, 30, 'horizontal')
+  const hops = rows.flatMap((row, y) => columnsOf(row, [HOP]).map(x => ({ x, y })))
+
+  // One wire passes another here, so there is something to measure at all.
+  expect(hops.length).toBeGreaterThan(0)
+
+  const WIRES = [LINE_V, DASH_V, CROSS, PORT, ARROW_DOWN, ...CORNERS, ...FORKS]
+
+  for (const { x, y } of hops) {
+    // What the arc steps over is a line, above and below it both. An arc says
+    // *two lines, and this is the one in front*; drawn where a wire met a
+    // phase's own border it said that about a boundary nothing travels along,
+    // and a reader followed it looking for a second line to follow.
+    expect(WIRES).toContain((rows[y - 1] ?? '')[x] ?? ' ')
+    expect(WIRES).toContain((rows[y + 1] ?? '')[x] ?? ' ')
+
+    // Never on one of the lines the drawing itself speaks for.
+    expect(view.lanes.map(lane => lane.edgeAt)).not.toContain(x)
+  }
+})
+
+test('every point a wire leaves a card by is marked', () => {
+  const { rows, view } = drawn(fanned(), 120, 34, 'vertical')
+
+  for (const lane of view.lanes) {
+    for (const node of lane.nodes) {
+      const below = rows[node.y + node.h] ?? ''
+      const arm = columnsOf(below, [LINE_V, DASH_V, PORT]).filter(
+        x => x >= node.x && x < node.x + node.w,
+      )
+
+      // A run that starts in the blank under a card is a line with one end
+      // against nothing. The point is what says which card it came out of, so
+      // it is marked whether or not the next cell has room for the line itself.
+      for (const x of arm) {
+        expect([PORT, LINE_V, DASH_V]).toContain(below[x])
+      }
+    }
+  }
+
+  // Every card of the phase that fed the next one has one, and only one.
+  const gather = view.lanes[0]
+  const ports = (rows[(gather?.nodes[0]?.y ?? 0) + (gather?.nodes[0]?.h ?? 0)] ?? '')
+
+  expect(columnsOf(ports, [PORT]).length).toBeGreaterThan(0)
+})
+
+
 test('a name too long for its card stops before the point the wire leaves by', () => {
-  const { rows, view } = drawn(fannedOut(), 26, 12, 'flow')
+  const { rows, view } = drawn(fannedOut(), 26, 12, 'horizontal')
   const from = view.lanes[0]
 
   expect(from?.nodes.length).toBeGreaterThan(0)

@@ -206,7 +206,7 @@ test('the help lists every form of the command, and no more', async ($, on) => {
       COMMAND,
       `${COMMAND} runs`,
       `${COMMAND} <n>`,
-      `${COMMAND} across|down|timeline|fits`,
+      `${COMMAND} horizontal|vertical|timeline|fits`,
       `${COMMAND} detail <n>`,
       `${COMMAND} theme [name]`,
       `${COMMAND} about`,
@@ -237,5 +237,5 @@ test('the widest form of the command is three spaces clear of what it does', asy
   // Three is the gap that reads as a column rather than a wrapped sentence, and
   // it is measured off the visible text of the longest line: one space here and
   // the widest row's two halves run together into one phrase.
-  expect(`${widest.form} ::${widest.gutter}::`).toBe(`${COMMAND} across|down|timeline|fits ::   ::`)
+  expect(`${widest.form} ::${widest.gutter}::`).toBe(`${COMMAND} horizontal|vertical|timeline|fits ::   ::`)
 })

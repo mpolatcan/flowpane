@@ -66,7 +66,7 @@ function open(
   const drawn = paint(canvas, run(), {
     nowMs: NOW,
     tick: 0,
-    orientation: 'flow',
+    orientation: 'horizontal',
     detailRows: 24,
     settings: true,
     ...options,
@@ -95,7 +95,7 @@ function open(
 
 function view(): PaneView {
   return {
-    orientation: 'flow',
+    orientation: 'horizontal',
     theme: 'tokyo-night',
     detailRows: 16,
     selectedId: null,
@@ -116,12 +116,12 @@ test('the dialog says what it is and how to shut it', () => {
 })
 
 test('shut, every setting says what the pane is set to', () => {
-  const { lines, pressable } = open({ orientation: 'flow' })
+  const { lines, pressable } = open({ orientation: 'horizontal' })
 
   // Brackets, not a colour. A press target is drawn by the surface as a
   // Button's own label, and a Button's label takes no colour at all — so the
   // value the pane is set to has to be legible as that value in plain text.
-  expect(lines.find(l => l.includes('Layout'))).toContain('[across')
+  expect(lines.find(l => l.includes('Layout'))).toContain('[horizontal')
   expect(lines.find(l => l.includes('Theme'))).toContain('[tokyo-night')
   expect(lines.find(l => l.includes('Detail height'))).toContain('[24 rows]')
 
@@ -147,7 +147,12 @@ test('a list unrolls from the control that says what the setting is set to', () 
 
   const layouts = open({ menu: 'layout' })
 
-  for (const [label, value] of [['across', 'flow'], ['down', 'stack'], ['timeline', 'time'], ['fits', 'auto']]) {
+  for (const [label, value] of [
+    ['horizontal', 'horizontal'],
+    ['vertical', 'vertical'],
+    ['timeline', 'timeline'],
+    ['fits', 'auto'],
+  ]) {
     expect(layouts.text).toContain(label)
     expect(layouts.pressable).toContain(`set:orientation:${value}`)
   }
@@ -310,16 +315,16 @@ test('a choice sets what it is named after, and nothing cycles', () => {
 
   expect(v.theme).toBe('nord')
 
-  applyPress(v, 'set:orientation:time', { hasRun: true })
+  applyPress(v, 'set:orientation:timeline', { hasRun: true })
 
-  expect(v.orientation).toBe('time')
+  expect(v.orientation).toBe('timeline')
 
   // A name the pane does not have changes nothing rather than throwing.
   applyPress(v, 'set:theme:dawn', { hasRun: true })
   applyPress(v, 'set:orientation:sideways', { hasRun: true })
 
   expect(v.theme).toBe('nord')
-  expect(v.orientation).toBe('time')
+  expect(v.orientation).toBe('timeline')
 })
 
 test('one list is open at a time, and pressing its control again shuts it', () => {

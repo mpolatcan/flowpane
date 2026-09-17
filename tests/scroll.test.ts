@@ -230,7 +230,7 @@ test('the arrows at the ends of a block’s bar move that block', async ($, on) 
   expect(paneOf(await renderPane($)).text).toContain('line 01 of the prompt')
 })
 
-test('a column’s arrow moves that column and leaves the one beside it', async ($, on) => {
+test('a tab opens its own pane, and the arrow moves the pane that is open', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
 
   on('tool.call', { tool: 'Workflow' }, () => ({ result: LAUNCH }))
@@ -239,31 +239,40 @@ test('a column’s arrow moves that column and leaves the one beside it', async 
   await $.tool.call({ tool: 'Workflow', script: SCRIPT })
   await clock.advance(600)
 
-  // Two blocks side by side need the room for two: a narrower pane stacks them
-  // into one column, which is a different drawing with one scroll.
   const node = paneOf(await renderPane($, WIDE)).keys.find(k => k.startsWith('node:'))
 
   await $.ui.press({ plugin: 'flowpane', key: node!, requestId: 'flowpane' })
 
   const opened = paneOf(await renderPane($, WIDE))
 
-  // Newest first: the last call an agent made is the one a reader opened the
-  // dialog to see, so it is the one the block opens on.
-  expect(opened.text).toContain('call 20 of the list')
-  // The prompt beside the list is one line long: it has nowhere to go, and
-  // says so by having no arrows of its own.
+  // The dialog opens on the prompt, across the whole pane rather than in a
+  // column beside the calls. A one-line prompt has nowhere to go, and says so
+  // by having no arrows of its own.
   expect(opened.text).toContain('Say red.')
+  expect(opened.text).not.toContain('call 20 of the list')
   expect(opened.keys).not.toContain('node:detail-down:0')
-  expect(opened.keys).toContain('node:detail-down:1')
+  expect(opened.keys).toContain('node:@tab:1')
+
+  await $.ui.press({ plugin: 'flowpane', key: 'node:@tab:1', requestId: 'flowpane' })
+
+  const calls = paneOf(await renderPane($, WIDE))
+
+  // Newest first: the last call an agent made is the one a reader opened the
+  // dialog to see, so it is the one the pane opens on.
+  expect(calls.text).toContain('call 20 of the list')
+  expect(calls.keys).toContain('node:detail-down:1')
 
   await $.ui.press({ plugin: 'flowpane', key: 'node:detail-down:1', requestId: 'flowpane' })
 
   const scrolled = paneOf(await renderPane($, WIDE))
 
   expect(scrolled.text).not.toContain('call 20 of the list')
-  // The whole complaint that started this: the list moved, and the prompt in
-  // the column beside it did not go blank.
-  expect(scrolled.text).toContain('Say red.')
+
+  // The whole complaint that started this: moving one pane leaves the other
+  // where the reader left it, so the tab back is the prompt, whole.
+  await $.ui.press({ plugin: 'flowpane', key: 'node:@tab:0', requestId: 'flowpane' })
+
+  expect(paneOf(await renderPane($, WIDE)).text).toContain('Say red.')
 })
 
 test('opening a node draws its detail over the graph, not in place of it', async ($, on) => {
@@ -328,22 +337,22 @@ test('a layout picked while the detail is open is the one that stays', async ($,
   // Shut, the dialog says what the pane is set to; the other layouts are
   // behind the control that says it.
   expect(settings.keys).toContain('node:open:layout')
-  expect(settings.keys).not.toContain('node:set:orientation:stack')
+  expect(settings.keys).not.toContain('node:set:orientation:vertical')
 
   await $.ui.press({ plugin: 'flowpane', key: 'node:open:layout', requestId: 'flowpane' })
 
   const unrolled = paneOf(await renderPane($))
 
-  expect(unrolled.keys).toContain('node:set:orientation:stack')
+  expect(unrolled.keys).toContain('node:set:orientation:vertical')
 
   // Named with the value it is being set to: a press says what it does rather
   // than what it moves on from.
-  await $.ui.press({ plugin: 'flowpane', key: 'node:set:orientation:stack', requestId: 'flowpane' })
+  await $.ui.press({ plugin: 'flowpane', key: 'node:set:orientation:vertical', requestId: 'flowpane' })
   await $.ui.press({ plugin: 'flowpane', key: '@settings', requestId: 'flowpane' })
 
   const picked = paneOf(await renderPane($))
 
-  expect(picked.text).toContain('Layout: down')
+  expect(picked.text).toContain('Layout: vertical')
   expect(picked.text).toContain('line 01 of the prompt')
 
   await $.ui.press({ plugin: 'flowpane', key: 'node:@close', requestId: 'flowpane' })
@@ -351,5 +360,5 @@ test('a layout picked while the detail is open is the one that stays', async ($,
   const shut = paneOf(await renderPane($))
 
   expect(shut.text).not.toContain('line 01 of the prompt')
-  expect(shut.text).toContain('Layout: down')
+  expect(shut.text).toContain('Layout: vertical')
 })

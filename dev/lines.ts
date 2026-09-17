@@ -10,10 +10,13 @@
  * catches the erasures too, and says where the reader sees one.
  *
  * Each cell remembers which function drew the line in it, read off the stack,
- * because three painters draw lines that are supposed to give way. A card's own
+ * because five painters draw lines that are supposed to give way. A card's own
  * edge carries the card's name set into it; the bar's top rule stops short of
  * the surface's close control; the borders and band rules go into blank cells
- * only. Those three are quiet by default and `--all` shows them.
+ * only; and on the timeline the ruler's ticks and the grid under them are a
+ * scale rather than a line anything travels along, so each stops wherever a bar
+ * or a word already stands. Those five are quiet by default and `--all` shows
+ * them.
  *
  *   bun dev/lines.ts            every journal, every layout, the size sweep
  *   bun dev/lines.ts --quick    the widest journal, one size
@@ -30,7 +33,7 @@ import { journalRun, runDirs } from './load'
 
 const COLUMNS = [20, 26, 34, 46, 60, 74, 88, 102, 120, 148, 180, 220]
 const ROWS = [6, 9, 12, 16, 22, 28, 34, 44, 60, 80]
-const LAYOUTS: Orientation[] = ['flow', 'stack', 'time']
+const LAYOUTS: Orientation[] = ['horizontal', 'vertical', 'timeline']
 
 const ARROWS = new Set([0x25b8, 0x25be, 0x25b4, 0x25c2])
 /**
@@ -63,7 +66,7 @@ function ink(code: number): boolean {
 const wire = (code: number) => armsOf(code) !== undefined || code === PORT || ARROWS.has(code)
 
 /** The painters whose lines are drawn to be broken, and are not faults. */
-const GIVES_WAY = new Set(['paintNode', 'paintBar', 'ink'])
+const GIVES_WAY = new Set(['paintNode', 'paintBar', 'ink', 'paintRuler', 'paintGrid'])
 
 type Clash = { x: number; y: number; over: number; under: number; kind: string; by: string }
 const clashes: Clash[] = []
