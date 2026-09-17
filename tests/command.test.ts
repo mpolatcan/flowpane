@@ -12,6 +12,8 @@
 
 import { expect, mock, test } from 'claude-code/testing'
 
+import { COMMAND as REGISTERED, orientationOf } from '../hooks/register'
+
 const COMMAND = '/flowpane'
 /** What the command was called before, and what none of these replies may say. */
 const FORMER = '/wf'
@@ -238,4 +240,84 @@ test('the widest form of the command is three spaces clear of what it does', asy
   // it is measured off the visible text of the longest line: one space here and
   // the widest row's two halves run together into one phrase.
   expect(`${widest.form} ::${widest.gutter}::`).toBe(`${COMMAND} horizontal|vertical|timeline|fits ::   ::`)
+})
+
+/**
+ * The two words the help no longer lists.
+ *
+ * `across` and `down` named the layouts before the axis words did, and they
+ * still work for anyone who learned them. Being unlisted is exactly what makes
+ * losing them quiet: the help is pinned to seven forms, and dropping an alias
+ * from the table breaks nothing any other test reads.
+ */
+test('the unlisted word for the horizontal layout still sets it', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  stubEngine(on)
+
+  const named = await reply($, 'horizontal')
+
+  expect(await reply($, 'across')).toBe(named)
+})
+
+test('the unlisted word for the vertical layout still sets it', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  stubEngine(on)
+
+  const named = await reply($, 'vertical')
+
+  expect(await reply($, 'down')).toBe(named)
+})
+
+test('an unlisted layout word is answered with the layout, not with a refusal', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  stubEngine(on)
+
+  // Dropped from the table, `across` falls through to the line that says the
+  // command takes no such word — which is the reply a reader who learned it
+  // would get, and the whole of what this pins.
+  expect(await reply($, 'across')).not.toContain('takes no')
+})
+
+test('the one constant the command is spelled from is the word it answers to', async ($, on) => {
+  mock.clock(on, { now: 0 })
+
+  const seen: { register?: { name?: string; description?: string } } = {}
+
+  on('session.start', ($$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
+  stubEngine(on, seen)
+
+  await $.session.start({ cwd: '/home/test', surface: 'terminal', isInteractive: true })
+
+  // Every form of the command is built from this one word, so the word and the
+  // registration are the same fact said twice. Said twice and checked once,
+  // a rename produces a help page that teaches a command nothing answers to.
+  expect(`/${REGISTERED}`).toBe(COMMAND)
+  expect(seen.register?.name).toBe(REGISTERED)
+})
+
+/**
+ * The names the orientations carried before this release, against their names
+ * now.
+ *
+ * These were never words anybody typed — `across`, `down` and `timeline` were,
+ * and still are. They are what the layout control wrote into the store, and
+ * what `plugin.json` still documents its `orientation` setting as taking. So a
+ * reader who picked a layout on an earlier build, or who set one in their own
+ * config, has one of these saved; read strictly it is not an orientation at
+ * all, and the preference was dropped on the way in.
+ */
+test('a layout stored under the name it used to have still selects it', () => {
+  const was = ['flow', 'stack', 'time'].map(word => orientationOf(word))
+
+  // Dropped, every one of them came back as the pane's default, which reads as
+  // a control that does not hold rather than as a rename.
+  expect(was.join(',')).toBe('horizontal,vertical,timeline')
+})
+
+test('a layout stored under a word the pane has never had is no layout', () => {
+  // Nothing is not a layout either: an unset setting has to leave the pane on
+  // whatever it was, and the only way to say so is to name no orientation.
+  expect([orientationOf('sideways'), orientationOf(undefined), orientationOf('')]).toEqual([
+    null, null, null,
+  ])
 })

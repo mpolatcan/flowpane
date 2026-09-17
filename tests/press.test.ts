@@ -455,3 +455,24 @@ test('an agent opened from the graph has no run behind it', () => {
   expect(v.selectedId).toBe(null)
   expect(v.fromRun).toBe(null)
 })
+
+test('the wheel over a nested run moves its list, not the tab an agent was left on', () => {
+  const v = view()
+  const body = { x: 0, y: 0, spanX: 0, spanY: 40 }
+  const detail = { panes: [{ total: 80, visible: 10, scroll: 0 }], tab: 0 }
+
+  // A nested run's dialog is one list and has no tabs. The number left over
+  // from the last agent is still in the view, and it is not this dialog's.
+  v.selectedId = '@run:▸ code-review'
+  v.detailTab = 2
+
+  wheel(v, { body, detail }, 5)
+
+  // Moved by `detailTab`, the wheel wrote into pane two — a pane this dialog
+  // does not have — and the list under the pointer stayed where it was.
+  expect(v.detailScroll[0]).toBe(5)
+  expect(v.detailScroll[2]).toBeUndefined()
+
+  // And the drawing behind the dialog takes no wheel, as it takes no press.
+  expect(v.bodyScroll).toEqual({ x: 0, y: 0 })
+})

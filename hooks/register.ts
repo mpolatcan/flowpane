@@ -840,6 +840,23 @@ async function actOnPress($: EngineInterface): Promise<void> {
  * place the word had to mean the layout was the one place it did not stand out.
  * `across` and `down` still work, unlisted, for anyone who learned them.
  */
+/**
+ * What the orientations were called before this release, against their names now.
+ *
+ * These were never words anybody typed — `across`, `down` and `timeline` were,
+ * and still are. They are the names the orientations carried inside the plugin,
+ * and the layout control writes whichever one is in force straight into the
+ * store. So a reader who picked a layout on an earlier build has `stack` or
+ * `flow` saved, and read strictly that is not an orientation at all: the
+ * preference was dropped on the way in and the pane came back on `auto`, which
+ * reads as a control that does not hold rather than as a rename.
+ */
+const WAS_CALLED: Record<string, Orientation> = {
+  flow: 'horizontal',
+  stack: 'vertical',
+  time: 'timeline',
+}
+
 const LAYOUT_WORDS: Record<string, Orientation> = {
   horizontal: 'horizontal',
   vertical: 'vertical',
@@ -1017,14 +1034,18 @@ async function applyArgs($: EngineInterface, args: string): Promise<string> {
  * uses. One vocabulary would be better; until the stored values can change, both
  * are read wherever a layout is named.
  */
-function orientationOf(value: unknown): Orientation | null {
+export function orientationOf(value: unknown): Orientation | null {
   if (ORIENTATIONS.includes(value as Orientation)) {
     return value as Orientation
   }
 
   const word = String(value ?? '').toLowerCase()
 
-  return word in LAYOUT_WORDS ? LAYOUT_WORDS[word] : null
+  if (word in LAYOUT_WORDS) {
+    return LAYOUT_WORDS[word]
+  }
+
+  return word in WAS_CALLED ? WAS_CALLED[word] : null
 }
 
 

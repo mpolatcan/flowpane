@@ -41,7 +41,12 @@ function flatten(tree: unknown): Node[] {
   return out
 }
 
-function stubEngine(on: any): void {
+/**
+ * `stored` is what a session before this one left behind, for the test that
+ * reads a setting back: the row is where the pane says what it is set to, so it
+ * is where a preference dropped on the way in shows.
+ */
+function stubEngine(on: any, stored: Record<string, unknown> = {}): void {
   on('env.get', () => ({ value: '/home/test' }))
   on('ui.open', () => ({ value: undefined }))
   on('ui.close', () => ({ value: undefined }))
@@ -49,7 +54,7 @@ function stubEngine(on: any): void {
   on('ui.invalidate', () => ({ value: undefined }))
   on('command.register', () => ({ value: { command: 'flowpane' } }))
   on('session.id', () => ({ value: 'test-session' }))
-  on('store.get', () => ({ value: undefined }))
+  on('store.get', ($$: unknown, e: { key: string }) => ({ value: stored[e.key] }))
   on('store.set', () => ({ value: undefined }))
   on('fs.exists', () => ({ value: false }))
 }
@@ -228,4 +233,23 @@ test('a line divides the drawing from the row, and is not a control', async ($, 
   // surface put there. The surface's dim would be the colour of the state.
   expect(String(line?.props?.color ?? '')).toMatch(/^#[0-9a-f]{6}$/)
   expect(line?.props?.dimColor).toBeUndefined()
+})
+
+test('the row says the layout a session picked up from the store', async ($, on) => {
+  mock.clock(on, { now: 1_000 })
+
+  // `stack` is what the layout control wrote into the store before this
+  // release, and what `plugin.json` still documents the `orientation` setting
+  // as taking for the layout down the pane. Read strictly it is not an
+  // orientation, and the preference was dropped on the way in: the row came
+  // back saying `fits`, which reads as a control that does not hold.
+  on('session.start', ($$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
+  stubEngine(on, { orientation: 'stack' })
+
+  await $.session.start({ cwd: '/home/test', surface: 'terminal', isInteractive: true })
+
+  const { texts } = footOf(flatten(await renderPane($, 90)))
+  const state = texts.find(t => t.includes('\u2502')) ?? ''
+
+  expect(state).toContain('Layout: vertical')
 })

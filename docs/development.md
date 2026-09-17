@@ -271,6 +271,24 @@ the dialog's own swatch keeps its palette's values to the byte, and that picking
 twice gives the same answer twice — which a cycle would not. `tests/press.test.ts`
 presses the two ends of the foot row against each other, since what the pane is
 set to and what the pane is are two answers and only one of them can be open.
+Five files cover the parts of the plugin nothing drawn on the canvas reaches.
+`tests/canvas.test.ts` reads cells back through the window — a glyph outside it
+reads blank, the same glyph reads itself again once the window is cleared, and a
+cell off the buffer reads blank rather than throwing — which is what stops a line
+drawn to the edge of the body from joining something across a boundary it may
+not cross. `tests/journal.test.ts` holds the two readers of a tool call to the
+same cap: the one that fills a call in from a live `tool.call` and the one that
+fills it in from a recording keep the same argument and the same answer, so a
+run watched as it went and the same run opened afterwards draw the same call.
+`tests/waves.test.ts` pins the tolerance that decides whether a phase is a fan or
+a chain, from both sides, and `tests/wheel.test.ts` turns the wheel over a
+rendered pane — sideways along the rail, down the drawing, down again on the last
+row of a layout that has no rail there, and over a pane with no run on it, where
+it moves nothing and costs no repaint. `tests/about.test.ts` reads what the pane
+says about itself where there is no pane, and holds the release date to the day
+the release before it went out, since a version bumped with the date left behind
+is a row that reads as true.
+
 `dev/preview.ts`, `dev/stress.ts`, `dev/checkpic.ts`,
 `dev/edges.ts`, `dev/shot.ts` and `dev/recover.ts` exercise the drawing, the
 derived graph and the file reads without a session, `dev/checkmeta.ts` holds the

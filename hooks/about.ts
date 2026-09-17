@@ -24,8 +24,16 @@ export const TAGLINE = 'Dynamic Workflow Visualizer'
 /** Who to ask about it. */
 export const MAINTAINER = 'Mutlu Polatcan'
 
-/** When this version was published, written the way a European reader dates. */
-export const RELEASED = '15-09-2026'
+/**
+ * When this version was published, written the way a European reader dates.
+ *
+ * It moves with {@link VERSION} or it says nothing: 0.3.1 and 0.5.0 both shipped
+ * claiming the 15th, because bumping the version is the visible half of a
+ * release and this line is the half nobody looks at. A date left behind is worse
+ * than no date, since the row is well formed and reads as true. The test suite
+ * holds it to the day the release before it went out.
+ */
+export const RELEASED = '17-09-2026'
 
 /**
  * The version, kept in step with `.claude-plugin/plugin.json` by a test rather

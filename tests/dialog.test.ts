@@ -1232,3 +1232,117 @@ test('a call is named by the argument that says which call it is', () => {
   // is the part that differs, is the part that goes.
   expect(text).toContain('src/stores/ai-status.ts')
 })
+
+/** The states a nested run's four agents were left in, as its dialog's foot reads them. */
+function runReads(states: Partial<Record<number, AgentRow['state']>>): string {
+  const run = runWithNested()
+
+  run.agents = run.agents.map((agent, i) => {
+    const state = states[i - 1]
+
+    return state === undefined ? agent : { ...agent, state, endedMs: state === 'running' ? undefined : agent.endedMs }
+  })
+
+  const canvas = new Canvas(110, 32)
+
+  paint(canvas, run, {
+    nowMs: STARTED + 20_000,
+    tick: 0,
+    orientation: 'vertical',
+    selectedId: '@run:\u25b8 code-review',
+    detailRows: 14,
+  })
+
+  return (rowsOf(canvas).find(row => /\d\/4/.test(row)) ?? '').trim()
+}
+
+test('a nested run holding one failed agent among done ones reads as failed', () => {
+  // One agent of fourteen failing is the run failing, because that is what the
+  // workflow that called it does with the answer.
+  expect(runReads({ 1: 'failed' })).toContain('failed 3/4')
+})
+
+test('a nested run still running reads as running rather than as stopped', () => {
+  // The ladder is ordered, not counted: an agent still going is the live fact
+  // about the run, and one the reader killed is not.
+  expect(runReads({ 1: 'stopped', 2: 'running' })).toContain('running 2/4')
+})
+
+test('a nested run that failed reads as failed even with one still running', () => {
+  expect(runReads({ 1: 'failed', 2: 'running' })).toContain('failed 2/4')
+})
+
+test('a nested run with a stopped agent and no worse reads as stopped', () => {
+  expect(runReads({ 1: 'stopped' })).toContain('stopped 3/4')
+})
+
+test('a nested run every agent of which landed reads as done', () => {
+  expect(runReads({})).toContain('done 4/4')
+})
+
+/** One agent whose two calls were passed a path and a sentence. */
+function saidRun(): RunState {
+  const run = runOf()
+
+  run.agents[2].calls = [
+    {
+      id: 'p1',
+      name: 'Read',
+      input: '/Users/someone/Desktop/my-projects/flowpane/hooks/paint.ts',
+      startedMs: STARTED + 5_000,
+      endedMs: STARTED + 5_200,
+      result: 'read 200 lines',
+    },
+    {
+      id: 's1',
+      name: 'Task',
+      input: 'Review every hook in the plugin and say which of them changed',
+      startedMs: STARTED + 5_300,
+      endedMs: STARTED + 5_500,
+      result: 'reviewed',
+    },
+  ]
+
+  return run
+}
+
+/** The call row for one of the two, at a pane too narrow to hold it whole. */
+function rowFor(tool: string, columns: number): string {
+  return (shown(saidRun(), columns, 30, 20).find(row => row.includes(tool) && row.includes('200ms')) ?? '').trim()
+}
+
+test('a call named by a path is cut from the front and keeps its file name', () => {
+  const row = rowFor('Read', 60)
+
+  // A run's calls all live under one tree, so the first forty characters of
+  // every `Read` are the same forty characters. The file is the last segment,
+  // and the directory that gives it meaning is the one before it.
+  expect(row).toContain('\u2026/flowpane/hooks/paint.ts')
+})
+
+test('a path is cut on its separators, not mid-segment', () => {
+  const row = rowFor('Read', 60)
+  const said = row.slice(row.indexOf('\u2026'), row.indexOf('paint.ts') + 'paint.ts'.length)
+
+  // What is left has to be a path a reader can read as a path, so the mark
+  // stands where a separator did.
+  expect(said.startsWith('\u2026/')).toBe(true)
+})
+
+test('a sentence is not treated as a path, and is cut from the end', () => {
+  const row = rowFor('Task', 60)
+
+  // Cut from the front, a sentence loses the words that say what it asked for
+  // and keeps the ones that say the least.
+  expect(row).toContain('Review every hook in the plugin')
+  expect(row).not.toContain('\u2026/')
+})
+
+test('a path keeps its file name at every width the dialog is drawn at', () => {
+  // The narrow end is where the fall-back lives: too little room for a whole
+  // segment, and what is kept is still the end of the path, which is where a
+  // file name and its extension are.
+  for (const columns of [70, 60, 52]) {
+    expect(`${columns}: ${rowFor('Read', columns).includes('paint.ts')}`).toBe(`${columns}: true`)
+  }
+})

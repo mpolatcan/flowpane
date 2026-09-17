@@ -21,7 +21,7 @@
     "orientation": {
       "type": "string",
       "title": "Layout",
-      "description": "Which way the phases run: 'flow' (or 'across') runs them across the pane, 'stack' (or 'down') runs them down it, 'time' (or 'timeline') draws bars against the clock, and 'auto' (or 'fits') follows the pane's shape. The settings dialog lists the four by name.",
+      "description": "Which way the phases run: 'horizontal' (or 'across') runs them across the pane, 'vertical' (or 'down') runs them down it, 'timeline' draws bars against the clock, and 'auto' (or 'fits') follows the pane's shape. The settings dialog lists the four by name. The names these carried before 0.5.0 — 'flow', 'stack' and 'time' — still select their layouts.",
       "default": "auto"
     },
     "detailRows": {

@@ -841,3 +841,73 @@ test('the mark that folds a nested run back is wider than the mark', () => {
   expect(mark).toBeDefined()
   expect(mark?.w).toBeGreaterThan(1)
 })
+
+test('the gutter an opened nested run stands in is two cells wide', () => {
+  const phase = '\u25b8 code-review:ai-review'
+  const run = runWithNested(phase, ['plan', 'review', 'verify'])
+  const canvas = new Canvas(36, 30)
+
+  paint(canvas, run, { nowMs: STARTED + 40_000, tick: -1, orientation: 'vertical', opened: [phase] })
+
+  const rows = rowsOf(canvas)
+  const startOf = (label: string) => rows[rows.findIndex(row => row.includes(` ${label} `))].indexOf('\u258c')
+
+  // Two is what a step in has to be: one cell carries the dashed gutter and
+  // nothing else, and a second is the air that keeps the gutter off the card.
+  // A wider step spends the only columns a narrow pane has on emptiness, and a
+  // narrower one draws the gutter against the card's own edge.
+  expect(startOf('plan') - startOf('step 1')).toBe(2)
+})
+
+test('the two cells an opened nested run is stood in carry the gutter and nothing else', () => {
+  const phase = '\u25b8 code-review:ai-review'
+  const run = runWithNested(phase, ['plan', 'review', 'verify'])
+  const canvas = new Canvas(36, 30)
+
+  paint(canvas, run, { nowMs: STARTED + 40_000, tick: -1, orientation: 'vertical', opened: [phase] })
+
+  const rows = rowsOf(canvas)
+  const row = rows[rows.findIndex(r => r.includes(' plan '))]
+  const from = rows[rows.findIndex(r => r.includes(' step 1 '))].indexOf('\u258c')
+
+  expect(row.slice(from, from + 2)).toBe('\u254e\u251c')
+})
+
+test('a drawing far longer than its rail still has a thumb to look at', () => {
+  at = 0
+
+  const run = runOf(Array.from({ length: 600 }, (_, i) => agentOf(`Phase ${i + 1}`, `step ${i + 1}`)))
+  const canvas = new Canvas(40, 20)
+
+  paint(canvas, run, { nowMs: STARTED + 40_000, tick: -1, orientation: 'vertical' })
+
+  const rows = rowsOf(canvas)
+  const railX = (rows.find(row => row.includes('\u25b4')) ?? '').indexOf('\u25b4')
+  const thumb = rows.filter(row => row[railX] === '\u2588').length
+
+  // At this ratio the share of the drawing on the pane rounds to nothing, and
+  // the rail is drawn as a track with no thumb in it: a control saying where
+  // the reader is, with the one mark that says it missing.
+  expect(railX).toBeGreaterThan(0)
+  expect(thumb).toBeGreaterThan(0)
+})
+
+test('a thumb says how much of the drawing is on the pane', () => {
+  const thumbFor = (agents: number): number => {
+    at = 0
+
+    const run = runOf(Array.from({ length: agents }, (_, i) => agentOf(`Phase ${i + 1}`, `step ${i + 1}`)))
+    const canvas = new Canvas(40, 20)
+
+    paint(canvas, run, { nowMs: STARTED + 40_000, tick: -1, orientation: 'vertical' })
+
+    const rows = rowsOf(canvas)
+    const railX = (rows.find(row => row.includes('\u25b4')) ?? '').indexOf('\u25b4')
+
+    return rows.filter(row => row[railX] === '\u2588').length
+  }
+
+  // The floor of one cell is a floor, not the whole rule: a run barely longer
+  // than the pane has most of itself on it, and the thumb has to say so.
+  expect(thumbFor(6)).toBeGreaterThan(thumbFor(600))
+})
