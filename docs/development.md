@@ -271,7 +271,8 @@ the dialog's own swatch keeps its palette's values to the byte, and that picking
 twice gives the same answer twice — which a cycle would not. `tests/press.test.ts`
 presses the two ends of the foot row against each other, since what the pane is
 set to and what the pane is are two answers and only one of them can be open.
-Five files cover the parts of the plugin nothing drawn on the canvas reaches.
+
+Six files cover the parts of the plugin nothing drawn on the canvas reaches.
 `tests/canvas.test.ts` reads cells back through the window — a glyph outside it
 reads blank, the same glyph reads itself again once the window is cleared, and a
 cell off the buffer reads blank rather than throwing — which is what stops a line
@@ -288,6 +289,28 @@ it moves nothing and costs no repaint. `tests/about.test.ts` reads what the pane
 says about itself where there is no pane, and holds the release date to the day
 the release before it went out, since a version bumped with the date left behind
 is a row that reads as true.
+
+`tests/shape.test.ts` is the sixth, and it exists because every other test
+reaches these rules through a canvas: a run is painted and the cells are asked
+what happened. That reads the drawing well and the reasoning badly. A fixture
+written by hand declares its phases in the order its agents enter them, gives
+every agent the same spend and finishes all of them — so the lane sort, the
+failure-first mark on a folded trip, the unfinished guard, the sum of a folded
+row and the dedupe on a doubled carry all agree with a simpler rule that is
+wrong. It is the cases where the simpler rule parts company with the real one: a
+phase declared before the phase that feeds it, a trip whose failure is not its
+last agent, a trip still running, a nested run opened on its fullest pass rather
+than its first, and one phase feeding one node twice.
+
+The order the four layouts are walked in is pinned in two places on purpose —
+`tests/press.test.ts` through `nextOrientation`, `tests/settings.test.ts`
+through the layout list's press targets — and both write the order out rather
+than reading `ORIENTATIONS`. The footer's control and the dialog's list both
+take their order from that one array, so every check of their agreement was the
+array agreeing with itself: swapped, the two moved together and nothing noticed.
+The order is a decision — the two layouts a reader switches between most, then
+the two they set once — so it is written down where a change to it has to be
+made twice.
 
 `dev/preview.ts`, `dev/stress.ts`, `dev/checkpic.ts`,
 `dev/edges.ts`, `dev/shot.ts` and `dev/recover.ts` exercise the drawing, the
