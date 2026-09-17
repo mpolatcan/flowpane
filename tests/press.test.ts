@@ -9,7 +9,16 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { Orientation } from '../hooks/layout'
-import { applyPress, drew, MAX_DETAIL, MIN_DETAIL, nextOrientation, wheel, type PaneView } from '../hooks/press'
+import {
+  applyPress,
+  drew,
+  MAX_DETAIL,
+  MIN_DETAIL,
+  nextOrientation,
+  scrollDetail,
+  wheel,
+  type PaneView,
+} from '../hooks/press'
 
 function view(): PaneView {
   return {
@@ -492,4 +501,59 @@ test('the layout control walks the four orientations in one fixed order', () => 
   // decision — the two layouts a reader switches between most, then the two
   // they set once — and this is the only place it is written down twice.
   expect(walk).toEqual(['horizontal', 'vertical', 'timeline', 'auto', 'horizontal'])
+})
+
+test('a wheel that was not turned leaves the dialog untouched', () => {
+  const v = view()
+  const detail = { panes: [{ total: 80, visible: 10, scroll: 0 }], tab: 0 }
+
+  v.selectedId = 'a1'
+
+  wheel(v, { detail }, 0)
+
+  // A tick of nothing is not a movement, and the pane is repainted from what
+  // the view holds. Taken as one, the wheel writes the tab's place back — so a
+  // pointer resting over an open dialog while the run ticks is enough to pull
+  // a list the reader had scrolled past its end back to the last row.
+  expect(Object.keys(v.detailScroll).length).toBe(0)
+})
+
+test('a wheel over a tab that is no number moves nothing', () => {
+  const v = view()
+  const detail = { panes: [{ total: 80, visible: 10, scroll: 0 }], tab: 0 }
+
+  scrollDetail(v, detail, Number.NaN, 5)
+
+  // The tab is read off a press, and a press carries whatever text the element
+  // was built with. A number that is not one falls through every test below —
+  // it is neither of the call's own two panes and it is not below zero — and
+  // ends as a place kept for a tab that cannot exist.
+  expect(Object.keys(v.detailScroll).length).toBe(0)
+})
+
+test('a press naming a tab the dialog has no number for leaves the tab alone', () => {
+  const v = view()
+
+  applyPress(v, '@tab:2', { hasRun: true })
+  applyPress(v, '@tab:half', { hasRun: true })
+  applyPress(v, '@tab:-1', { hasRun: true })
+
+  // Both are the same fault: a tab the dialog cannot open. Taken as written,
+  // the dialog draws no pane at all and the tabs read as though none of them is
+  // the one in view.
+  expect(v.detailTab).toBe(2)
+})
+
+test('opening another run folds up the nested runs the last one was left with', () => {
+  const v = view()
+
+  v.opened = ['▸ code-review']
+
+  applyPress(v, 'run:wf_other', { hasRun: true })
+
+  // A run is unfolded by the name of its phase, and two runs of the same
+  // workflow have the same phase names. Carried across, the run a reader picks
+  // comes up with a band already opened that they never opened — and the band
+  // they did open in the run they left is folded back up when they return.
+  expect(v.opened).toEqual([])
 })

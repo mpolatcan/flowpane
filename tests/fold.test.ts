@@ -911,3 +911,69 @@ test('a thumb says how much of the drawing is on the pane', () => {
   // than the pane has most of itself on it, and the thumb has to say so.
   expect(thumbFor(6)).toBeGreaterThan(thumbFor(600))
 })
+
+/** A run that went round one loop a given number of times, and nothing else. */
+function runLooped(times: number): RunState {
+  at = 0
+
+  const agents: AgentRow[] = []
+
+  for (let i = 0; i < times; i++) {
+    agents.push(agentOf('Develop', 'Develop'))
+    agents.push(agentOf('Verify', 'Verify'))
+  }
+
+  return runOf(agents)
+}
+
+/** The rows of a folded run drawn as a list, which is where the marks have room. */
+function markedRows(columns: number, times = 6): string[] {
+  const canvas = new Canvas(columns, 7)
+
+  paint(canvas, runLooped(times), { nowMs: STARTED + 60_000, tick: -1, orientation: 'vertical' })
+
+  return rowsOf(canvas).filter(row => row.includes('▌'))
+}
+
+test('the marks on a folded row stand a pass apart, mark then number then air', () => {
+  const [develop] = markedRows(60)
+
+  // Each pass is its own press: the mark is a coloured cell outside the target
+  // and the number is the target, because a Button carries no colour and a mark
+  // drawn inside one comes out in the label's own plain text. Two cells of air
+  // after the number is what keeps the next pass's mark off this pass's number
+  // — with one they read as a single four-part token rather than as six.
+  expect(develop).toContain('✔ 1  ✔ 2  ✔ 3  ✔ 4  ✔ 5  ✔ 6')
+})
+
+test('a row with room for four passes shows the last four and counts the rest', () => {
+  const [develop] = markedRows(55)
+
+  // What will not fit is counted rather than cut, and the count stands where
+  // the passes it stands for would have been. The last passes are the ones
+  // kept: a loop is read for how it ended, and the earliest attempt is the one
+  // whose outcome has already been overtaken.
+  expect(develop).toContain('+2 ✔ 3  ✔ 4  ✔ 5  ✔ 6')
+})
+
+test('a phase fills its rule as its work lands, and draws nothing filled before', () => {
+  at = 0
+
+  const run = runOf([agentOf('Survey', 'survey'), agentOf('Review', 'review', 'running')])
+  const canvas = new Canvas(90, 14)
+
+  // The timeline is where the whole rule is drawn from this one stroke; the
+  // other two layouts lay the unfilled length down before the lanes are walked
+  // and redraw only what has landed.
+  paint(canvas, run, { nowMs: STARTED + 5_000, tick: -1, orientation: 'timeline' })
+
+  const rows = rowsOf(canvas)
+  const done = rows.find(row => row.includes('Survey')) ?? ''
+  const going = rows.find(row => row.includes('Review')) ?? ''
+
+  // A phase's length of rule is its own progress, so the stroke ties the
+  // measurement to the column it measures. Drawn filled whatever has landed,
+  // every phase of a run in flight reads as a phase that has finished.
+  expect(done.includes('━')).toBe(true)
+  expect(going.includes('━')).toBe(false)
+})

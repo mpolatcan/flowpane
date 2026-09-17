@@ -300,7 +300,14 @@ row and the dedupe on a doubled carry all agree with a simpler rule that is
 wrong. It is the cases where the simpler rule parts company with the real one: a
 phase declared before the phase that feeds it, a trip whose failure is not its
 last agent, a trip still running, a nested run opened on its fullest pass rather
-than its first, and one phase feeding one node twice.
+than its first, and one phase feeding one node twice. Three more turn on the
+order a run's agents arrive in, which is not the order their clocks put them in:
+a lane where the row that appeared first is the one fed by the row after it, a
+folded step whose rows are in the order their labels first appeared rather than
+the order that trip started them, and a wave whose agents ran inside a longer one
+rather than after it. A nested run the script declared and never reached draws no
+row at all, since a row standing for a trip through it would be standing for
+nothing.
 
 The order the four layouts are walked in is pinned in two places on purpose —
 `tests/press.test.ts` through `nextOrientation`, `tests/settings.test.ts`
@@ -311,6 +318,30 @@ array agreeing with itself: swapped, the two moved together and nothing noticed.
 The order is a decision — the two layouts a reader switches between most, then
 the two they set once — so it is written down where a change to it has to be
 made twice.
+
+The numbers the drawing turns on are pinned as drawings rather than as their own
+values. A test that reads `PASS_GAP` back and asserts it is two says nothing: it
+is the constant agreeing with itself, and it passes whatever the constant is
+changed to. So the marks on a folded row are checked as the row a reader sees —
+`✔ 1  ✔ 2  ✔ 3`, and at a width where only four of six fit, `+2` standing where
+the two it counts would have been. The width a phase is given is checked the same
+way, at the point it gives way: three phases across fifty-two columns get eleven
+cells each, a row spends five of them on its state rule and its mark, and six
+cells of name cannot tell `Preflig…` from `Pre-comm…` — so the pane stops
+dividing itself between the phases, the columns take the width they need, and one
+column wider the columns get *narrower* because the share is worth having again.
+A paragraph is held to the measure it wraps at rather than to the block it is
+drawn in, and a nine-hundred-line prompt to being drawn to its end.
+
+Three guards in `tiesOf` have no run that can reach them, and it is exported for
+them. The edges `edgesOf` derives are proven-first, never self-referential and
+always forward in time, so no fixture built out of a run can hand the lane sort a
+guessed edge arriving before a proven one, an agent that feeds itself, or a
+cycle. The guards exist because the argument is a list of edges rather than a
+run; holding them to their word means handing them such a list directly. The same
+question decided the other way for the manifest's version — no test can read
+`plugin.json`, because the plugin test runner refuses `node:fs`, so `dev/checkmeta.ts`
+owns that check instead.
 
 `dev/preview.ts`, `dev/stress.ts`, `dev/checkpic.ts`,
 `dev/edges.ts`, `dev/shot.ts` and `dev/recover.ts` exercise the drawing, the

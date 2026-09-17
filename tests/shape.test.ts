@@ -14,7 +14,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { AgentRow, RunState } from '../hooks/journal'
-import { foldedLanes, lanesOf, skipsOf, sourcesOf } from '../hooks/shape'
+import { foldedLanes, lanesOf, orderedLanes, skipsOf, sourcesOf, tiesOf } from '../hooks/shape'
 
 const STARTED = 1_700_000_000_000
 
@@ -164,4 +164,123 @@ test('a phase feeding one node twice is named once above it', () => {
 
   // One line of provenance, not the same word twice.
   expect(sourcesOf(run).get('patch-2000')).toEqual(['Review'])
+})
+
+/**
+ * A lane's rows are ordered by what fed what, and a phase the run looped
+ * through is where that parts company with the order the rows appeared in.
+ *
+ * A row stands for a piece of work rather than for an agent, so a gate the run
+ * ran twice is one row — and the row's own figures are its latest pass, which
+ * is the pass the work after it was fed by.
+ */
+test('a lane puts the row that fed another above it, whichever appeared first', () => {
+  const found = 'The refresh path renews the access token and never the refresh one, so a session lapses at an hour.'
+
+  const run = runOf([
+    clocked('Review', 'review:auth', 0, 500),
+    // The gate ran, refused, and ran again once the fix had landed. Both passes
+    // are one row, and the row appeared before the fix did.
+    clocked('Fix', 'gate:auth', 1_000, 3_000),
+    clocked('Fix', 'fix:auth', 2_000, 4_000, { result: found }),
+    clocked('Fix', 'gate:auth', 5_000, 6_000, { prompt: `Check the fix. ${found}` }),
+  ])
+
+  const lane = orderedLanes(run)[1]
+
+  // The fix fed the gate's second pass, so the fix belongs above the gate:
+  // that is the wire the lane is ordered to keep straight. Ordered by the row
+  // that appeared first instead, the hop between them runs backwards up the
+  // column, over the very node it started at.
+  expect(lane.folds.map(fold => fold.label)).toEqual(['fix:auth', 'gate:auth'])
+})
+
+test('a node fed by a proven edge and a guessed one takes the proven source', () => {
+  const ties = tiesOf(
+    [clocked('Check', 'patch', 2_000, 3_000)],
+    new Map([
+      ['draft-0', 0],
+      ['critique-1000', 1],
+    ]),
+    // The guessed edge first, which is the order a caller that appended its
+    // hints as it found them would hand them over.
+    [
+      { fromId: 'draft-0', toId: 'patch-2000' },
+      { fromId: 'critique-1000', toId: 'patch-2000', confirmed: true },
+    ],
+  )
+
+  // Only one of the two can place the node in a row, and a label convention is
+  // a hint while a quoted answer is a record. Taking whichever arrived first
+  // puts the node against a source the text says did not feed it.
+  expect(ties.above.get('patch-2000')).toBe('critique-1000')
+})
+
+test('an agent that appears to feed itself is not a chain of one', () => {
+  const agents = [clocked('Check', 'lint', 0, 1_000), clocked('Check', 'types', 1_000, 2_000)]
+  const ties = tiesOf(agents, new Map(), [{ fromId: 'lint-0', toId: 'lint-0' }])
+
+  // A self-edge is a node standing one step behind itself, which is a step the
+  // walk can never take back. Its whole cost is paid in the cycle guard below.
+  expect(ties.depth.get('lint-0')).toBe(0)
+})
+
+test('a lane whose own edges form a loop still gives every agent a place', () => {
+  const agents = [clocked('Check', 'lint', 0, 1_000), clocked('Check', 'types', 1_000, 2_000)]
+  const ties = tiesOf(agents, new Map(), [
+    { fromId: 'lint-0', toId: 'types-1000' },
+    { fromId: 'types-1000', toId: 'lint-0' },
+  ])
+
+  // The walk back to the head of a chain follows one edge per step, so a lane
+  // of two agents cannot need more than two of them. Unbounded, a pair of edges
+  // pointing at each other is a frame that never finishes drawing.
+  expect(ties.depth.get('lint-0')).toBeLessThanOrEqual(agents.length + 1)
+  expect(ties.depth.get('types-1000')).toBeLessThanOrEqual(agents.length + 1)
+})
+
+test('a nested run the script declared and never reached draws no row', () => {
+  const phase = `${NESTED}ai-review`
+  const run = runOf([clocked('Develop', 'patch', 0, 1_000)], ['Develop', phase])
+
+  const lane = foldedLanes(run)[1]
+
+  // Folded, a nested run is one row standing for a trip through it. A phase the
+  // run has not entered has taken no trips, so the row would stand for nothing
+  // — made from an empty block it carries no clock, no spend and no state, and
+  // the band draws a node saying a sub-run ran and came back blank.
+  expect(lane.phase).toBe(phase)
+  expect(`${lane.shut ?? false} :: ${lane.folds.length}`).toBe('false :: 0')
+})
+
+test('a folded step starts when its earliest agent did, not when its first row did', () => {
+  const phase = `${NESTED}code-review`
+  const run = runOf([
+    // The first trip: a claim, two reviewers at once, a write.
+    clocked(phase, 'claim', 0, 1_000),
+    clocked(phase, 'bugs', 1_000, 3_000),
+    clocked(phase, 'perf', 1_100, 3_000),
+    clocked(phase, 'write', 3_000, 4_000),
+    // The calling run's own work, which is what splits the two trips.
+    clocked('Develop', 'patch', 4_000, 5_000),
+    // The second trip, where the two reviewers were dispatched the other way
+    // round. They go together either way: a `parallel` starts its agents in a
+    // loop and the engine stamps them milliseconds apart, in whatever order the
+    // loop reached them.
+    clocked(phase, 'claim', 5_000, 6_000),
+    clocked(phase, 'perf', 6_000, 8_000),
+    clocked(phase, 'bugs', 6_500, 8_000),
+    clocked(phase, 'write', 8_000, 9_000),
+  ])
+
+  // The run opened, and the step the two reviewers make folded back up.
+  const opened = new Set([phase, `${phase}${STEP_SHUT}1`])
+  const fold = foldedLanes(run, opened)[0].folds.find(f => f.label === '2 at once')
+
+  // The row stands for both of them, so it runs from the first of them to the
+  // last. Rows keep the order their labels first appeared in, which on the
+  // second trip is not the order the agents started in — read off the row at
+  // the head of the step, the bar begins half a second after the work does.
+  expect(fold?.agent.startedMs).toBe(STARTED + 6_000)
+  expect(fold?.agent.endedMs).toBe(STARTED + 8_000)
 })

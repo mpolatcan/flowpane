@@ -15,7 +15,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { Canvas } from '../hooks/canvas'
 import type { AgentRow, RunState } from '../hooks/journal'
-import { CARD_H, extentOf, layout, scrolled } from '../hooks/layout'
+import { CARD_H, extentOf, layout, resolveOrientation, scrolled } from '../hooks/layout'
 import { paint } from '../hooks/paint'
 
 const STARTED = 1_700_000_000_000
@@ -838,4 +838,74 @@ test('a timeline too fine for the pane scrolls sideways along its own scale', ()
 
   expect(originOf(canvas)).toBeGreaterThan(0)
   expect(originOf(moved)).toBe(-1)
+})
+
+/**
+ * What a node spends on itself before a letter of its name is drawn, and the
+ * fewest cells of name the pane will divide itself down to.
+ *
+ * Named here rather than read off `layout.ts`, because the point of the test is
+ * that the two hold: a rule stated once and checked against itself is not
+ * checked at all.
+ */
+const ROW_SPEND = 5
+const NAME_MIN = 8
+
+test('a column the pane cannot give eight cells of a name takes the width it needs', () => {
+  const widthOf = (columns: number) => layout(RUN, columns, 12, 'horizontal').lanes[0].w
+
+  // Three phases across fifty-two columns get eleven or twelve cells each once
+  // the gutters are paid, and a row spends five of them on its state rule, its
+  // mark and the air between. Six cells of name cannot tell `Preflig…` from
+  // `Pre-comm…`, so the pane stops dividing itself between the phases: the
+  // columns take the width they need, the drawing runs past the pane's edge,
+  // and the body scrolls to the rest.
+  const kept = [47, 50, 52].map(columns => `${columns}: ${widthOf(columns) - ROW_SPEND >= NAME_MIN}`)
+
+  expect(kept.join(', ')).toBe('47: true, 50: true, 52: true')
+
+  // And the threshold is visible from outside: one column wider the share is
+  // worth having, the pane divides itself again, and every column gets
+  // narrower as the pane gets wider.
+  expect(widthOf(53)).toBeLessThan(widthOf(52))
+})
+
+test('a pane as tall as it is wide reads downward, even where the phases would fit across', () => {
+  // The width is only half the question. Three phases need fifty-seven cells to
+  // get a legible column each, and a seat of sixty gives them that — but a
+  // drawing laid out across a seat no wider than it is tall is three short
+  // columns with the whole depth of the pane left blank under them.
+  expect(resolveOrientation('auto', 60, 40, 3)).toBe('vertical')
+  expect(resolveOrientation('auto', 100, 40, 3)).toBe('horizontal')
+})
+
+test('a pane too short to stand one band draws the run as a list', () => {
+  // A band is a rule with its node clear of it, the row above for the wires to
+  // gather on and the row below for the node's own exit points. A body that
+  // cannot hold those draws every wire through the rule itself, so the pane
+  // says more as a list of rows with no edges drawn between them.
+  expect(layout(RUN, 90, 7, 'vertical').list).toBe(true)
+
+  // One row more and the band fits, which is the whole of the difference.
+  expect(layout(RUN, 90, 8, 'vertical').list ?? false).toBe(false)
+})
+
+test('a phase the run never reached stands its row in the middle of the band', () => {
+  const run = runOf([
+    ['Survey', ['paint', 'layout']],
+    ['Review', ['paint']],
+    ['Escalate', []],
+    ['Report', ['final']],
+  ])
+
+  const view = layout(run, 96, 40, 'vertical')
+  const ghost = view.lanes.find(l => l.phase === 'Escalate')?.ghost
+
+  // The row takes its own width rather than the lane's — a band with one node
+  // in it cut to what divides the widest band said `⊘ Veri…` with sixty columns
+  // spare either side — and a width of its own has to be placed. Held against
+  // the left edge it reads as a row of some other list, and every band around
+  // it centres what it holds.
+  expect(ghost?.x).toBe(Math.floor((96 - (ghost?.w ?? 0)) / 2))
+  expect(ghost?.x).toBeGreaterThan(1)
 })

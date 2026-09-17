@@ -294,8 +294,16 @@ export function orderedLanes(run: RunState, opened?: Set<string>): FoldedLane[] 
  * that started them — an edge inside one lane. Left out, that pass had no
  * source in the lane above, went to the end of the lane, and drew its carry
  * diagonally across every column between.
+ *
+ * Exported for the sake of three guards that no run can reach. The edges
+ * `edgesOf` hands it are proven-first, never self-referential and always
+ * forward in time, so a fixture built out of a run cannot ask this what it does
+ * with a guessed edge that arrives before a proven one, with an agent that
+ * feeds itself, or with a cycle. The guards are here because the argument is a
+ * list of edges rather than a run, and the only way to hold them to their word
+ * is to hand them such a list.
  */
-function tiesOf(
+export function tiesOf(
   agents: AgentRow[],
   above: Map<string, number>,
   edges: Carry[],

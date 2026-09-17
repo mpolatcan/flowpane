@@ -89,3 +89,17 @@ test('agents that overlapped are not a chain', () => {
   // and a hop drawn between two of them says one waited on the other.
   expect(fan).toBeNull()
 })
+
+test('an agent that started while a longer one was still going joins its wave', () => {
+  const waves = wavesOf({
+    agents: [agentOf('survey', 0, 10_000), agentOf('quick', 1_000, 1_000), agentOf('late', 3_000, 1_000)],
+  })
+
+  // The wave runs to the furthest its agents reach, not to the end of whichever
+  // of them landed last. A short agent inside a long one lands first, and a
+  // wave closed at that end calls everything after it a second wave — so a
+  // phase where one agent ran for a minute and three others came and went
+  // inside that minute drew four waves, with a gutter of wire between each.
+  expect(waves.length).toBe(1)
+  expect(waves[0].map(a => a.agentId).join(',')).toBe('survey,quick,late')
+})

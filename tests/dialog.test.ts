@@ -1346,3 +1346,91 @@ test('a path keeps its file name at every width the dialog is drawn at', () => {
     expect(`${columns}: ${rowFor('Read', columns).includes('paint.ts')}`).toBe(`${columns}: true`)
   }
 })
+
+/** The pane with one agent open on its prompt, painted at a given width. */
+function reading(prompt: string, columns: number): { rows: string[]; lines: number } {
+  const run = runOf()
+
+  run.agents[2].prompt = prompt
+
+  const canvas = new Canvas(columns, 32)
+  const drew = paint(canvas, run, {
+    nowMs: STARTED + 20_000,
+    tick: 0,
+    orientation: 'vertical',
+    selectedId: 'r1',
+    detailRows: 14,
+    detailTab: PROMPT,
+  })
+
+  return { rows: rowsOf(canvas), lines: drew.detail?.panes[PROMPT]?.total ?? 0 }
+}
+
+/** The cells of prose a line may run to, whatever the block it is drawn in. */
+const MEASURE = 96
+
+test('a paragraph wraps to a measure a reader can follow, not to the block', () => {
+  const said = 'The pane sets a paragraph to a width a reader can carry their eye back across. '
+  const { rows } = reading(said.repeat(6), 200)
+
+  const set = rows
+    .filter(row => row.includes('carry their eye'))
+    .map(row => row.replace(/[│╭╮╰╯]/g, ' ').trim().length)
+
+  // A two-hundred-column seat gives the block a hundred and eighty cells, and
+  // prose set across all of them is prose a reader loses their place in between
+  // one line and the next. A table of calls is not, and keeps the whole block.
+  expect(Math.max(...set)).toBeLessThanOrEqual(MEASURE)
+
+  // And the cap is a cap rather than a column: a line runs up to it, stopping
+  // at most a long word short.
+  expect(Math.max(...set)).toBeGreaterThan(MEASURE - 16)
+})
+
+test('a prompt of nine hundred lines is drawn to its end', () => {
+  const plan = Array.from({ length: 900 }, (_, i) => `${i + 1}. what the next step does`).join('\n')
+
+  // The ceiling on a pane of prose is against a runaway, not a budget: the text
+  // *is* the pane and the reader opened the tab to read it. The wrapper came
+  // from the calls list, where an argument was one block among others and
+  // stopping short was generous — a four-hundred-line plan cut off in the
+  // middle is a document the pane declines to show the end of.
+  expect(reading(plan, 110).lines).toBe(900)
+})
+
+test('a command that begins with a slash is cut at its end, and a path at its front', () => {
+  const run = runOf()
+
+  run.agents[2].calls = [
+    {
+      id: 'c0',
+      name: 'Bash',
+      input: '/usr/local/bin/gh pr list --limit 50 --json number,title,headRefName,statusCheckRollup',
+      startedMs: STARTED + 5_000,
+      endedMs: STARTED + 5_100,
+      stepTokens: 1_200,
+    },
+  ]
+
+  const canvas = new Canvas(80, 32)
+
+  paint(canvas, run, {
+    nowMs: STARTED + 20_000,
+    tick: 0,
+    orientation: 'vertical',
+    selectedId: 'r1',
+    detailRows: 14,
+    detailTab: CALLS,
+  })
+
+  const row = rowsOf(canvas).find(line => line.includes('Bash  ')) ?? ''
+
+  // A path is cut at the front because its last segments are the ones that say
+  // which file it is. A command is not: what it was about is the word after the
+  // program, so cut the same way the row says a command was run and nothing
+  // about what it did. The two are told apart by what follows the slash — a
+  // path runs to its end without a space in it.
+  expect(row).toContain('/usr/local/bin/gh pr list')
+  expect(row).not.toContain('…/')
+  expect(row).toContain('…')
+})
