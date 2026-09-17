@@ -840,23 +840,6 @@ async function actOnPress($: EngineInterface): Promise<void> {
  * place the word had to mean the layout was the one place it did not stand out.
  * `across` and `down` still work, unlisted, for anyone who learned them.
  */
-/**
- * What the orientations were called before this release, against their names now.
- *
- * These were never words anybody typed — `across`, `down` and `timeline` were,
- * and still are. They are the names the orientations carried inside the plugin,
- * and the layout control writes whichever one is in force straight into the
- * store. So a reader who picked a layout on an earlier build has `stack` or
- * `flow` saved, and read strictly that is not an orientation at all: the
- * preference was dropped on the way in and the pane came back on `auto`, which
- * reads as a control that does not hold rather than as a rename.
- */
-const WAS_CALLED: Record<string, Orientation> = {
-  flow: 'horizontal',
-  stack: 'vertical',
-  time: 'timeline',
-}
-
 const LAYOUT_WORDS: Record<string, Orientation> = {
   horizontal: 'horizontal',
   vertical: 'vertical',
@@ -864,6 +847,25 @@ const LAYOUT_WORDS: Record<string, Orientation> = {
   fits: 'auto',
   across: 'horizontal',
   down: 'vertical',
+}
+
+/**
+ * What the orientations were called before 0.5.0, against their names now.
+ *
+ * Read separately from the words above because they are read for a different
+ * reason: nobody picks one now. They are what the layout control wrote into the
+ * store, and what the manifest documented its `orientation` setting as taking,
+ * so a reader who picked a layout on an earlier build — or who set one in their
+ * own config — has `flow`, `stack` or `time` saved. Read strictly that is not an
+ * orientation at all: the preference was dropped on the way in and the pane came
+ * back on `auto`, which reads as a control that does not hold rather than as a
+ * rename. Consulted after the words a reader can type, so the surface the help
+ * lists is the surface these three do not join.
+ */
+const WAS_CALLED: Record<string, Orientation> = {
+  flow: 'horizontal',
+  stack: 'vertical',
+  time: 'timeline',
 }
 
 /**
