@@ -11,7 +11,7 @@ workflow writes, and everything it says has to fit in cells.
 ## Commands
 
 ```bash
-claude plugin test .          # the test suite — 313 tests across 22 files
+claude plugin test .          # the test suite — 316 tests across 22 files
 bunx tsc --noEmit             # typecheck (hooks/ and types/ only; see tsconfig.json)
 ```
 
@@ -165,6 +165,13 @@ test and wrong in a terminal.
   phase below is fed from the last. One wave is a fan and keeps every wire;
   waves of one are a chain. Feeding every agent both ways draws two gutters of
   wire that say the phase started all of them at once; see `wavesOf`.
+- **A stroke across the run is a handover; a stroke along it is not.** A
+  barrier's spine always cuts the way the work flows. The double stroke — `═`
+  across the pane, `║` down it — lies along it, in the gutter between two phases
+  whose clocks overlap, where drawing a barrier would say one waited for the
+  other and drawing nothing says nothing at all. It is grey, like every
+  boundary, and it is kept from every wire: see `KEPT` in `canvas.ts`, which
+  holds it and a card's own exit point.
 - **The dashed stroke means *not this run's own work*.** The phases it skipped,
   the strip naming the ones still ahead, and a nested run's rule and gutter —
   three things, one register, in every layout.

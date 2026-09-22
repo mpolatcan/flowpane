@@ -396,6 +396,17 @@ export const HOP = 0x25e0
  */
 export const PORT = 0x2022
 
+/**
+ * The marks in the gutter that no line may be drawn over, the port among them.
+ *
+ * A line drawn through one takes a fact off the pane rather than a cell of a
+ * line that is drawn again a cell along: the port says which card a run belongs
+ * to, and the double stroke says the two phases either side of it ran at the
+ * same time. Both stand in the gutter, which is exactly where the wires are, so
+ * a wire meeting one breaks rather than crosses.
+ */
+const KEPT = new Set([PORT, 0x2550, 0x2551])
+
 const ARMS: Record<number, number> = {
   [H]: LEFT | RIGHT,
   [V]: UP | DOWN,
@@ -457,7 +468,7 @@ export function armsOf(code: number): number | undefined {
 export function line(c: Canvas, x: number, y: number, code: number, fg: Rgb): void {
   const under = c.at(x, y)
 
-  if (under === PORT) {
+  if (KEPT.has(under)) {
     return
   }
 
@@ -485,7 +496,7 @@ export function line(c: Canvas, x: number, y: number, code: number, fg: Rgb): vo
 export function cross(c: Canvas, x: number, y: number, code: number, fg: Rgb): void {
   const under = c.at(x, y)
 
-  if (under === PORT) {
+  if (KEPT.has(under)) {
     return
   }
 

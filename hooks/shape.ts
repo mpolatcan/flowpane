@@ -14,7 +14,7 @@
  *   dimmed and dashed, because a label convention is a hint, not a record.
  */
 
-import type { AgentRow, RunState } from './journal'
+import { modelName, type AgentRow, type RunState } from './journal'
 
 export type Carry = {
   fromId: string
@@ -1026,12 +1026,43 @@ function wholeOf(label: string, block: AgentRow[]): AgentRow {
     startedMs: Math.min(...block.map(a => a.startedMs)),
     ...(ended ? { endedMs: Math.max(...block.map(a => a.endedMs ?? a.startedMs)) } : { endedMs: undefined }),
     ...(spentIn(block) === undefined ? {} : { tokens: spentIn(block) }),
+    ...ranOn(block),
     liveTokens: undefined,
     calls: undefined,
     resultPreview: undefined,
     result: undefined,
     prompt: undefined,
   }
+}
+
+/**
+ * What a made-up row says it ran on: the one model behind it, or how many.
+ *
+ * The row used to take the deciding agent's model along with the rest of it,
+ * which is the last agent to land. A sixteen-agent review panel whose seats ran
+ * on Opus and whose closing step was a one-command persist came out labelled
+ * with the persist step's model, and a reader comparing two runs by what they
+ * were drawn on was reading the model of whichever agent happened to finish
+ * last.
+ *
+ * Naming the commonest instead would be the same fault with better odds. So a
+ * block that ran on more than one says that, in place of a name it cannot give:
+ * the count is the fact, and the agents behind it are one press away. A block
+ * of one keeps the name.
+ *
+ * A block that named one model, or none, is left as it was found: the deciding
+ * agent's model is that one model or the same silence, and the drawing falls
+ * back to the run's own for a silence, as it does for any agent that has not
+ * said yet.
+ */
+function ranOn(block: AgentRow[]): { model?: string } {
+  const names = new Set(
+    block
+      .map(agent => modelName(agent.model))
+      .filter(name => name !== ''),
+  )
+
+  return names.size > 1 ? { model: `${names.size} models` } : {}
 }
 
 /** What a set of agents spent in all, where any of them has said. */

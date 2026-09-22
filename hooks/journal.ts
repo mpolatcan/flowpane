@@ -885,6 +885,44 @@ export function readAgentMeta(text: string): string | undefined {
   }
 }
 
+/**
+ * A model id as a person would say it: `Haiku 4.5`, `Opus 5`, `Sonnet 3.5`.
+ *
+ * The engine writes the id it resolved — `claude-haiku-4-5-20251001`, or
+ * `claude-opus-5[1m]` with the context window on the end — and neither the
+ * date nor the prefix tells anyone anything a node has room to say.
+ *
+ * The family is capitalised because it is a name. Lower case made it read as a
+ * word the drawing had chosen — a card saying `haiku` under an agent that
+ * wrote one is a card that has to be read twice.
+ */
+export function modelName(model?: string): string {
+  if (!model) {
+    return ''
+  }
+
+  const id = model.replace(/\[[^\]]*\]$/, '').replace(/-\d{8}$/, '').replace(/^claude-/, '')
+  const family = /(haiku|sonnet|opus|fable)/.exec(id)?.[1]
+
+  if (!family) {
+    return id
+  }
+
+  const named = family[0].toUpperCase() + family.slice(1)
+
+  // The version sits either side of the family name, depending on the era the
+  // id was minted in: `haiku-4-5` and `3-5-sonnet` are the same shape of fact.
+  const version =
+    new RegExp(`${family}-(\\d+)(?:-(\\d+))?`).exec(id) ??
+    new RegExp(`(\\d+)(?:-(\\d+))?-${family}`).exec(id)
+
+  if (!version) {
+    return named
+  }
+
+  return `${named} ${version[1]}${version[2] ? `.${version[2]}` : ''}`
+}
+
 export function readAgentTranscript(text: string): {
   prompt?: string
   result?: string

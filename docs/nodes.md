@@ -70,6 +70,18 @@ phase because half of them happened to have run twice. Where any card in the
 phase can write its own edge, none of them moves the model inward, and the
 cards whose edges are taken leave it to the run line and the dialog.
 
+A card that stands for a whole nested run names a count in place of a model,
+where the agents behind it did not all run on one. It used to take the model of
+the agent that decided the block — the one that failed, or the last to land —
+along with that agent's clock and its spend, which is right for a state and
+wrong for a model: a sixteen-agent review panel whose seats ran on Opus and
+whose closing step was a one-command persist came out labelled with the persist
+step's model, and a reader comparing two runs by what they were drawn on was
+reading whichever agent happened to finish last. Naming the commonest instead is
+the same fault with better odds. So the edge reads `3 models`, and the agents
+behind it are one press away. A block that ran on one model is named by it, as
+before.
+
 While the agent is running, that edge says what it is doing instead — `⚙ Bash`,
 `⚙ Read ×3`, `◌ thinking`, `quiet 40s` — and the model takes it back when the
 agent lands. The mark in the corner says an agent is running; it does not say

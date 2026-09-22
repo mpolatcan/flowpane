@@ -97,12 +97,27 @@ workflow the prose branch starts while the code branch is still on its first
 pass. A spine between those two says the second waited for the first, which a
 reader can disprove from the two clocks on screen. So the spine is drawn only
 when every agent of the later phase started after the last agent of the earlier
-one landed — otherwise they ran side by side and the gutter stays empty. A
+one landed — otherwise they ran side by side, which the gutter says instead. A
 quarter second of slack, because a journal line is stamped when the pane reads
 it and not when the engine wrote it, and two events that close a phase and open
 the next are often in the same batch.
 The proven edges across it are still drawn; only the claim that everything
 waited is dropped.
+
+That mark is recent. The gutter used to be left blank, and an absence is only a
+statement to a reader who was counting arrowheads: a pipeline run of twenty
+phases joined left to right, with one gutter carrying nothing, was read off the
+pane as a chain — the review and the security scan a driver dispatched in one
+batch reported as having run one after the other, when the two clocks two cards
+apart say they overlapped by two minutes. So the gutter carries a mark of its
+own: `═` across the pane, `║` down it. The double stroke lies *along* the run
+where a barrier's spine always cuts across it, which is what tells the two apart
+before either is read — one says the work passed through here, the other says
+these two are tracks side by side with nothing passing between them. It is grey,
+like every other thing that divides the drawing rather than carries work, and it
+is one of the two marks no line may be drawn over: a wire routed through it
+would take the statement away and leave a cell of wire that is drawn again a
+cell along.
 
 A phase is entered at whatever started first and left from whatever finished
 last. The clocks say what that is: the agents of a phase group into waves — each

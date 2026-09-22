@@ -1032,3 +1032,71 @@ test('a hop to the next pass gives way to a node standing in the gap', () => {
   // it. The stack already says which pass went first.
   expect(hopOf(false)).toEqual({ port: ' ', head: ' ' })
 })
+
+/**
+ * Two phases dispatched in one batch: the second opens while the first is still
+ * going, so neither of them waited for the other.
+ */
+function alongside(): RunState {
+  return runOf('gates', ['Commit', 'Review', 'Scan'], [
+    agentOf('c1', 'commit:tests', 'Commit', 0, 4_000),
+    agentOf('r1', 'review:panel', 'Review', 5_000, 9_000),
+    agentOf('s1', 'scan:security', 'Scan', 5_200, 4_000),
+  ])
+}
+
+test('two phases that overlapped are marked as running alongside, not joined', () => {
+  useTheme('tokyo-night')
+
+  const canvas = new Canvas(150, 20)
+
+  paint(canvas, alongside(), {
+    nowMs: STARTED + 20_000,
+    tick: -1,
+    orientation: 'horizontal',
+    detailRows: 14,
+  })
+
+  const rows = rowsOf(canvas)
+  const marked = rows.filter(row => row.includes('═'))
+
+  // One mark, in one gutter: the one between the two phases whose clocks
+  // overlap. The gutter before them holds a wire instead, because `Commit`
+  // really did land before either of them started.
+  expect(marked).toHaveLength(1)
+
+  const row = marked[0] as string
+  const at = row.indexOf('═')
+  const arrows = columnsOf(row, [ARROW_RIGHT])
+
+  expect(arrows.length).toBeGreaterThan(0)
+  expect(arrows.every(x => x < at)).toBe(true)
+  // Laid along the run rather than across it, which is what tells it from a
+  // barrier's spine at a glance.
+  expect(rows.join('\n')).not.toContain('║')
+})
+
+test('the same two phases are marked down the pane, in the other stroke', () => {
+  useTheme('tokyo-night')
+
+  const canvas = new Canvas(110, 40)
+
+  paint(canvas, alongside(), {
+    nowMs: STARTED + 20_000,
+    tick: -1,
+    orientation: 'vertical',
+    detailRows: 14,
+  })
+
+  const rows = rowsOf(canvas)
+
+  expect(rows.filter(row => row.includes('║'))).toHaveLength(1)
+  expect(rows.join('\n')).not.toContain('═')
+
+  // The mark stands in the gutter the barrier would have crossed, which is the
+  // gutter the wire out of `Commit` does not reach.
+  const marked = rows.findIndex(row => row.includes('║'))
+  const last = rows.map(row => row.includes(ARROW_DOWN)).lastIndexOf(true)
+
+  expect(last).toBeLessThan(marked)
+})

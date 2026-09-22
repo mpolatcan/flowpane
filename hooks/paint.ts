@@ -27,7 +27,7 @@ import {
   type Rgb,
 } from './canvas'
 import { aboutRows, NAME, shippedVersion, TAGLINE, type AboutRow } from './about'
-import type { AgentRow, RunState, RunStatus, Step, ToolCall } from './journal'
+import { modelName, type AgentRow, type RunState, type RunStatus, type Step, type ToolCall } from './journal'
 import { DEFAULT_THEME, paletteOf, themeOf, THEMES, type Palette, type Theme } from './theme'
 import {
   aheadDepth,
@@ -717,44 +717,6 @@ function tightClockFor(longestMs: number): (ms: number) => string {
   }
 
   return ms => `${Math.max(1, Math.round(ms / 100)) / 10}s`
-}
-
-/**
- * A model id as a person would say it: `Haiku 4.5`, `Opus 5`, `Sonnet 3.5`.
- *
- * The engine writes the id it resolved — `claude-haiku-4-5-20251001`, or
- * `claude-opus-5[1m]` with the context window on the end — and neither the
- * date nor the prefix tells anyone anything a node has room to say.
- *
- * The family is capitalised because it is a name. Lower case made it read as a
- * word the drawing had chosen — a card saying `haiku` under an agent that
- * wrote one is a card that has to be read twice.
- */
-function modelName(model?: string): string {
-  if (!model) {
-    return ''
-  }
-
-  const id = model.replace(/\[[^\]]*\]$/, '').replace(/-\d{8}$/, '').replace(/^claude-/, '')
-  const family = /(haiku|sonnet|opus|fable)/.exec(id)?.[1]
-
-  if (!family) {
-    return id
-  }
-
-  const named = family[0].toUpperCase() + family.slice(1)
-
-  // The version sits either side of the family name, depending on the era the
-  // id was minted in: `haiku-4-5` and `3-5-sonnet` are the same shape of fact.
-  const version =
-    new RegExp(`${family}-(\\d+)(?:-(\\d+))?`).exec(id) ??
-    new RegExp(`(\\d+)(?:-(\\d+))?-${family}`).exec(id)
-
-  if (!version) {
-    return named
-  }
-
-  return `${named} ${version[1]}${version[2] ? `.${version[2]}` : ''}`
 }
 
 /** Text cut to `max` cells, with an ellipsis in the last of them where it was cut. */
@@ -2083,6 +2045,56 @@ function paintBarrier(
     } else {
       c.put(at, busAt, glyph, color)
     }
+  }
+}
+
+/**
+ * Says that two phases ran at the same time, where a barrier would have said
+ * one waited for the other.
+ *
+ * Concurrency used to be drawn by drawing nothing: a barrier is left out
+ * between two phases whose clocks overlap, and the gutter came out empty. In a
+ * row of twenty phases joined left to right, one gutter without an arrowhead in
+ * it is not a statement a reader notices — a workflow that dispatched a review
+ * and a security scan in one batch was read off the pane as having run them one
+ * after the other, and the clocks that disprove it are two cards apart.
+ *
+ * So the gutter says it. The mark is the double line, laid along the run rather
+ * than across it: a barrier's spine always cuts the way the work flows, and
+ * this is the same two cells turned ninety degrees. Across the pane that is
+ * `═`, down it `║` — the pair of tracks the two phases are, beside each other
+ * and neither feeding the other.
+ *
+ * Grey, and one cell. It is not a wire — nothing travels along it — and the
+ * rule that keeps colour for states and wires keeps this at the weight of the
+ * borders it stands between.
+ */
+function paintAlongside(
+  c: Canvas,
+  left: NodeBox[],
+  right: NodeBox[],
+  busAt: number,
+  orientation: 'horizontal' | 'vertical',
+): void {
+  if (left.length === 0 || right.length === 0 || busAt < 0) {
+    return
+  }
+
+  const along = (p: { x: number; y: number }) => (orientation === 'horizontal' ? p.y : p.x)
+  const ports = [
+    ...left.map(n => exitOf(n, orientation)),
+    ...right.map(n => entryOf(n, orientation)),
+  ]
+  // Halfway down what the two phases occupy between them, so the mark stands
+  // against the cards it is about rather than at the top of a gutter whose
+  // cards are at the bottom of it.
+  const at = Math.round((Math.min(...ports.map(along)) + Math.max(...ports.map(along))) / 2)
+  const glyph = orientation === 'horizontal' ? 0x2550 : 0x2551
+
+  if (orientation === 'horizontal') {
+    line(c, busAt, at, glyph, COLORS.dim)
+  } else {
+    line(c, at, busAt, glyph, COLORS.dim)
   }
 }
 
@@ -3467,9 +3479,20 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
     // Two phases that ran side by side have no barrier between them, whatever
     // order they were declared in. Drawing one says the later waited for the
     // earlier, which a reader can disprove from the two clocks on screen.
+    //
+    // They get a mark of their own instead. Leaving the gutter empty said the
+    // right thing only to a reader who had counted the arrowheads.
     if (!follows(lanes[i - 1], lanes[i])) {
       if (wants) {
         bundle()
+      } else {
+        paintAlongside(
+          c,
+          facing(left, left.nodes, 'tail'),
+          facing(right, right.nodes, 'head'),
+          right.busAt,
+          view.orientation,
+        )
       }
 
       continue

@@ -1120,3 +1120,47 @@ test('a dialog with nothing recorded says so and keeps the shelf of trips over i
   expect(strip).toBeGreaterThan(0)
   expect(strip).toBeLessThan(said)
 })
+
+test('a nested run that ran on several models says how many, not the last one landed', () => {
+  at = 0
+
+  const run = runOf([
+    { ...agentOf('▸ code-review', 'reviewer'), model: 'claude-opus-5' },
+    { ...agentOf('▸ code-review', 'lead'), model: 'claude-opus-4-8' },
+    // The last to land, and so the agent the folded row takes its state and its
+    // figures from. Taking its model too labelled a panel of Opus seats with
+    // the model of a one-command persist step.
+    { ...agentOf('▸ code-review', 'persist'), model: 'claude-sonnet-5' },
+  ])
+
+  const canvas = new Canvas(110, 20)
+
+  paint(canvas, run, { nowMs: STARTED + 20_000, tick: -1, orientation: 'vertical' })
+
+  // The card's own bottom rule, where the model tag stands. The run line above
+  // it names every model the run used, this one names what the row ran on.
+  const foot = rowsOf(canvas).find(row => row.includes('\u2570')) ?? ''
+
+  expect(foot).toContain('3 models')
+  expect(foot).not.toContain('Sonnet 5')
+})
+
+test('a nested run that ran on one model is still named by it', () => {
+  at = 0
+
+  const run = runOf([
+    { ...agentOf('▸ code-review', 'reviewer'), model: 'claude-opus-5' },
+    // The same model, written the way the engine writes it when a context
+    // window is asked for. One model, said twice.
+    { ...agentOf('▸ code-review', 'persist'), model: 'claude-opus-5[1m]' },
+  ])
+
+  const canvas = new Canvas(110, 20)
+
+  paint(canvas, run, { nowMs: STARTED + 20_000, tick: -1, orientation: 'vertical' })
+
+  const foot = rowsOf(canvas).find(row => row.includes('\u2570')) ?? ''
+
+  expect(foot).toContain('Opus 5')
+  expect(foot).not.toContain('models')
+})

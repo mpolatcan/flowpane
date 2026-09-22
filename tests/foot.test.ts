@@ -276,41 +276,44 @@ test('the name at the far right is stamped with the version the manifest states'
   on('session.start', ($$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   stubEngine(on)
 
-  // The stamp named the constant in `hooks/about.ts` — the version this build
-  // was written with rather than the one the engine installed by — and with no
-  // manifest read the row draws the same word whichever of the two it reads.
-  // So the session is started over a manifest first, and the row is read after.
-  on('fs.read', ($$: unknown, e: { path: string }) => ({
-    value: e.path.endsWith('/.claude-plugin/plugin.json')
-      ? '{"name":"flowpane","version":"9.9.9"}'
-      : '',
-  }))
+  // The version a session reads is the plugin's own module state, and the
+  // plugin's copy of it outlives the test that set it. So the read is switched
+  // rather than registered twice: the test starts a session that finds a
+  // manifest, reads the row, and then starts one that cannot read at all, which
+  // is what puts the module back as it found it. Left to the test below, an
+  // assertion failing here — or a test inserted between the two — would leave
+  // every later test in the file reading 9.9.9.
+  let refuse = false
 
-  await $.session.start({ cwd: HOME, surface: 'terminal', isInteractive: true })
+  on('fs.read', ($$: unknown, e: { path: string }) => {
+    if (refuse) {
+      throw new Error('a network location is not reached from here (host check)')
+    }
 
-  const { buttons } = footOf(flatten(await renderPane($)))
-  const label = String(buttons[1]?.props?.label ?? '')
-
-  expect(label).toBe(`${NAME} 9.9.9`)
-  expect(label).not.toBe(`${NAME} ${VERSION}`)
-})
-
-test('the row falls back to the version the build was written with', async ($, on) => {
-  mock.clock(on, { now: 1_000 })
-  on('session.start', ($$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
-  stubEngine(on)
-
-  // The session before this one read a version, and this one cannot read at
-  // all. The row is one of the three seats that name it, so it is one of the
-  // three that would go on naming a version this install is not — and it leaves
-  // the suite as it found it, which the test above cannot do on its own.
-  on('fs.read', () => {
-    throw new Error('a network location is not reached from here (host check)')
+    return {
+      value: e.path.endsWith('/.claude-plugin/plugin.json')
+        ? '{"name":"flowpane","version":"9.9.9"}'
+        : '',
+    }
   })
 
   await $.session.start({ cwd: HOME, surface: 'terminal', isInteractive: true })
 
-  const { buttons } = footOf(flatten(await renderPane($)))
+  // The stamp named the constant in `hooks/about.ts` — the version this build
+  // was written with rather than the one the engine installed by — and with no
+  // manifest read the row draws the same word whichever of the two it reads.
+  // So the session is started over a manifest first, and the row is read after.
+  const said = String(footOf(flatten(await renderPane($))).buttons[1]?.props?.label ?? '')
 
-  expect(String(buttons[1]?.props?.label ?? '')).toBe(`${NAME} ${VERSION}`)
+  refuse = true
+
+  await $.session.start({ cwd: HOME, surface: 'terminal', isInteractive: true })
+
+  const forgotten = String(footOf(flatten(await renderPane($))).buttons[1]?.props?.label ?? '')
+
+  expect(said).toBe(`${NAME} 9.9.9`)
+  expect(said).not.toBe(`${NAME} ${VERSION}`)
+  // A session that cannot read the manifest drops what the one before it found
+  // rather than going on naming a version this install is not.
+  expect(forgotten).toBe(`${NAME} ${VERSION}`)
 })
