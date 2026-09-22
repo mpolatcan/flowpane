@@ -54,7 +54,15 @@ layout alone, and only on a run with agents still going, which is why a corpus
 of finished runs never showed it. Read through `at` instead, every cell written
 before a window was set came back unkept, and the rules and junctions drawn
 before one lost the painter that drew them and were counted as lines stopping in
-mid air. A mark written as part of a string is exempt
+mid air. Reading the buffer says what is in a cell, though, not that this put
+put it there, and the sweep took a put for landed by asking the cell back for
+what it had written — which a clipped put passes whenever the cell already holds
+that glyph. A carry clipped off the top of the body asked for `\u2500` in a cell
+the header's opening rule had drawn one in, took the cell's painter with it, and
+the rule's deliberate stop short of the surface's close control came back as
+that wire's arm into a blank. So the watcher follows the window the canvas is in
+and ignores every put outside it. Like the fault above, it took a live run in
+the corpus to show. A mark written as part of a string is exempt
 from the stem question wherever it stands, and the colour pass that pushes the
 drawing back behind a dialog re-puts the cells it dims without unmarking any of
 them. The block elements — a timeline bar, a card's rule, the scrollbar's thumb
