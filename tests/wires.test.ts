@@ -23,9 +23,9 @@
 
 import { expect, test } from 'claude-code/testing'
 
-import { Canvas } from '../hooks/canvas'
+import { Canvas, cross, line } from '../hooks/canvas'
 import type { AgentRow, RunState } from '../hooks/journal'
-import { layout } from '../hooks/layout'
+import { entryOf, exitOf, layout } from '../hooks/layout'
 import { edgesOf } from '../hooks/shape'
 import { frameOf, paint, quietOf, useTheme } from '../hooks/paint'
 import { DEFAULT_THEME, paletteOf, THEMES } from '../hooks/theme'
@@ -1099,4 +1099,122 @@ test('the same two phases are marked down the pane, in the other stroke', () => 
   const last = rows.map(row => row.includes(ARROW_DOWN)).lastIndexOf(true)
 
   expect(last).toBeLessThan(marked)
+})
+
+/** The mark laid along the run where two phases overlapped: across, and down. */
+const ALONGSIDE_H = 0x2550
+const ALONGSIDE_V = 0x2551
+const STROKE_H = 0x2500
+const STROKE_V = 0x2502
+const GREY = 0xffffff
+
+test('a wire drawn through the mark that says two phases overlapped leaves it standing', () => {
+  const c = new Canvas(6, 3)
+
+  // The mark stands in the gutter, which is where the wires run: a carry from
+  // the band above passing that column asks for this very cell. Drawn over, the
+  // concurrency statement is off the pane and the wire is a cell of line that
+  // is drawn again a cell along.
+  c.put(3, 1, ALONGSIDE_H, GREY)
+  line(c, 3, 1, STROKE_V, GREY)
+
+  expect(c.at(3, 1)).toBe(ALONGSIDE_H)
+})
+
+test('the same holds down the pane, where the mark is the upright stroke', () => {
+  const c = new Canvas(6, 3)
+
+  c.put(3, 1, ALONGSIDE_V, GREY)
+  line(c, 3, 1, STROKE_H, GREY)
+
+  expect(c.at(3, 1)).toBe(ALONGSIDE_V)
+})
+
+test('a hop steps over another wire, never over the mark that two phases overlapped', () => {
+  const c = new Canvas(6, 3)
+
+  // A hop arc here would read as two wires crossing and would take the
+  // statement with it: the arc says go and find the second line, and there is
+  // no second line, only the fact that neither phase waited.
+  c.put(3, 1, ALONGSIDE_H, GREY)
+  cross(c, 3, 1, STROKE_V, GREY)
+
+  expect(c.at(3, 1)).toBe(ALONGSIDE_H)
+})
+
+test('a hop down the pane leaves the upright mark standing too', () => {
+  const c = new Canvas(6, 3)
+
+  c.put(3, 1, ALONGSIDE_V, GREY)
+  cross(c, 3, 1, STROKE_H, GREY)
+
+  expect(c.at(3, 1)).toBe(ALONGSIDE_V)
+})
+
+/**
+ * Where the mark between two overlapping phases should stand: halfway down what
+ * the two of them occupy between them, in the gutter the later one is fed at.
+ */
+function midOf(
+  view: ReturnType<typeof layout>,
+  earlier: string,
+  later: string,
+  orientation: 'horizontal' | 'vertical',
+) {
+  const left = view.lanes.find(lane => lane.phase === earlier)
+  const right = view.lanes.find(lane => lane.phase === later)
+  const along = (p: { x: number; y: number }) => (orientation === 'horizontal' ? p.y : p.x)
+  const ports = [
+    ...(left?.nodes ?? []).map(n => along(exitOf(n, orientation))),
+    ...(right?.nodes ?? []).map(n => along(entryOf(n, orientation))),
+  ]
+
+  return {
+    at: Math.round((Math.min(...ports) + Math.max(...ports)) / 2),
+    busAt: right?.busAt ?? -1,
+  }
+}
+
+test('the mark stands against the cards it is about, halfway between their ports', () => {
+  useTheme('tokyo-night')
+
+  const { rows, view } = drawn(alongside(), 150, 20, 'horizontal')
+  const { at, busAt } = midOf(view, 'Review', 'Scan', 'horizontal')
+
+  // Both the row and the column: a mark in the right gutter but at the top of
+  // it, with the cards it is about at the bottom, reads as a mark about
+  // something else. The column alone was all the drawing was held to.
+  expect(rows[at]?.[busAt]).toBe('═')
+  expect(rows.filter(row => row.includes('═'))).toHaveLength(1)
+})
+
+test('down the pane the mark stands halfway along them, not at the gutter’s end', () => {
+  useTheme('tokyo-night')
+
+  const { rows, view } = drawn(alongside(), 110, 40, 'vertical')
+  const { at, busAt } = midOf(view, 'Review', 'Scan', 'vertical')
+
+  expect(rows[busAt]?.[at]).toBe('║')
+  expect(rows.filter(row => row.includes('║'))).toHaveLength(1)
+})
+
+test('a phase that has run beside one that has not is marked with nothing at all', () => {
+  useTheme('tokyo-night')
+
+  // `Review` was declared and never entered, so it has no agents and no ports.
+  // Nothing of it overlapped anything, and the halfway point between no ports
+  // and some is not a cell: the span comes back empty and the midpoint is not a
+  // number, which is a mark drawn at an address the pane cannot answer for.
+  const run = runOf('gates', ['Commit', 'Review', 'Scan'], [
+    agentOf('c1', 'commit:tests', 'Commit', 0, 4_000),
+    agentOf('s1', 'scan:security', 'Scan', 5_200, 4_000),
+  ])
+
+  const { rows } = drawn(run, 150, 20, 'horizontal')
+
+  expect(rows.join('\n')).not.toContain('═')
+  expect(rows.join('\n')).not.toContain('║')
+  // And the run is still drawn: a guard that returned early out of the whole
+  // gutter would take the phase after it with it.
+  expect(rows.join('\n')).toContain('security')
 })

@@ -16,6 +16,7 @@ import type { AgentRow, RunState } from '../hooks/journal'
 import {
   contextOfUsage,
   inputOf,
+  modelName,
   noteCallEnd,
   noteCallStart,
   noteStep,
@@ -208,4 +209,22 @@ test('the empty usage that closes a stream is not read as the newest request', (
   // stream being closed rather than a request being paid for. Taken as the
   // newest, it dropped the figure to nothing at the moment the agent finished.
   expect(spent([38_041, 0])).toBe(38_041)
+})
+
+test('a model id minted with the version in front of the family is still read as a name', () => {
+  // The older spelling, and the one a card and a folded row now have to agree
+  // with: two ids for one model that come back as two names count as two
+  // models, and the row says `2 models` where it should say the name.
+  expect(modelName('claude-3-5-sonnet-20240620')).toBe('Sonnet 3.5')
+})
+
+test('a model id of no family the pane knows is passed on as it stands', () => {
+  // A family the drawing has never heard of is still what the agent ran on, and
+  // a card that says nothing is a card that lost a fact. The date and the
+  // prefix go, because neither is anything a reader wanted.
+  expect(modelName('claude-fathom-2-20260401')).toBe('fathom-2')
+})
+
+test('a model id with no version at all is named by its family alone', () => {
+  expect(modelName('claude-opus')).toBe('Opus')
 })

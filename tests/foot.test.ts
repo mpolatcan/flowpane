@@ -317,3 +317,25 @@ test('the name at the far right is stamped with the version the manifest states'
   // rather than going on naming a version this install is not.
   expect(forgotten).toBe(`${NAME} ${VERSION}`)
 })
+
+test('a session that never read a manifest stamps the row with the version the build was written with', async ($, on) => {
+  mock.clock(on, { now: 1_000 })
+  on('session.start', ($$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
+  stubEngine(on)
+
+  // An install the plugin cannot read from — the manifest sits where the read
+  // is refused — and the row is one of the three seats that name a version, so
+  // a build with nothing to read has to name its own rather than nothing. The
+  // test above proves a version is dropped when a later session cannot read;
+  // this one is a session that never read at all, and it plants no version, so
+  // it leaves the plugin's module state exactly as it found it.
+  on('fs.read', () => {
+    throw new Error('a network location is not reached from here (host check)')
+  })
+
+  await $.session.start({ cwd: HOME, surface: 'terminal', isInteractive: true })
+
+  const { buttons } = footOf(flatten(await renderPane($)))
+
+  expect(String(buttons[1]?.props?.label ?? '')).toBe(`${NAME} ${VERSION}`)
+})

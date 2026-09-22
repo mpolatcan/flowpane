@@ -1164,3 +1164,25 @@ test('a nested run that ran on one model is still named by it', () => {
   expect(foot).toContain('Opus 5')
   expect(foot).not.toContain('models')
 })
+
+test('a nested run is named by the one model its agents said, ignoring the ones that did not', () => {
+  at = 0
+
+  const run = runOf([
+    // Said nothing about what it ran on, which every agent does until its
+    // transcript has been read. Counted as a model of its own it makes two, so
+    // a row half through being read says `2 models` and settles back to one
+    // name a second later — a figure that moved while the run did not.
+    agentOf('▸ code-review', 'reviewer'),
+    { ...agentOf('▸ code-review', 'persist'), model: 'claude-opus-5' },
+  ])
+
+  const canvas = new Canvas(110, 20)
+
+  paint(canvas, run, { nowMs: STARTED + 20_000, tick: -1, orientation: 'vertical' })
+
+  const foot = rowsOf(canvas).find(row => row.includes('╰')) ?? ''
+
+  expect(foot).toContain('Opus 5')
+  expect(foot).not.toContain('models')
+})
