@@ -80,7 +80,7 @@ export type AgentRow = {
   toolCalls?: number
   /** The last tool the summary saw it call, with what that call was about. */
   lastTool?: string
-  /** The most context any of its model requests has carried, live from `turn.step`. */
+  /** The context its newest model request carried, live from `turn.step`. */
   liveTokens?: number
   /** Model requests made so far, counted live from `turn.step`. */
   steps?: number

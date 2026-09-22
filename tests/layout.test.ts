@@ -970,3 +970,60 @@ test('a band about to wrap keeps the wider gap between its nodes', () => {
   // down.
   expect(second.x - (first.x + first.w)).toBe(2)
 })
+
+/** How many nodes stand on each of a band's rows, top row first. */
+function perRow(lane: { nodes: { y: number }[] }): number[] {
+  const rows = new Map<number, number>()
+
+  for (const node of lane.nodes) {
+    rows.set(node.y, (rows.get(node.y) ?? 0) + 1)
+  }
+
+  return [...rows.entries()].sort(([a], [b]) => a - b).map(([, count]) => count)
+}
+
+test('a band that does not divide shares its nodes out over its rows', () => {
+  const nine = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
+  // Wide enough that a row of this band holds seven, so the two ways of
+  // dividing nine differ.
+  const view = layout(bandOf(nine), 160, 34, 'vertical')
+
+  expect(view.lanes[0].rows).toBe(2)
+
+  // Filled to the brim instead, nine nodes into rows of seven is seven and two:
+  // a fan with an afterthought hanging under it, and a second row of two cards
+  // adrift in the middle of an otherwise empty band. Shared out, the two rows
+  // come out five and four, which reads as the block the band is.
+  expect(perRow(view.lanes[0])).toEqual([5, 4])
+})
+
+test('a band that wrapped keeps the band under it clear of its last row', () => {
+  const run = runOf([
+    ['Survey', ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']],
+    ['Review', ['paint', 'layout']],
+    ['Check', ['paint', 'layout']],
+    ['Report', ['paint', 'layout']],
+    ['Ship', ['final', 'notes']],
+  ])
+
+  const view = layout(run, 100, 36, 'vertical')
+
+  expect(view.lanes[0].rows).toBe(3)
+
+  // A band takes the depth its own rows need. Given an even share of the body
+  // instead — five bands, a fifth of the pane each — a band that wrapped on to
+  // three rows is drawn over the two under it: the rule naming the next phase
+  // lands between the wrapped band's own rows, and its cards land on top of
+  // them.
+  view.lanes.forEach((lane, place) => {
+    if (place === 0) {
+      return
+    }
+
+    const above = view.lanes[place - 1]
+    const bottom = Math.max(...above.nodes.map(node => node.y + node.h))
+
+    expect(lane.y).toBeGreaterThanOrEqual(above.y + above.h)
+    expect(lane.captionRow ?? lane.y).toBeGreaterThanOrEqual(bottom)
+  })
+})
