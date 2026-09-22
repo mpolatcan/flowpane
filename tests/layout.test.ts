@@ -924,3 +924,49 @@ test('a phase the run never reached stands its row in the middle of the band', (
   expect(ghost?.x).toBe(Math.floor((96 - (ghost?.w ?? 0)) / 2))
   expect(ghost?.x).toBeGreaterThan(1)
 })
+
+/** A band of this many agents, with two small bands under it. */
+function bandOf(names: string[]): RunState {
+  return runOf([
+    ['Survey', names],
+    ['Review', ['paint', 'layout']],
+    ['Check', ['README']],
+  ])
+}
+
+test('a band that wrapped takes the depth of every row it wrapped on to', () => {
+  const eight = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight']
+
+  // A body of the same height either way, and the only difference between the
+  // two runs is how many agents the first band holds.
+  const wide = layout(bandOf(eight), 110, 22, 'vertical')
+  const narrow = layout(bandOf(['one', 'two']), 110, 22, 'vertical')
+
+  expect(wide.lanes[0].rows).toBe(2)
+  expect(narrow.lanes[0].rows).toBeUndefined()
+
+  // The test the density makes is whether the body can stand two whole bands,
+  // and a band that wrapped is two rows of cards deep rather than one. Asked of
+  // one row's worth, the pane said cards and then drew a band twice that deep:
+  // the second row of the widest band ran off the foot of the pane, and the
+  // bands under it went with it. Asked of the depth the bands actually take,
+  // the pane spends its rows on twice as many nodes by drawing each as a row.
+  expect(wide.density).toBe('row')
+  expect(narrow.density).toBe('card')
+})
+
+test('a band about to wrap keeps the wider gap between its nodes', () => {
+  const nine = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
+  const view = layout(bandOf(nine), 110, 34, 'vertical')
+  const [first, second] = view.lanes[0].nodes
+
+  expect(view.lanes[0].rows).toBe(2)
+
+  // Neither gap stands nine nodes whole, so the band is going to wrap however
+  // the gap is chosen — and a band cut to the nodes one row holds has the width
+  // for air between them. Falling back to the narrow gap instead spent the
+  // cells it saved on nothing: the nodes came out the same width, one column
+  // apart, with an edge that has to pass the band left no clear column to run
+  // down.
+  expect(second.x - (first.x + first.w)).toBe(2)
+})

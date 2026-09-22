@@ -1090,3 +1090,33 @@ test('a run that went round once has no strip over its tabs', () => {
   expect(rows.some(row => row.includes('↻'))).toBe(false)
   expect(rows[title + 1]).not.toMatch(/✔ 1/)
 })
+
+test('a dialog with nothing recorded says so and keeps the shelf of trips over it', () => {
+  const run = runLooped(6)
+  const agent = run.agents.filter(one => one.phase === 'Develop')[2]
+  const canvas = new Canvas(90, 24)
+
+  paint(canvas, run, {
+    nowMs: STARTED + 60_000,
+    tick: -1,
+    orientation: 'vertical',
+    selectedId: agent.agentId,
+    detailRows: 12,
+    detailTab: 0,
+  })
+
+  const rows = rowsOf(canvas)
+  const said = rows.findIndex(row => row.includes('No transcript for this agent'))
+  const strip = rows.findIndex(row => row.includes('┤ ✔ 3 ├'))
+
+  // An empty dialog over a node that was just pressed reads as a dialog that
+  // did not open, so it says which of the two it is.
+  expect(said).toBeGreaterThan(0)
+
+  // And the trips are still shelved above that sentence. The strip is the way
+  // back to the other five: a reader who opened the third trip of a loop and
+  // found nothing recorded for it would otherwise have a dialog with no reading
+  // in it and no way on from there.
+  expect(strip).toBeGreaterThan(0)
+  expect(strip).toBeLessThan(said)
+})

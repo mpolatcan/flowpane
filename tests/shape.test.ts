@@ -14,7 +14,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { AgentRow, RunState } from '../hooks/journal'
-import { foldedLanes, lanesOf, orderedLanes, skipsOf, sourcesOf, tiesOf } from '../hooks/shape'
+import { foldedLanes, lanesOf, orderedLanes, passesFor, skipsOf, sourcesOf, tiesOf } from '../hooks/shape'
 
 const STARTED = 1_700_000_000_000
 
@@ -359,4 +359,40 @@ test('a folded step ends when its latest agent did, not when its last row did', 
   // a second before the work it draws does, and the write below it starts after
   // the step it waited on has already been painted as over.
   expect(fold?.agent.endedMs).toBe(STARTED + 8_000)
+})
+
+test('the trips a card inside a shut nested run took are found without opening it', () => {
+  const phase = `${NESTED}code-review`
+  const run = runOf([
+    // The panel, run once.
+    clocked(phase, 'claim', 0, 1_000),
+    clocked(phase, 'write', 1_000, 2_000),
+    // The calling run's own work, which is what splits the two trips.
+    clocked('Develop', 'patch', 2_000, 3_000),
+    // And run again over the patch.
+    clocked(phase, 'claim', 3_000, 4_000),
+    clocked(phase, 'write', 4_000, 5_000),
+  ])
+
+  // Nothing opened, which is how the drawing stands until a reader presses the
+  // run: one row for the whole panel.
+  expect(foldedLanes(run)[0].folds.length).toBe(1)
+
+  const trips = passesFor(run, 'claim-3000')
+
+  // The dialog's question is a different one from the drawing's. A reader who
+  // opened the second claim wants the first, and the agent is reachable whether
+  // or not the run it sits in is drawn open — the row opens a list and a row of
+  // that list opens the agent — so the trips are read with every nested run
+  // unfolded, whatever the drawing has open behind the dialog.
+  expect(trips.map(pass => pass.index)).toEqual([1, 2])
+  expect(trips.map(pass => pass.agent.agentId)).toEqual(['claim-0', 'claim-3000'])
+})
+
+test('a card inside a nested run the run entered once has no trips to offer', () => {
+  const phase = `${NESTED}code-review`
+  const run = runOf([clocked(phase, 'claim', 0, 1_000), clocked(phase, 'write', 1_000, 2_000)])
+
+  // The strip answers *which trip*, and work done once poses no such question.
+  expect(passesFor(run, 'claim-0')).toEqual([])
 })

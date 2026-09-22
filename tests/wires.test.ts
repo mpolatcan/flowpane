@@ -26,6 +26,7 @@ import { expect, test } from 'claude-code/testing'
 import { Canvas } from '../hooks/canvas'
 import type { AgentRow, RunState } from '../hooks/journal'
 import { layout } from '../hooks/layout'
+import { edgesOf } from '../hooks/shape'
 import { frameOf, paint, quietOf, useTheme } from '../hooks/paint'
 import { DEFAULT_THEME, paletteOf, THEMES } from '../hooks/theme'
 
@@ -878,4 +879,156 @@ test('a band that wrapped is left from its last row and entered on its first', (
 
   expect(between).toContain(ARROW_DOWN)
   expect(between).toMatch(/[│┆]/)
+})
+
+/** Eight names, which is more than a hundred and ten columns can stand in a row. */
+const EIGHT = ['rivers', 'reefs', 'dunes', 'forests', 'ridges', 'marshes', 'deltas', 'plains']
+
+/** A band of eight taken one at a time, so the band is a chain that wrapped. */
+function walked(): RunState {
+  return runOf('audit', ['Gather', 'Report'], [
+    ...EIGHT.map((name, i) => agentOf(`g${i}`, `gather:${name}`, 'Gather', i * 1_000, 800)),
+    agentOf('p1', 'report:join', 'Report', 9_000, 800),
+  ])
+}
+
+test('a chain that wrapped hands on along each row and not over the turn', () => {
+  const { rows, view } = drawn(walked(), 110, 40, 'vertical')
+  const gather = view.lanes.find(lane => lane.phase === 'Gather')
+  const first = (gather?.nodes ?? []).filter(node => node.row === 0)
+  const second = (gather?.nodes ?? []).filter(node => node.row === 1)
+
+  expect(gather?.rows).toBe(2)
+  expect(first.length).toBe(4)
+  expect(second.length).toBe(4)
+
+  // Three hops along each row, between the four cards standing on it.
+  expect(columnsOf(rows[first[0].y + 1] as string, [ARROW_RIGHT]).length).toBe(3)
+  expect(columnsOf(rows[second[0].y + 1] as string, [ARROW_RIGHT]).length).toBe(3)
+
+  // And nothing over the turn. The fourth agent handed on to the fifth, but the
+  // fifth stands at the left of the row below: a line between them runs back
+  // across the row it came from, over every card on it, and a line through a
+  // card is a line through a word. The band's own rule is what says the two
+  // rows are one phase.
+  const tail = first[first.length - 1]
+  const head = second[0]
+
+  expect((rows[tail.y + 1] as string)[tail.x + tail.w]).toBe(' ')
+  expect((rows[head.y + 1] as string)[head.x - 1]).toBe(' ')
+})
+
+/** What one phase found, long enough for the next prompt to be proved to quote it. */
+const FOUND = 'The token refresh path renews the access token and never the refresh one, so a session lapses at an hour.'
+
+/**
+ * A run that went back: the gate reported, and the phase that had already run
+ * was entered again over what the gate said.
+ */
+function backwards(): RunState {
+  return runOf('audit', ['Fix', 'Gate'], [
+    agentOf('f1', 'fix:first', 'Fix', 0, 900),
+    { ...agentOf('g1', 'gate:report', 'Gate', 1_000, 900), result: FOUND },
+    { ...agentOf('f2', 'fix:second', 'Fix', 3_000, 900), prompt: `Fix what the gate found. ${FOUND}` },
+  ])
+}
+
+test('a card fed from a band further down is not drawn as a line back up the pane', () => {
+  const run = backwards()
+
+  // The run really does carry it: the gate's answer is quoted in the prompt of
+  // an agent whose phase stands above the gate's.
+  expect(edgesOf(run).some(edge => edge.fromId === 'g1' && edge.toId === 'f2')).toBe(true)
+
+  const { rows, view } = drawn(run, 96, 30, 'vertical')
+  const fix = view.lanes.find(lane => lane.phase === 'Fix')
+  const node = (fix?.nodes ?? []).find(box => box.agent.agentId === 'f2')
+
+  expect(node).toBeDefined()
+
+  const head = (node?.x ?? 0) + Math.floor((node?.w ?? 0) / 2)
+
+  // Drawn, it is a line from the foot of the drawing to its head, across every
+  // band between and every name on them — and what came out was the head alone,
+  // a lone arrowhead under a phase rule pointing at nothing, because the run
+  // from the source stopped before it started. The loop mark on the card
+  // already says the phase was entered again.
+  expect(columnsOf(rows[(node?.y ?? 1) - 1] as string, [ARROW_DOWN, LINE_V, DASH_V])).not.toContain(head)
+})
+
+/**
+ * A band of eight that wrapped, whose only carries out leave from its first row.
+ */
+function frontFed(): RunState {
+  return runOf('haiku', ['Gather', 'Draft'], [
+    ...EIGHT.map((name, i) => agentOf(`g${i}`, `gather:${name}`, 'Gather', 0, 4_000)),
+    agentOf('d0', 'draft:rivers', 'Draft', 5_000, 4_000),
+    agentOf('d1', 'draft:reefs', 'Draft', 5_000, 4_000),
+  ])
+}
+
+test('a wrapped band whose sources all stand inside it is still left from its last row', () => {
+  const { rows, view } = drawn(frontFed(), 110, 40, 'vertical')
+  const gather = view.lanes.find(lane => lane.phase === 'Gather')
+  const second = (gather?.nodes ?? []).filter(node => node.row === 1)
+
+  expect(gather?.rows).toBe(2)
+
+  // Both carries leave cards on the first row, and the first row of a wrapped
+  // band faces nothing below it. Kept to the cards the carries actually name,
+  // the band would be left from a row with two rows of cards under it; kept to
+  // nothing at all, the two bands would have nothing drawn between them, which
+  // says they had nothing to do with each other. So the band is left from the
+  // row that does face the band below, whichever cards the carries named.
+  const below = rows[second[0].y + second[0].h] as string
+  const marks = columnsOf(below, [PORT, LINE_V, DASH_V, ARROW_DOWN])
+
+  expect(marks.length).toBeGreaterThan(0)
+
+  for (const x of marks) {
+    expect(second.some(node => x >= node.x && x < node.x + node.w)).toBe(true)
+  }
+})
+
+/**
+ * A lane of rows standing a row apart, with the work at its head entered twice.
+ *
+ * `spare` leaves out the row that stands in the gap, which is the same run with
+ * nothing in the way of the hop.
+ */
+function paced(spare: boolean): RunState {
+  return runOf('audit', ['Plan', 'Develop'], [
+    agentOf('p1', 'plan:order', 'Plan', 0, 900),
+    agentOf('d1', 'develop:patch', 'Develop', 1_000, 900),
+    ...(spare ? [] : [agentOf('d2', 'develop:notes', 'Develop', 2_000, 900)]),
+    agentOf('d3', 'develop:patch', 'Develop', 3_000, 900),
+    agentOf('d4', 'develop:ship', 'Develop', 4_000, 900),
+  ])
+}
+
+/** Where a hop between two rows of one lane would be drawn, and what is there. */
+function hopOf(spare: boolean) {
+  const { rows, view } = drawn(paced(spare), 90, 11, 'horizontal')
+  const develop = view.lanes.find(lane => lane.phase === 'Develop')
+  const from = (develop?.nodes ?? [])[0]
+  const to = (develop?.nodes ?? [])[(develop?.nodes ?? []).length - 1]
+  const at = from.x + Math.floor(from.w / 2)
+
+  return {
+    port: (rows[from.y + 1] as string)[at],
+    head: (rows[to.y - 1] as string)[at],
+  }
+}
+
+test('a hop to the next pass gives way to a node standing in the gap', () => {
+  // Nothing in the way: the work handed on to the row under it, and the hop is
+  // the whole of the gap between two neighbours — a point against the one card
+  // and an arrowhead against the other.
+  expect(hopOf(true)).toEqual({ port: PORT, head: ARROW_DOWN })
+
+  // With a third row of the lane standing in those columns, the line would be
+  // drawn through it, under its name: the names are written after the wires, so
+  // the cell came back a letter with the point or the arrowhead lost beneath
+  // it. The stack already says which pass went first.
+  expect(hopOf(false)).toEqual({ port: ' ', head: ' ' })
 })
