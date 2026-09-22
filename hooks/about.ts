@@ -33,7 +33,7 @@ export const MAINTAINER = 'Mutlu Polatcan'
  * than no date, since the row is well formed and reads as true. The test suite
  * holds it to the day the release before it went out.
  */
-export const RELEASED = '17-09-2026'
+export const RELEASED = '22-09-2026'
 
 /**
  * The version, kept in step with `.claude-plugin/plugin.json` by a test rather
@@ -41,7 +41,7 @@ export const RELEASED = '17-09-2026'
  * the reader is told, and a pane claiming 0.3.0 while the marketplace serves
  * 0.5.0 is worse than a pane that names no version at all.
  */
-export const VERSION = '0.5.0'
+export const VERSION = '0.6.0'
 
 /** One line of the About dialog: a pair, a sentence, or the air between them. */
 export type AboutRow =
