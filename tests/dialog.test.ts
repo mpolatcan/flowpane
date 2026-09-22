@@ -896,7 +896,7 @@ test('the About dialog opens over the idle pane too', () => {
   const runs: RunEntry[] = [
     { id: 'wf_a', mark: '✔', name: 'an earlier run', tally: '6/6', status: 'completed', startedMs: STARTED },
   ]
-  const hotspots = paintIdle(canvas, runs, STARTED + 1_000, {
+  const { hotspots } = paintIdle(canvas, runs, STARTED + 1_000, {
     nowMs: STARTED + 1_000,
     tick: 0,
     detailRows: 14,

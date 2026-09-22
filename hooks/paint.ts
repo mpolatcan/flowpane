@@ -260,6 +260,19 @@ const CLOSE_MARK = 0x2715
  */
 const CLOCK_MARK = '\u29d6'
 const SPEND_MARK = '\u2211'
+/**
+ * What stands where a token count would, for a row that has none.
+ *
+ * A row with no figure used to draw no figure, which is the same picture a row
+ * that genuinely spent nothing draws — and the two are not the same fact. An
+ * agent's count arrives twice: the engine attributes one to every agent when
+ * the run ends, and until then the pane has whatever it read of that agent's
+ * own transcript. So a finished agent inside a running run can have nothing to
+ * show yet, and drawing nothing said it had been cheap. The dash says the pane
+ * does not know, `\u22110` says it knows the answer is none, and a reader can
+ * tell a reporting gap from a cheap step.
+ */
+const SPEND_NONE = '\u2014'
 const TOOL_MARK = '\u2699'
 const THINK_MARK = '\u25cc'
 const REQUEST_MARK = '\u21c4'
@@ -391,6 +404,15 @@ export type PaintOptions = {
    * is open; the menu puts them in its own order.
    */
   runs?: RunEntry[]
+  /**
+   * The first row of that list on screen, where it is taller than the pane.
+   *
+   * Absent until a reader scrolls, and absent again once the list is shut: an
+   * unscrolled list seats itself on the run the pane is drawing, so a reader
+   * who opens the list to move away from the run they are on can see where they
+   * are standing without scrolling to find it.
+   */
+  runScroll?: number
   /** True while the settings dialog is open over the drawing. */
   settings?: boolean
   /**
@@ -445,6 +467,24 @@ export type BodyScroll = {
   spanY: number
 }
 
+/**
+ * How much of the session's runs a list is showing, and whereabouts in them.
+ *
+ * Reported back the way the detail dialog's panes and the body are: the pane
+ * keeps an offset, the paint clamps it against what it actually drew, and the
+ * pane takes the clamped figure. A list that shrank because a run ended, or a
+ * pane that grew, moves back into view on its own rather than leaving the
+ * reader on a blank field.
+ */
+export type RunWindow = {
+  /** Every row the list has, headings included. */
+  total: number
+  /** How many of them the pane can stand at once. */
+  visible: number
+  /** The first row on screen. */
+  scroll: number
+}
+
 export type PaintResult = {
   hotspots: Hotspot[]
   orientation: 'horizontal' | 'vertical' | 'timeline'
@@ -452,6 +492,8 @@ export type PaintResult = {
   detail?: DetailView
   /** Where the drawing sits in the body, when it is larger than the body. */
   body?: BodyScroll
+  /** The run list's extent and window, wherever one is drawn. */
+  runList?: RunWindow
   /**
    * The phase the run is working in, while it is running.
    *
@@ -597,8 +639,16 @@ function elapsed(ms: number): string {
  * the digits of before they know what it is. The scale changes at a thousand of
  * the unit below it, and one decimal is kept either side of the change so the
  * figure never jumps from `999k` to `1m`.
+ *
+ * Called with nothing, it writes the dash: every spelling below is built from
+ * this one or from {@link tokensShort}, so the two guards give the whole ladder
+ * a way to say that no count was recorded, each in its own shape.
  */
-function tokens(n: number): string {
+function tokens(n?: number): string {
+  if (n === undefined) {
+    return SPEND_NONE
+  }
+
   if (n < 1000) {
     return String(n)
   }
@@ -613,12 +663,16 @@ function tokens(n: number): string {
 }
 
 /** The same again with the mark held off the figure, for a card that can hold it. */
-function tokensShortWide(n: number): string {
+function tokensShortWide(n?: number): string {
   return tokensShort(n).replace(SPEND_MARK, `${SPEND_MARK} `)
 }
 
 /** The same count with the decimal dropped once it buys nothing: `15k`, `9.4k`. */
-function tokensShort(n: number): string {
+function tokensShort(n?: number): string {
+  if (n === undefined) {
+    return `${SPEND_MARK}${SPEND_NONE}`
+  }
+
   if (n < 1000) {
     return `${SPEND_MARK}${n}`
   }
@@ -631,12 +685,12 @@ function tokensShort(n: number): string {
 }
 
 /** The count under its mark, the way a card glues its clock to its duration. */
-function tokensLong(n: number): string {
+function tokensLong(n?: number): string {
   return `${SPEND_MARK}${tokens(n)}`
 }
 
 /** The same, with a space, for the two rows wide enough to let it breathe. */
-function tokensWide(n: number): string {
+function tokensWide(n?: number): string {
   return `${SPEND_MARK} ${tokens(n)}`
 }
 
@@ -649,7 +703,7 @@ function tokensWide(n: number): string {
  * the pane's most-quoted figure. It is the first form to go when the room runs
  * out, because the mark carries the same fact in a fifth of the width.
  */
-function tokensNamed(n: number): string {
+function tokensNamed(n?: number): string {
   return `${tokensWide(n)} tkns`
 }
 
@@ -673,7 +727,7 @@ function spendingOf(
   nowMs: number,
   clock: (ms: number) => string,
   density: 'card' | 'row',
-): (n: number) => string {
+): (n?: number) => string {
   if (density !== 'card') {
     return tokensShort
   }
@@ -1147,7 +1201,7 @@ function factsOf(
   const spent = tokensOf(agent)
   const width = (fields: Field[], gap: number) =>
     fields.reduce((sum, f) => sum + f.text.length, 0) + gap * Math.max(0, fields.length - 1)
-  const spend: Field[] = spent === undefined ? [] : [{ text: scale.spend(spent), color: COLORS.spend }]
+  const spend: Field[] = [{ text: scale.spend(spent), color: COLORS.spend }]
   const time: Field = { text: scale.clock(took), color: COLORS.clock }
   const name = withModel ? scale.model(agent.model ?? model) : ''
   const named: Field[] = name ? [{ text: name, color: COLORS.model }] : []
@@ -1208,7 +1262,7 @@ function clockOf(
       const agent = node.agent
       const spent = tokensOf(agent)
       const took = (agent.endedMs ?? nowMs) - agent.startedMs
-      const rest = spent === undefined ? 0 : tokensShort(spent).length + 1
+      const rest = tokensShort(spent).length + 1
 
       return mark.length + air.length + form(took).length + rest <= roomOf(node)
     })
@@ -1255,7 +1309,7 @@ function namingOf(
   nowMs: number,
   model: string | undefined,
   clock: (ms: number) => string,
-  spend: (n: number) => string,
+  spend: (n?: number) => string,
   density: 'card' | 'row',
 ): (model?: string) => string {
   const names = [...new Set(nodes.map(n => modelName(n.agent.model ?? model)))].filter(n => n.length > 0)
@@ -1275,7 +1329,7 @@ function namingOf(
 
     // What the other two fields leave at their tightest: the inner width, less
     // the clock and the tokens, less one cell between each of the three.
-    const taken = clock(took).length + (spent === undefined ? 0 : spend(spent).length + 1) + 1
+    const taken = clock(took).length + spend(spent).length + 1 + 1
 
     return node.w - 13 - taken
   })
@@ -1301,7 +1355,7 @@ function namingOf(
  */
 type Scale = {
   clock: (ms: number) => string
-  spend: (n: number) => string
+  spend: (n?: number) => string
   model: (model?: string) => string
   /** The cells between one fact and the next; 1 where a node cannot hold 2. */
   gap: number
@@ -1407,7 +1461,7 @@ function scaleOf(
     const spent = tokensOf(agent)
     const parts = [
       clock((agent.endedMs ?? nowMs) - agent.startedMs),
-      ...(spent === undefined ? [] : [spend(spent)]),
+      spend(spent),
       density === 'card' ? '' : named(agent.model ?? model),
     ].filter(t => t.length > 0)
     const ink = parts.reduce((sum, t) => sum + t.length, 0)
@@ -3202,7 +3256,7 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
     const settings = paintSettings(c, options, hotspots)
     const about = paintAbout(c, options, hotspots)
 
-    shade(c, frontOf(about, settings, menu, detail && panel))
+    shade(c, frontOf(about, settings, menu.rects, detail && panel))
 
     return {
       hotspots,
@@ -3210,6 +3264,7 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
       detail,
       ...(body ? { body } : {}),
       ...(front ? { front } : {}),
+      ...(menu.window ? { runList: menu.window } : {}),
     }
   }
 
@@ -4154,13 +4209,14 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
   const settings = paintSettings(c, options, hotspots)
   const about = paintAbout(c, options, hotspots)
 
-  shade(c, frontOf(about, settings, menu, detail && panel))
+  shade(c, frontOf(about, settings, menu.rects, detail && panel))
 
   return {
     hotspots,
     orientation: view.orientation,
     detail,
     view,
+    ...(menu.window ? { runList: menu.window } : {}),
     ...(front ? { front: front.phase } : {}),
     ...(spanX > 0 || spanY > 0 ? { body: { x: atX, y: atY, spanX, spanY } } : {}),
   }
@@ -4580,11 +4636,16 @@ function paintAheadRow(c: Canvas, phases: string[], row: number, over: boolean):
  * row the whole time. A menu under the name it drops from needs neither — the
  * name is the control, and what it covers it covers only while it is open.
  */
-function paintRunMenu(c: Canvas, run: RunState, options: PaintOptions, hotspots: Hotspot[]): Rect[] {
+function paintRunMenu(
+  c: Canvas,
+  run: RunState,
+  options: PaintOptions,
+  hotspots: Hotspot[],
+): { rects: Rect[]; window?: RunWindow } {
   const runs = options.runs ?? []
 
   if (options.runPicker !== 'open' || runs.length === 0) {
-    return []
+    return { rects: [] }
   }
 
   // Under the bar, not through it: the name the menu drops from sits on the
@@ -4593,30 +4654,36 @@ function paintRunMenu(c: Canvas, run: RunState, options: PaintOptions, hotspots:
   const top = barRowsOf(c.rows, c.columns)
   // What the menu can show is what stands below the bar — and it leaves the
   // last row alone, where the graph says how much of itself it had to leave
-  // out. A pane with no room for one entry and its frame gets no menu;
-  // `/flowpane runs` is the list that needs no room at all.
+  // out. A pane with no room for one entry and its frame gets no menu.
   const room = c.rows - top - 3
   const across = c.columns - 4
 
   if (room < 1 || across < 6) {
-    return []
+    return { rects: [] }
   }
 
-  const listed = listOf(runs, options.nowMs)
-  // Captions cost rows, and a row spent on a caption is a run the reader
-  // cannot see. Below the height that holds every run as well as its headings
-  // the headings go and the order they described stays.
-  const rows = listed.rows.length <= room ? listed.rows : listed.bare
-  const shown = rows.length <= room ? rows.length : room - 1
-  const cut = rows.slice(0, Math.max(1, shown))
-  const more = rows.filter(r => r.id !== undefined).length - cut.filter(r => r.id !== undefined).length
-  const drawn: MenuRow[] = [...cut, ...(more > 0 ? [{ text: `\u2026 ${more} more \u2014 /flowpane runs` }] : [])].slice(0, room)
+  const rows = listOf(runs, options.nowMs)
+  // The list keeps every row it has and shows a window on to it. The headings
+  // used to be dropped here, on the grounds that a row spent on a caption is a
+  // run the reader cannot see — which was true while the rest of the list was
+  // being cut off anyway. A list that scrolls loses nothing to them: three rows
+  // out of forty-six, and the piles they divide are what the list is for.
+  const visible = Math.min(room, rows.length)
+  const at = seatOf(rows, run.runId, visible, options.runScroll)
+  const window: RunWindow = { total: rows.length, visible, scroll: at }
+  const scrolls = rows.length > visible
+  const drawn = rows.slice(at, at + visible)
 
   // Every clock ends in the same column, so the times can be read down the
-  // menu rather than hunted for at the end of each name.
-  const clockW = drawn.reduce((w, r) => Math.max(w, r.clock?.length ?? 0), 0)
-  const widest = drawn.reduce((w, r) => Math.max(w, r.text.length + (r.clock ? clockW + 2 : 0)), 0)
-  const inner = Math.max(4, Math.min(across, widest + 4))
+  // menu rather than hunted for at the end of each name. Measured over the
+  // whole list and not the drawn part of it, so the columns stand still while
+  // a reader scrolls rather than shifting under the pointer.
+  const clockW = rows.reduce((w, r) => Math.max(w, r.clock?.length ?? 0), 0)
+  const widest = rows.reduce((w, r) => Math.max(w, r.text.length + (r.clock ? clockW + 2 : 0)), 0)
+  // The bar takes a column of its own and a cell of air before it, the way
+  // every other scrolled thing in the pane pays for one.
+  const bar = scrolls ? 2 : 0
+  const inner = Math.max(4, Math.min(across, widest + 4 + bar))
   const width = inner + 2
   const height = drawn.length + 2
   // Under the name it drops from, pulled left only where it would otherwise
@@ -4650,10 +4717,14 @@ function paintRunMenu(c: Canvas, run: RunState, options: PaintOptions, hotspots:
 
   hotspots.length = 0
 
+  if (scrolls) {
+    paintListBar(c, x + width - 2, top + 1, height - 2, window, hotspots)
+  }
+
   drawn.forEach((row, i) => {
     const y = top + 1 + i
     const current = row.id === run.runId
-    const nameW = inner - 4 - (clockW > 0 ? clockW + 2 : 0)
+    const nameW = inner - 4 - bar - (clockW > 0 ? clockW + 2 : 0)
 
     // A heading, or the line that says how many runs did not fit: neither is a
     // run, so neither takes a press. Both start where the state glyphs do, so
@@ -4667,19 +4738,20 @@ function paintRunMenu(c: Canvas, run: RunState, options: PaintOptions, hotspots:
     // to which pile this is, which most readers take without reading the word.
     if (row.id === undefined) {
       if (row.mark === undefined) {
-        c.text(x + 4, y, truncate(row.text, inner - 4), COLORS.dim)
+        c.text(x + 4, y, truncate(row.text, inner - 4 - bar), COLORS.dim)
 
         return
       }
 
-      const caption = truncate(row.text, Math.max(1, inner - 8))
+      const caption = truncate(row.text, Math.max(1, inner - 8 - bar))
 
       c.text(x + 4, y, row.mark, row.color ?? COLORS.dim)
       c.text(x + 6, y, caption, row.color ?? COLORS.dim)
 
       // Stopping where the clocks stop, so the rule ends on the column every
-      // row on the menu ends on rather than running into the frame.
-      for (let at = x + 7 + caption.length; at < x + inner; at++) {
+      // row on the menu ends on rather than running into the frame — or into
+      // the bar, where the list is tall enough to carry one.
+      for (let at = x + 7 + caption.length; at < x + inner - bar; at++) {
         c.put(at, y, LIGHT.across, tone)
       }
 
@@ -4691,15 +4763,15 @@ function paintRunMenu(c: Canvas, run: RunState, options: PaintOptions, hotspots:
     c.text(x + 6, y, truncate(row.body ?? row.text, Math.max(1, nameW - 2)), current ? COLORS.accent : COLORS.text)
 
     if (row.clock) {
-      c.text(x + inner - row.clock.length, y, row.clock, COLORS.clock)
+      c.text(x + inner - bar - row.clock.length, y, row.clock, COLORS.clock)
     }
 
-    hotspots.push({ agentId: `run:${row.id}`, x: x + 2, y, w: inner - 2 })
+    hotspots.push({ agentId: `run:${row.id}`, x: x + 2, y, w: inner - 2 - bar })
   })
 
   hotspots.push(...covered)
 
-  return [{ x, y: top, w: width, h: height }]
+  return { rects: [{ x, y: top, w: width, h: height }], window }
 }
 
 /**
@@ -5461,10 +5533,17 @@ function paintAbout(c: Canvas, options: PaintOptions, hotspots: Hotspot[]): Rect
  * the same colours, the same grouping and clock the menu uses. Idle is not a
  * different product.
  *
- * @returns the cells each run's line occupies, so the rows become Buttons
+ * @returns the cells each run's line occupies, so the rows become Buttons, and
+ *   how much of the list the pane could stand, for the caller to clamp against
  */
-export function paintIdle(c: Canvas, runs: RunEntry[], nowMs: number, options?: PaintOptions): Hotspot[] {
-  const hotspots = idleRuns(c, runs, nowMs)
+export function paintIdle(
+  c: Canvas,
+  runs: RunEntry[],
+  nowMs: number,
+  options?: PaintOptions,
+): { hotspots: Hotspot[]; runList?: RunWindow } {
+  const drawn = idleRuns(c, runs, nowMs, options)
+  const hotspots = drawn.hotspots
 
   // The foot row is under the pane whether or not a run is drawing, so both of
   // its buttons have to open onto something here too. A settings button that
@@ -5476,11 +5555,16 @@ export function paintIdle(c: Canvas, runs: RunEntry[], nowMs: number, options?: 
     shade(c, frontOf(paintAbout(c, options, hotspots), settings, [], null))
   }
 
-  return hotspots
+  return drawn
 }
 
 /** The idle pane itself: the bar, the session's runs, and the line under them. */
-function idleRuns(c: Canvas, runs: RunEntry[], nowMs: number): Hotspot[] {
+function idleRuns(
+  c: Canvas,
+  runs: RunEntry[],
+  nowMs: number,
+  options?: PaintOptions,
+): { hotspots: Hotspot[]; runList?: RunWindow } {
   c.clear()
 
   const hotspots: Hotspot[] = []
@@ -5535,7 +5619,7 @@ function idleRuns(c: Canvas, runs: RunEntry[], nowMs: number): Hotspot[] {
   const room = c.rows - top
 
   if (room < 1) {
-    return hotspots
+    return { hotspots }
   }
 
   if (runs.length === 0) {
@@ -5547,7 +5631,7 @@ function idleRuns(c: Canvas, runs: RunEntry[], nowMs: number): Hotspot[] {
       c.text(2, top + 2, 'Start one and its graph draws itself here as it goes.', COLORS.dim)
     }
 
-    return hotspots
+    return { hotspots }
   }
 
   // The invitation takes the last row and a blank above it, and the list takes
@@ -5556,21 +5640,26 @@ function idleRuns(c: Canvas, runs: RunEntry[], nowMs: number): Hotspot[] {
   const hint = 'Press a run to draw it.'
   const hasHint = room >= 4
   const listRoom = hasHint ? room - 2 : room
-  const { rows: grouped, bare } = listOf(runs, nowMs)
-  const list = grouped.length <= listRoom ? grouped : bare
-  const shown = list.length <= listRoom ? list.length : listRoom - 1
-  const cut = list.slice(0, Math.max(1, shown))
-  const hidden = list.filter(r => r.id !== undefined).length - cut.filter(r => r.id !== undefined).length
-  const drawn: MenuRow[] = [
-    ...cut,
-    ...(hidden > 0 ? [{ text: `\u2026 ${hidden} more \u2014 /flowpane runs` }] : []),
-  ].slice(0, listRoom)
+  const rows = listOf(runs, nowMs)
+  // The same window the menu shows, for the same reason: this is that list in
+  // another place, and a list that says how many runs it left out is a list
+  // with no way to reach them.
+  const visible = Math.min(listRoom, rows.length)
+  const at = seatOf(rows, '', visible, options?.runScroll)
+  const window: RunWindow = { total: rows.length, visible, scroll: at }
+  const scrolls = rows.length > visible
+  const drawn = rows.slice(at, at + visible)
+  const bar = scrolls ? 2 : 0
 
-  const clockW = drawn.reduce((w, r) => Math.max(w, r.clock?.length ?? 0), 0)
-  const widest = drawn.reduce((w, r) => Math.max(w, r.text.length + (r.clock ? clockW + 2 : 0)), 0)
+  const clockW = rows.reduce((w, r) => Math.max(w, r.clock?.length ?? 0), 0)
+  const widest = rows.reduce((w, r) => Math.max(w, r.text.length + (r.clock ? clockW + 2 : 0)), 0)
   // The list is a block, not a table stretched over an empty pane: the clock
   // ends where the widest line does rather than at the pane's far edge.
-  const width = Math.min(c.columns - 4, Math.max(widest, hint.length))
+  const width = Math.min(c.columns - 4, Math.max(widest + bar, hint.length))
+
+  if (scrolls) {
+    paintListBar(c, 2 + width - 1, top, visible, window, hotspots)
+  }
 
   drawn.forEach((row, i) => {
     const y = top + i
@@ -5585,26 +5674,26 @@ function idleRuns(c: Canvas, runs: RunEntry[], nowMs: number): Hotspot[] {
         return
       }
 
-      const caption = truncate(row.text, Math.max(1, width - 4))
+      const caption = truncate(row.text, Math.max(1, width - 4 - bar))
 
       c.text(2, y, row.mark, row.color ?? COLORS.dim)
       c.text(4, y, caption, row.color ?? COLORS.dim)
 
-      for (let at = 5 + caption.length; at < 2 + width; at++) {
-        c.put(at, y, LIGHT.across, quiet)
+      for (let end = 5 + caption.length; end < 2 + width - bar; end++) {
+        c.put(end, y, LIGHT.across, quiet)
       }
 
       return
     }
 
     c.text(2, y, row.mark ?? '', row.color ?? COLORS.text)
-    c.text(4, y, truncate(row.body ?? row.text, Math.max(1, width - 2 - (clockW > 0 ? clockW + 2 : 0))), COLORS.text)
+    c.text(4, y, truncate(row.body ?? row.text, Math.max(1, width - 2 - bar - (clockW > 0 ? clockW + 2 : 0))), COLORS.text)
 
     if (row.clock) {
-      c.text(2 + width - row.clock.length, y, row.clock, COLORS.clock)
+      c.text(2 + width - bar - row.clock.length, y, row.clock, COLORS.clock)
     }
 
-    hotspots.push({ agentId: `run:${row.id}`, x: 2, y, w: width })
+    hotspots.push({ agentId: `run:${row.id}`, x: 2, y, w: width - bar })
   })
 
   // Under the list rather than at the pane's foot: the runs and what to do with
@@ -5614,7 +5703,7 @@ function idleRuns(c: Canvas, runs: RunEntry[], nowMs: number): Hotspot[] {
     c.text(2, top + drawn.length + 1, hint, COLORS.dim)
   }
 
-  return hotspots
+  return { hotspots, runList: window }
 }
 
 /** The glyph on the run the pane is drawing, in the menu's left gutter. */
@@ -5645,9 +5734,8 @@ type MenuRow = {
  * before the reader has to read its glyph, and the clock says which of two
  * runs of the same name is the one they remember.
  */
-function listOf(runs: RunEntry[], nowMs: number): { rows: MenuRow[]; bare: MenuRow[] } {
+function listOf(runs: RunEntry[], nowMs: number): MenuRow[] {
   const rows: MenuRow[] = []
-  const bare: MenuRow[] = []
   const groups = RUN_GROUPS.map(group => ({
     group,
     mine: runs.filter(r => r.status === group.status).sort((a, b) => b.startedMs - a.startedMs),
@@ -5680,11 +5768,82 @@ function listOf(runs: RunEntry[], nowMs: number): { rows: MenuRow[]; bare: MenuR
       }
 
       rows.push(row)
-      bare.push(row)
     }
   }
 
-  return { rows, bare }
+  return rows
+}
+
+/**
+ * Where a list too tall for its room starts, given what the pane asked for.
+ *
+ * Asked for nothing, it seats itself on the run the pane is drawing rather than
+ * at the top: the list is opened to move off that run, and a reader who cannot
+ * see where they are standing has to scroll to find out. Asked for a row, it
+ * gives that row clamped to what the list actually has — which is what moves a
+ * list back into view when it shrinks under a reader who had scrolled to its
+ * end.
+ */
+function seatOf(rows: MenuRow[], shownId: string, room: number, asked?: number): number {
+  const most = Math.max(0, rows.length - room)
+
+  if (asked !== undefined) {
+    return Math.max(0, Math.min(asked, most))
+  }
+
+  const at = rows.findIndex(row => row.id === shownId)
+
+  // Already on screen from the top, or not on the list at all: the top is where
+  // a reader expects a list to open, and what is still running is up there.
+  if (at < 0 || at < room) {
+    return 0
+  }
+
+  return Math.min(most, at - Math.floor((room - 1) / 2))
+}
+
+/**
+ * The bar down a run list too tall for its room: two arrows and a thumb.
+ *
+ * The same furniture the detail dialog and the body already carry, in the same
+ * order, because it is the same question — how much of this is on screen, and
+ * whereabouts in it. It replaced a line reading `\u2026 38 more \u2014 /flowpane runs`,
+ * which named a command that prints the same list somewhere else: a count of
+ * what the pane dropped, in place of a way to reach it.
+ */
+function paintListBar(
+  c: Canvas,
+  x: number,
+  y: number,
+  rows: number,
+  window: RunWindow,
+  hotspots: Hotspot[],
+): void {
+  const key = (at: number, glyph: number, live: boolean, id: string) => {
+    c.put(x, at, glyph, live ? COLORS.accent : COLORS.idle)
+
+    if (live) {
+      hotspots.push({ agentId: id, x, y: at, w: 1 })
+    }
+  }
+
+  key(y, ARROW_UP, window.scroll > 0, 'runs-up')
+  key(y + rows - 1, ARROW_DOWN, window.scroll + window.visible < window.total, 'runs-down')
+
+  const track = rows - 2
+
+  if (track < 1) {
+    return
+  }
+
+  const size = Math.max(1, Math.round((window.visible / window.total) * track))
+  const at = Math.round((window.scroll / Math.max(1, window.total - window.visible)) * (track - size))
+
+  for (let row = 0; row < track; row++) {
+    const filled = row >= at && row < at + size
+
+    c.put(x, y + 1 + row, filled ? 0x2588 : 0x2502, filled ? COLORS.dim : COLORS.track)
+  }
 }
 
 /**
@@ -5744,7 +5903,7 @@ function factsColumns(
   spend: number
   model: number
   width: number
-  form: (n: number) => string
+  form: (n?: number) => string
 } {
   let state = 0
   let time = 0
@@ -5758,14 +5917,10 @@ function factsColumns(
     model = Math.max(model, tag.length)
   }
 
-  const columnFor = (form: (n: number) => string) =>
+  const columnFor = (form: (n?: number) => string) =>
     Math.max(
       0,
-      ...run.agents.map(agent => {
-        const spent = tokensOf(agent)
-
-        return spent === undefined ? 0 : form(spent).length
-      }),
+      ...run.agents.map(agent => form(tokensOf(agent)).length),
     )
 
   let form = tokensShort
@@ -5816,7 +5971,7 @@ function drawColumns(
   c: Canvas,
   x: number,
   y: number,
-  columns: { state: number; time: number; spend: number; model: number; form: (n: number) => string },
+  columns: { state: number; time: number; spend: number; model: number; form: (n?: number) => string },
   agent: AgentRow,
   took: number,
   fallbackModel?: string,
@@ -5828,7 +5983,7 @@ function drawColumns(
   const cells: [number, string, Rgb, 'right' | 'left'][] = [
     [columns.state, stateWord(agent.state), colorOf(agent.state), 'left'],
     [columns.time, elapsed(took), COLORS.clock, 'right'],
-    [columns.spend, spent === undefined ? '' : columns.form(spent), COLORS.spend, 'right'],
+    [columns.spend, columns.form(spent), COLORS.spend, 'right'],
     [columns.model, modelName(agent.model ?? fallbackModel), COLORS.model, 'left'],
   ]
 
@@ -7037,12 +7192,15 @@ function paintDetail(
   // opened the node to find out what the bare name beside it meant has the
   // answer in the same place as the rest of the node's facts.
   const from = (show: boolean): string => (show && fedBy.length > 0 ? `from ${fedBy.join(', ')}` : '')
-  const factsWith = (form: (n: number) => string, tools: string, fed = true): Field[] => [
+  const factsWith = (form: (n?: number) => string, tools: string, fed = true): Field[] => [
       { text: agent.phase, color: COLORS.dim },
       { text: from(fed), color: COLORS.wire },
       { text: `${CLOCK_MARK} ${elapsed(took)}`, color: COLORS.clock },
       { text: quiet > 0 ? `quiet ${elapsed(quiet)}` : '', color: mix(COLORS.failed, COLORS.running, 0.5) },
-      { text: spent === undefined ? '' : form(spent), color: COLORS.spend },
+      // Drawn whether or not there is a figure: this is the same fact the card
+      // carries, and the dialog is where a reader comes to find out what the
+      // card meant. A blank here would answer the question with nothing.
+      { text: form(spent), color: COLORS.spend },
       { text: agent.steps ? `${REQUEST_MARK} ${agent.steps}` : '', color: COLORS.dim },
       { text: tools || (calls.length > 0 ? `${TOOL_MARK} ${calls.length}` : ''), color: COLORS.dim },
       { text: agent.attempt && agent.attempt > 1 ? loopMark(agent.attempt) : '', color: COLORS.running },

@@ -53,6 +53,14 @@ mostly the same workflow over and over, so the names repeat and how far each got
 is the only thing that differs — down a column it can be read, along a ragged
 line it cannot.
 
+More runs than the pane can stand is a window on the list rather than a cut
+end. The list takes the room, the invitation keeps the last row, and where the
+rows still do not all fit the bar the menu carries is drawn down the list's own
+right-hand edge — `▴` and `▾`, a thumb between them, and the wheel anywhere
+over the pane moving it. The idle pane is the list, so there is nothing else
+for a wheel turned over it to move; before this it moved nothing at all and the
+last row read `… 8 more — /flowpane runs`.
+
 A session with nothing to list gets the one thing left to say:
 
 ```

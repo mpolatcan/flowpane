@@ -13,7 +13,7 @@ import { expect, test } from 'claude-code/testing'
 import { Canvas } from '../hooks/canvas'
 import type { RunState } from '../hooks/journal'
 import { barRowsOf } from '../hooks/layout'
-import { paint, paintIdle, type RunEntry } from '../hooks/paint'
+import { paint, paintIdle, type RunEntry, type RunWindow } from '../hooks/paint'
 
 const NOW = new Date(2026, 8, 15, 14, 30).getTime()
 const HOUR = 3_600_000
@@ -24,7 +24,9 @@ const MARK = { running: '\u25b8', completed: '\u2714', failed: '\u2716', stopped
 // A heading is that state's own mark, its name, and a rule out to the edge of
 // the box: the mark says which state without reading the word, and the rule
 // says where the group starts.
-const HEADING = /^\s*([\u25b8\u2714\u2716\u2298]) (Running|Done|Failed|Stopped) \u2500+\s*$/
+// The rule stops where the clocks do, so on a list tall enough to scroll the
+// bar's own column stands after it.
+const HEADING = /^\s*([\u25b8\u2714\u2716\u2298]) (Running|Done|Failed|Stopped) \u2500+[\s\u2502\u2588\u25b4\u25be]*$/
 
 /** The state names on the list, in the order the list stacks them. */
 function captionsOf(lines: string[]): string[] {
@@ -60,16 +62,25 @@ function shownRun(runId: string): RunState {
   }
 }
 
-/** The menu's own lines: the rows of the box the run's name drops. */
-function menuOf(runs: RunEntry[], shownId = 'wf_a', rows = 26): string[] {
+/**
+ * The menu drawn over a run, and everything the paint said about it: its own
+ * rows, what can be pressed, and how much of the list the box could stand.
+ */
+function menuPaint(
+  runs: RunEntry[],
+  shownId = 'wf_a',
+  rows = 26,
+  runScroll?: number,
+): { lines: string[]; pressable: string[]; runList?: RunWindow } {
   const canvas = new Canvas(80, rows)
 
-  paint(canvas, shownRun(shownId), {
+  const drawn = paint(canvas, shownRun(shownId), {
     nowMs: NOW,
     tick: 0,
     orientation: 'horizontal',
     runPicker: 'open',
     runs,
+    ...(runScroll === undefined ? {} : { runScroll }),
   })
 
   const lines: string[] = []
@@ -87,7 +98,18 @@ function menuOf(runs: RunEntry[], shownId = 'wf_a', rows = 26): string[] {
   const top = barRowsOf(canvas.rows, canvas.columns)
   const height = lines.slice(top).findIndex(line => line.includes('\u2570'))
 
-  return lines.slice(top + 1, top + height).map(line => line.slice(line.indexOf('\u2502') + 1, line.lastIndexOf('\u2502')))
+  return {
+    lines: lines
+      .slice(top + 1, top + height)
+      .map(line => line.slice(line.indexOf('\u2502') + 1, line.lastIndexOf('\u2502'))),
+    pressable: drawn.hotspots.map(h => h.agentId),
+    ...(drawn.runList ? { runList: drawn.runList } : {}),
+  }
+}
+
+/** The menu's own lines: the rows of the box the run's name drops. */
+function menuOf(runs: RunEntry[], shownId = 'wf_a', rows = 26): string[] {
+  return menuPaint(runs, shownId, rows).lines
 }
 
 test('the menu stacks the runs by state, what is still going first', () => {
@@ -159,19 +181,68 @@ test('the run the pane is drawing is the marked one', () => {
   expect(lines[1].includes(SHOWN)).toBe(true)
 })
 
-test('a menu too tall for the pane drops its headings before it drops a run', () => {
+/** One run still going and twelve stopped: more list than any short pane holds. */
+function crowd(): RunEntry[] {
   const many = Array.from({ length: 12 }, (_, i) => entry(`wf_${i}`, 'stopped', NOW - (i + 1) * HOUR, 'audit'))
-  const lines = menuOf([entry('wf_a', 'running', NOW), ...many], 'wf_a', 16)
 
-  expect(captionsOf(lines)).toEqual([])
+  return [entry('wf_a', 'running', NOW), ...many]
+}
+
+test('a menu too tall for the pane keeps its headings and offers the rest', () => {
+  const { lines, pressable, runList } = menuPaint(crowd(), 'wf_a', 16)
+
+  // The headings used to be the first thing dropped, on a list that was being
+  // cut off anyway. A list that scrolls keeps them: they are three rows out of
+  // fifteen, and the piles they divide are what the list is for.
+  expect(captionsOf(lines)).toEqual(['Running', 'Stopped'])
   expect(lines[0]).toContain(MARK.running)
-  expect(lines[lines.length - 1]).toMatch(/more — \/flowpane runs/)
+
+  // And what did not fit is reachable rather than counted: no line says how
+  // many runs were left out, because none were.
+  expect(lines.join('\n')).not.toMatch(/more/)
+  expect(pressable).toContain('runs-down')
+  expect(runList?.total).toBe(15)
+  expect(runList?.visible).toBeLessThan(15)
+})
+
+test('a menu scrolled to its end shows the runs the top of the list hid', () => {
+  const runs = crowd()
+  const held = menuPaint(runs, 'wf_a', 16)
+  const { lines, pressable, runList } = menuPaint(runs, 'wf_a', 16, 99)
+
+  // Asked for further than the list goes, it settles on the last screenful:
+  // a reader holding the arrow down stops at the end rather than at a blank.
+  expect(runList?.scroll).toBe((held.runList?.total ?? 0) - (held.runList?.visible ?? 0))
+  // The oldest run of the pile, twelve hours back: the last row the list has.
+  expect(lines.join('\n')).toContain('02:30:00')
+  expect(pressable).toContain('runs-up')
+  expect(pressable).not.toContain('runs-down')
+})
+
+test('an unscrolled menu opens on the run the pane is drawing', () => {
+  const runs = Array.from({ length: 20 }, (_, i) => entry(`wf_${i}`, 'stopped', NOW - (i + 1) * HOUR, 'audit'))
+  const { lines } = menuPaint(runs, 'wf_18', 14)
+
+  // The list is opened to move off the run in the bar. Seated at the top it
+  // opened ten rows above the only row that says where the reader is standing.
+  expect(lines.some(line => line.includes(SHOWN))).toBe(true)
 })
 
 /** The idle pane's own lines, trailing blanks trimmed. */
-function idleOf(runs: RunEntry[], columns = 76, rows = 20): { lines: string[]; pressable: string[] } {
+function idleOf(
+  runs: RunEntry[],
+  columns = 76,
+  rows = 20,
+  runScroll?: number,
+): { lines: string[]; pressable: string[]; runList?: RunWindow } {
   const canvas = new Canvas(columns, rows)
-  const hotspots = paintIdle(canvas, runs, NOW)
+  const drawn = paintIdle(
+    canvas,
+    runs,
+    NOW,
+    runScroll === undefined ? undefined : { nowMs: NOW, tick: 0, detailRows: 24, runScroll },
+  )
+  const { hotspots } = drawn
   const lines: string[] = []
 
   for (let y = 0; y < canvas.rows; y++) {
@@ -184,7 +255,11 @@ function idleOf(runs: RunEntry[], columns = 76, rows = 20): { lines: string[]; p
     lines.push(line.trimEnd())
   }
 
-  return { lines, pressable: hotspots.map(h => h.agentId) }
+  return {
+    lines,
+    pressable: hotspots.map(h => h.agentId),
+    ...(drawn.runList ? { runList: drawn.runList } : {}),
+  }
 }
 
 test('with no run to draw the pane draws what the session has run', () => {
@@ -225,11 +300,24 @@ test('a session with nothing to list is told what will fill the pane', () => {
   expect(body).not.toMatch(/\d+ runs? this session/)
 })
 
-test('a short idle pane keeps the runs and drops what it can', () => {
+test('a short idle pane scrolls to the runs it has no room for', () => {
   const many = Array.from({ length: 9 }, (_, i) => entry(`wf_${i}`, 'stopped', NOW - (i + 1) * HOUR, 'audit'))
-  const { lines, pressable } = idleOf(many, 60, 10)
+  const { lines, pressable, runList } = idleOf(many, 60, 10)
 
+  // The pane is the list here, so the list is the thing that gets the room and
+  // the runs it cannot stand are reachable rather than counted.
   expect(pressable.length).toBeGreaterThan(0)
-  expect(lines.join('\n')).toMatch(/more — \/flowpane runs/)
+  expect(pressable).toContain('runs-down')
+  expect(lines.join('\n')).not.toMatch(/more/)
+  expect(runList?.total).toBe(9)
   expect(lines.length).toBe(10)
+
+  const end = idleOf(many, 60, 10, 99)
+
+  // And moved to its end it shows the oldest run, clamped to the last
+  // screenful rather than run off into blank rows.
+  expect(end.runList?.scroll).toBe(9 - (runList?.visible ?? 0))
+  expect(end.lines.join('\n')).toContain('05:30:00')
+  expect(end.pressable).toContain('runs-up')
+  expect(end.pressable).not.toContain('runs-down')
 })

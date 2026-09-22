@@ -21,7 +21,7 @@ import { aboutRows, aboutText, NAME, noteShipped, RELEASED, shippedVersion, VERS
  * true, because a date left behind is still a well-formed date. Read against
  * the release before it, a date that never moved is the one thing that shows.
  */
-const LAST_RELEASE = { version: '0.6.0', released: '22-09-2026' }
+const LAST_RELEASE = { version: '0.7.0', released: '22-09-2026' }
 
 /** A day-first date as a string that sorts by day. */
 function sortable(date: string): string {
@@ -32,10 +32,10 @@ function sortable(date: string): string {
 
 test('the day this build went out is not earlier than the day the last one did', () => {
   // Not strictly later. A version bumped so the engine's version-keyed cache
-  // lets go of the build before it is a release of its own, and two of those
-  // can fall on one day — 0.6.0 and 0.7.0 both went out on the 22nd. What the
-  // row still catches is the fault it was written for: a date that went
-  // backwards, and, below, a version that did not move at all.
+  // lets go of the build before it is a release of its own, and several of
+  // those can fall on one day — 0.6.0, 0.7.0 and 0.8.0 all went out on the
+  // 22nd. What the row still catches is the fault it was written for: a date
+  // that went backwards, and, below, a version that did not move at all.
   const kept = sortable(RELEASED) >= sortable(LAST_RELEASE.released)
 
   expect(`${VERSION} on ${RELEASED}, against ${LAST_RELEASE.version} on ${LAST_RELEASE.released}: ${kept}`)

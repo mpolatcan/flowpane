@@ -48,6 +48,22 @@ settle it without the reader having to know that. They stand in the run line, in
 the detail dialog's foot, against every tool call it lists and down every list
 and timeline row, so each is learnt once and never has to be guessed at.
 
+The spend slot is always drawn, whatever the pane knows. An agent no file has
+yet put a figure on reads `∑ —`, and one that really spent nothing reads
+`∑ 0` — they are different facts and a blank says neither. Left out where
+there was no figure, a card came out one field narrower than the card beside
+it, which reads as a different kind of node rather than as the same node with
+one thing missing: in one band `⏱ 2m41s  ∑ 114.6k tkns  ⟳ thinking` stood
+next to `⏱ 31.4s  Haiku`, and nothing said whether the second had been free or
+uncounted.
+
+`—` is the rarer of the two now, because the count is also read out of the
+agent's own transcript: the newest request's context, the same figure the live
+reader keeps. Before that, an agent that finished before the pane started
+watching carried nothing until the whole run ended and the engine's summary
+landed — so every helper of a run adopted mid-flight looked like a step that
+cost nothing. See [data.md](data.md).
+
 What a card chooses is the precision, not the mark. A decimal costs two cells
 that a card of thirty-two columns has and a card of fourteen has not, and when
 one card in a phase cannot afford it none of them take it: two cards side by

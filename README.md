@@ -32,8 +32,8 @@ plugin API from [anthropics/claude-code#91870](https://github.com/anthropics/cla
 - **What an agent was asked and answered**: press a node for a dialog carrying
   its prompt, every tool call with its input, and its result.
 - **The session's other runs**: press the run's name for a menu of them,
-  grouped by state; with nothing running the pane lists them in place of the
-  graph.
+  grouped by state and scrolling where there are more than the pane can stand;
+  with nothing running the pane lists them in place of the graph.
 - **A nested workflow as a run of its own**: a phase whose agents belong to a
   workflow this one called is drawn in the dashed register every layout uses for
   work that is not this run's, folded to one node with a mark per trip. Press its
@@ -77,7 +77,7 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | --- | --- |
 | A node's label | opens that agent's detail dialog; click again to close |
 | ⚙ Settings | opens the settings dialog over the drawing |
-| `flowpane 0.7.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
+| `flowpane 0.8.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
 | A setting's value | unrolls that setting's list where it stands; press it again to roll the list up |
 | The graph, with any dialog open | takes no presses — it is pushed back behind the dialog until the dialog shuts |
 | Layout | **across**, **down**, **timeline**, or **fits** the shape — picked by name |
@@ -91,7 +91,8 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | ▴ / ▾ ◂ / ▸ (at the pane's edges) | scrolls the drawing, where it is larger than the pane. A live run is drawn with the window on the phase it is working in, so scrolling away is a peek: it goes back when the run enters a new phase |
 | The wheel, over the pane | moves the drawing, or the open dialog while one is open |
 | The wheel, over the rail along the foot | moves the drawing sideways — as does the wheel anywhere over a drawing that only goes that way |
-| The run's name | opens the session's other runs as a menu under it, once there is more than one; grouped by state, most recent first, each with the second it started on. Picking one moves the drawing to it, live or finished |
+| The run's name | opens the session's other runs as a menu under it, once there is more than one; grouped by state, most recent first, each with the second it started on, and opening on the run the pane is drawing. Picking one moves the drawing to it, live or finished |
+| ▴ / ▾ (down a run list) | scrolls the runs three rows, in the menu or on the idle pane, with a thumb saying whereabouts in the list they are. The wheel over an open list moves it too |
 | A run on the idle pane | draws it. With nothing running the pane lists the session's runs in place of the graph, grouped and timed the same way |
 
 ## Settings
@@ -158,7 +159,7 @@ it changed:
 ## Status
 
 Loads and runs on **Claude Code 2.1.272**: hooks register, `/flowpane` lists, the launch
-hook fires and reads the journal. 328 tests run over the engine with `claude
+hook fires and reads the journal. 336 tests run over the engine with `claude
 plugin test .`; `dev/lines.ts` checks every line of every run on disk at twelve
 widths and ten heights. Nothing the pane reads leaves the machine.
 

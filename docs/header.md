@@ -208,10 +208,27 @@ two restarts inside a minute are common enough that `12:54` twice over left the
 reader nothing to pick by. A run from another day carries the day as well, since
 `13:44` on Sunday and `13:44` on Monday are otherwise the same three rows apart.
 
-The headings cost a row each, and a pane too short to hold every run as well as
-its headings drops the headings and keeps the order they described. Shorter
-still and the last row says how many runs did not fit, and `/flowpane runs` lists
-them all.
+A list too tall for the box keeps every row it has and shows a window on to it,
+with the same bar the detail dialog and the body carry down its right-hand
+edge: `▴` and `▾` at the ends, a thumb between them saying how much of the
+list is on screen and whereabouts in it, and the wheel over the menu moving it
+three rows a press. The clocks stop a column short of the bar where one is
+drawn, so the columns the list is read down stand still rather than shifting
+under the pointer when it appears.
+
+Before that the box gave way instead: the headings were dropped first, and
+shorter still the last row read `… 8 more — /flowpane runs`, which named a
+command that prints the same list somewhere else. A count of what the pane left
+out is not a way to reach it, and a session that leaves forty-six runs behind
+leaves most of them past that line. The headings stay now, because a list that
+scrolls loses nothing to them — three rows out of forty-six, and the piles they
+divide are what the list is for.
+
+Opened without being scrolled, the list seats itself on the run the pane is
+drawing rather than at the top. The list is opened to move off that run, and a
+reader who cannot see where they are standing has to scroll to find out. Once
+it is shut, where they scrolled to is forgotten: the next opening is about runs
+that have moved since.
 
 Only files named for a run are read. The engine keeps its own bookkeeping in
 the same directory — `.skipped-runs.json` among it — and a file that is not a

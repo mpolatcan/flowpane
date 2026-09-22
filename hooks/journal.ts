@@ -926,10 +926,12 @@ export function modelName(model?: string): string {
 export function readAgentTranscript(text: string): {
   prompt?: string
   result?: string
+  tokens?: number
   calls: ToolCall[]
 } {
   let prompt
   let result
+  let tokens
   const calls: ToolCall[] = []
   const byId = new Map<string, ToolCall>()
 
@@ -963,6 +965,17 @@ export function readAgentTranscript(text: string): {
     const stamp = Date.parse(String(row?.timestamp ?? ''))
     const at = Number.isFinite(stamp) ? stamp : 0
     const issued = Number(row?.message?.usage?.output_tokens)
+    // The same figure the live reader keeps, read off the file instead: the
+    // newest request's context, skipping the empty usage that closes a stream.
+    // Without this an agent that finished before this pane was watching showed
+    // no count at all until its whole run ended and the engine's own summary
+    // landed — and a helper that ran for thirty seconds looked like a step that
+    // cost nothing. See `noteStep` for why it is the newest and not the sum.
+    const carried = contextOfUsage(row?.message?.usage ?? {})
+
+    if (carried > 0) {
+      tokens = carried
+    }
 
     for (const part of content) {
       if (part?.type === 'tool_use' && typeof part.name === 'string') {
@@ -1010,5 +1023,5 @@ export function readAgentTranscript(text: string): {
     }
   }
 
-  return { prompt, result, calls }
+  return { prompt, result, tokens, calls }
 }

@@ -13,7 +13,7 @@ alone are not enough:
 | `tool.call`, unmatched | every subagent's tool call, with the `agentId` the journal names | live, around each call |
 | `turn.step` | every model request a subagent makes, with its `agentId`: the text as it streams and the request's `usage` at its stop | live, chunk by chunk |
 | `<transcriptDir>/agent-<id>.meta.json` | the model the agent was spawned on, its type, its phase | at spawn — so a node can name its model while it is still running |
-| `<transcriptDir>/agent-<id>.jsonl` | the prompt the agent was given and the text it answered | when its detail dialog is opened |
+| `<transcriptDir>/agent-<id>.jsonl` | the prompt the agent was given, the text it answered, and what its newest request was holding | when its detail dialog is opened, and once per agent that stopped without the pane hearing it |
 | `<session>/workflows/scripts/<name>-<runId>.js` | that a run exists at all, what workflow it is, and its phases | at launch — the only file a run has before it ends |
 
 `turn.step` is what makes the pane honest about a running agent. The hook is an
@@ -48,6 +48,17 @@ reports what they finished carrying, so a high-water mark would leave the pane a
 hundred thousand above the panel beside it for the rest of the run. A usage with
 every count zero is skipped: the last record of a transcript is often one, the
 stream being closed rather than a request being paid for.
+
+The same figure is read back out of the file where nothing watched the request
+go by. An agent that finished before the pane started — a run adopted
+mid-flight, or a pane opened on a run from earlier in the session — has no
+stream to count, so it used to carry no figure at all until the whole run ended
+and the engine's summary landed. A helper that ran for thirty seconds inside a
+run still going therefore looked like a step that cost nothing. Its transcript
+states it: the newest request's usage, read the way the live reader keeps it,
+taken once per agent when the agent has stopped and the run has said nothing
+about it. Where even that is missing the card says `∑ —` rather than leaving
+the slot out — see [nodes.md](nodes.md).
 
 The seven it still misses are retries. The engine's figure for an agent it ran
 twice covers both tries and the transcript keeps only the last, so a retried

@@ -36,6 +36,7 @@ function view(): PaneView {
     following: true,
     opened: [],
     picking: false,
+    runScroll: null,
     settings: false,
     menu: null,
     about: false,
@@ -604,4 +605,73 @@ test('a trip opened from inside a nested run keeps the way back to its list', ()
   applyPress(v, '@run-back', { hasRun: true })
 
   expect(v.selectedId).toBe('@run:▸ code-review')
+})
+
+test('the run list scrolls as far as it has runs and no further', () => {
+  const v = view()
+  const runList = { total: 20, visible: 6, scroll: 0 }
+
+  applyPress(v, 'runs-down', { hasRun: true, runList })
+
+  expect(v.runScroll).toBe(3)
+
+  // Held down past the end, it stops on the last screenful rather than running
+  // the list off into blank rows a reader then has to press back up through.
+  for (let press = 0; press < 20; press++) {
+    applyPress(v, 'runs-down', { hasRun: true, runList })
+  }
+
+  expect(v.runScroll).toBe(14)
+
+  for (let press = 0; press < 20; press++) {
+    applyPress(v, 'runs-up', { hasRun: true, runList })
+  }
+
+  expect(v.runScroll).toBe(0)
+})
+
+test('a list shut and opened again opens where the pane is, not where it was left', () => {
+  const v = view()
+
+  applyPress(v, '@runs', { hasRun: true })
+  applyPress(v, 'runs-down', { hasRun: true, runList: { total: 20, visible: 6, scroll: 0 } })
+
+  expect(v.runScroll).toBe(3)
+
+  applyPress(v, '@runs', { hasRun: true })
+
+  expect(v.picking).toBe(false)
+  // Nothing remembered: an unscrolled list seats itself on the run the pane is
+  // drawing, and the offset from last time is about runs that have since moved.
+  expect(v.runScroll).toBe(null)
+})
+
+test('the wheel over an open run list moves the list, not the drawing behind it', () => {
+  const v = view()
+  const body = { x: 0, y: 0, spanX: 0, spanY: 40 }
+
+  v.picking = true
+
+  wheel(v, { body, runList: { total: 20, visible: 6, scroll: 0 } }, 4)
+
+  expect(v.runScroll).toBe(4)
+  expect(v.bodyScroll).toEqual({ x: 0, y: 0 })
+
+  // With no list on screen the same turn moves the drawing, as it always did.
+  const other = view()
+
+  wheel(other, { body }, 4)
+
+  expect(other.bodyScroll).toEqual({ x: 0, y: 4 })
+})
+
+test('the wheel steps from the row the paint drew at, not from the top', () => {
+  const v = view()
+
+  // The list seated itself on the run the pane is drawing, ten rows down. A
+  // first turn used to step from zero, which jumped the reader back to the top
+  // of the list before moving them anywhere.
+  wheel(v, { runList: { total: 30, visible: 8, scroll: 10 } }, 2)
+
+  expect(v.runScroll).toBe(12)
 })

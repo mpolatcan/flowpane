@@ -54,6 +54,7 @@ import {
   type PaintOptions,
   type PaintResult,
   type RunEntry,
+  type RunWindow,
   type SettingMenu,
 } from './paint'
 import { applyPress, drew, MAX_DETAIL, MIN_DETAIL, ORIENTATIONS, showDetail, wheel } from './press'
@@ -160,6 +161,8 @@ const state: {
   loaded: Set<string>
   /** Agents whose `.meta.json` has been asked for, so it is asked for once. */
   models: Set<string>
+  /** Agents whose transcript has been read for a token count, so it is read once. */
+  spent: Set<string>
   /**
    * `<agentId>:<state>` for each agent whose clock has been read off its files,
    * so the pair is read once when the agent appears and once after it stops.
@@ -191,6 +194,10 @@ const state: {
   front: string | null
   /** True while the run name's list is unrolled under the top bar. */
   picking: boolean
+  /** The first row on screen in the session's run list, wherever it is drawn. */
+  runScroll: number | null
+  /** What the last paint said about that list, for clamping a scroll. */
+  runListView: RunWindow | null
   /** True while the settings dialog is open over the drawing. */
   settings: boolean
   /** Which setting's list is unrolled inside that dialog, if any. */
@@ -219,6 +226,7 @@ const state: {
   pressed: null,
   loaded: new Set(),
   models: new Set(),
+  spent: new Set(),
   clocks: new Set(),
   orientation: 'auto',
   detailRows: 24,
@@ -234,6 +242,8 @@ const state: {
   following: true,
   front: null,
   picking: false,
+  runScroll: null,
+  runListView: null,
   settings: false,
   menu: null,
   about: false,
@@ -485,6 +495,7 @@ async function readRun($: EngineInterface, run: RunState, nowMs: number): Promis
   }
 
   await readModels($, run)
+  await readSpend($, run)
 }
 
 /**
@@ -513,6 +524,40 @@ async function readModels($: EngineInterface, run: RunState): Promise<void> {
 }
 
 /**
+ * Fills in the token count of any agent the summary has not counted yet.
+ *
+ * The engine attributes a count to every agent, and it does so when the run
+ * ends. Until then the only figure the pane has is whatever it watched go past
+ * on `turn.step` — so an agent that finished before this pane was drawing, or
+ * before the session it is drawing in started, carried no figure at all, and
+ * drew none. A thirty-second helper reading nothing said it had cost nothing.
+ *
+ * So the agent's own transcript is read for it, the way `readModels` reads the
+ * model: once per agent, and only for an agent that has stopped and still has
+ * no count. A running agent is left to the live reader, which is ahead of the
+ * file; a run that has ended has the summary, which is better than both.
+ */
+async function readSpend($: EngineInterface, run: RunState): Promise<void> {
+  for (const agent of run.agents) {
+    if (agent.state === 'running' || agent.tokens !== undefined || agent.liveTokens !== undefined) {
+      continue
+    }
+
+    if (state.spent.has(agent.agentId)) {
+      continue
+    }
+
+    state.spent.add(agent.agentId)
+
+    const path = `${run.transcriptDir}/agent-${agent.agentId}.jsonl`
+
+    if (await $.fs.exists(path)) {
+      agent.liveTokens = readAgentTranscript(await $.fs.read(path)).tokens
+    }
+  }
+}
+
+/**
  * Reads one agent's own transcript for the prompt it was given and the text it
  * answered with — read once per agent, when its detail dialog is first opened.
  */
@@ -533,6 +578,12 @@ async function loadDetail($: EngineInterface, run: RunState, agentId: string): P
 
   row.prompt = read.prompt ?? row.prompt
   row.result = read.result ?? row.result
+  // The same figure `readSpend` sweeps for, taken while the file is open. The
+  // sweep skips a running agent and this does not: a reader who opens a live
+  // agent's dialog is looking at the one row on the pane whose file has just
+  // been read, and leaving it blank there would be a gap they can see the
+  // answer to.
+  row.liveTokens = row.liveTokens ?? read.tokens
 
   // The live chain records calls as they happen and knows their timing; the
   // transcript knows only what was passed and what came back. So the transcript
@@ -597,6 +648,7 @@ function kept(drawn: PaintResult): void {
   state.hotspots = drawn.hotspots
   state.detailView = drawn.detail ?? null
   state.bodyView = drawn.body ?? null
+  state.runListView = drawn.runList ?? null
 
   drew(state, drawn)
 }
@@ -619,6 +671,7 @@ function paintOptions(nowMs: number): PaintOptions {
     opened: state.opened,
     runPicker: canPickRun() ? (state.picking ? 'open' : 'shut') : undefined,
     runs: state.picking ? state.runs.map(runEntry) : undefined,
+    runScroll: state.runScroll ?? undefined,
     settings: state.settings,
     menu: state.menu ?? undefined,
     about: state.about,
@@ -799,6 +852,7 @@ async function actOnPress($: EngineInterface): Promise<void> {
     hasRun: state.shown !== null,
     detail: state.detailView,
     body: state.bodyView,
+    runList: state.runListView,
   })
 
   for (const key of result.store ?? []) {
@@ -1284,7 +1338,10 @@ export function register(on: On, options: PluginOptions) {
       // is cleared and the list takes its place.
       const nowMs = await $.clock.now()
 
-      state.hotspots = paintIdle(state.canvas, state.runs.map(runEntry), nowMs, paintOptions(nowMs))
+      const idle = paintIdle(state.canvas, state.runs.map(runEntry), nowMs, paintOptions(nowMs))
+
+      state.hotspots = idle.hotspots
+      state.runListView = idle.runList ?? null
       state.detailView = null
       state.bodyView = null
       state.front = null
@@ -1366,19 +1423,33 @@ export function register(on: On, options: PluginOptions) {
   // looking, and a control that can be pressed is what says the drawing goes on
   // past the edge of the pane at all.
   on('ui.scroll', { requestId: PANE_ID }, async ($, e) => {
-    if (!state.shown) {
+    if (!state.shown && state.runs.length === 0) {
       return {}
     }
 
     wheel(
       state,
-      { detail: state.detailView, body: state.bodyView, foot: footRow() },
+      {
+        detail: state.detailView,
+        body: state.bodyView,
+        foot: footRow(),
+        // Only where the list is what the reader is looking at: unrolled under
+        // the bar, or drawn in place of a graph there is no run to draw.
+        runList: !state.shown || state.picking ? state.runListView : null,
+      },
       e.by,
       e.pointer?.row,
     )
 
     state.nowMs = await $.clock.now()
-    repaint($, state.shown, state.nowMs)
+
+    if (state.shown) {
+      repaint($, state.shown, state.nowMs)
+    } else {
+      // The idle pane has no Rasters to blit into: its list is rows of Buttons,
+      // so moving it is a re-render rather than a write into mounted cells.
+      $.ui.invalidate('ui.render')
+    }
 
     return {}
   })

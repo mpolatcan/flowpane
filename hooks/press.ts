@@ -37,6 +37,7 @@ import {
   useTheme,
   type BodyScroll,
   type DetailView,
+  type RunWindow,
   type SettingMenu,
 } from './paint'
 import { nextTheme, THEMES } from './theme'
@@ -115,6 +116,16 @@ export type PaneView = {
   opened: string[]
   /** True while the run name's list is unrolled under the top bar. */
   picking: boolean
+  /**
+   * The first row on screen in the session's run list, where it is taller than
+   * the room it has.
+   *
+   * `null` until a reader moves it, and `null` again once the list is shut.
+   * That is what lets an unscrolled list seat itself on the run the pane is
+   * drawing: a reader who opens the list to move off the run they are on can
+   * see where they are standing without having to scroll to find it.
+   */
+  runScroll: number | null
   /** True while the settings dialog is open over the drawing. */
   settings: boolean
   /** Which setting's list is unrolled inside it, of the one that can be. */
@@ -203,6 +214,9 @@ export function scrollDetail(view: PaneView, detail: DetailView | null, pane: nu
 /** A row of the list, and a lane of the graph: one press, one thing more. */
 const BODY_STEP_Y = 3
 const BODY_STEP_X = 8
+// Three rows, like the dialog's rail: a run list is read row by row, and the
+// group a reader was looking at stays on screen across a press.
+const RUNS_STEP = 3
 
 /**
  * The wheel over the pane, which moves whatever the reader is looking at.
@@ -236,11 +250,26 @@ const BODY_STEP_X = 8
  */
 export function wheel(
   view: PaneView,
-  context: { detail?: DetailView | null; body?: BodyScroll | null; foot?: number | null },
+  context: {
+    detail?: DetailView | null
+    body?: BodyScroll | null
+    foot?: number | null
+    runList?: RunWindow | null
+  },
   by: number,
   over?: number,
 ): void {
   if (by === 0) {
+    return
+  }
+
+  // The run list first, because the caller only offers one when the list is
+  // the thing on screen: the menu unrolled under the bar, or the idle pane,
+  // where the list *is* the pane and a wheel that moved the drawing behind it
+  // would move nothing at all.
+  if (context.runList) {
+    scrollRuns(view, context.runList, by)
+
     return
   }
 
@@ -328,6 +357,24 @@ export function scrollBody(view: PaneView, body: BodyScroll | null, dx: number, 
 }
 
 /**
+ * Moves the session's run list, as far as the list has anywhere to go.
+ *
+ * Clamped against what the last paint reported, like the body and the dialog's
+ * panes. The offset it steps from is the one the paint drew at rather than the
+ * one the pane holds, so a first press against a list still seated on the run
+ * being drawn moves from what is on screen instead of from the top.
+ */
+export function scrollRuns(view: PaneView, runList: RunWindow | null, by: number): void {
+  if (!runList) {
+    return
+  }
+
+  const most = Math.max(0, runList.total - runList.visible)
+
+  view.runScroll = Math.max(0, Math.min(most, (view.runScroll ?? runList.scroll) + by))
+}
+
+/**
  * The press, applied.
  *
  * `hasRun` is whether there is a drawing under the controls at all: the
@@ -337,10 +384,25 @@ export function scrollBody(view: PaneView, body: BodyScroll | null, dx: number, 
 export function applyPress(
   view: PaneView,
   pressed: string,
-  context: { hasRun: boolean; detail?: DetailView | null; body?: BodyScroll | null },
+  context: {
+    hasRun: boolean
+    detail?: DetailView | null
+    body?: BodyScroll | null
+    runList?: RunWindow | null
+  },
 ): PressResult {
+  if (pressed === 'runs-up' || pressed === 'runs-down') {
+    scrollRuns(view, context.runList ?? null, pressed === 'runs-up' ? -RUNS_STEP : RUNS_STEP)
+
+    return {}
+  }
+
   if (pressed === RUN_PICKER) {
     view.picking = !view.picking
+    // Where the reader had scrolled to belongs to the list that was open, not
+    // to the next one: a list reopened ten rows down, on runs that have since
+    // moved, is a list that lost the run the pane is drawing.
+    view.runScroll = null
     view.settings = false
     view.menu = null
     view.about = false
@@ -350,6 +412,7 @@ export function applyPress(
 
   if (pressed.startsWith('run:')) {
     view.picking = false
+    view.runScroll = null
     view.bodyScroll = { x: 0, y: 0 }
     view.following = true
     view.opened = []

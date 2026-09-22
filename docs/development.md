@@ -177,10 +177,13 @@ detail open underneath, where the menu is the frontmost of the two. `tests/menu.
 menu and reads it back: the states stacked in order, the most recent run of each
 first, the clock to the second on every row — two runs a minute apart are told
 apart by it — and the day as well on a run from another one, each heading
-carrying its state's own mark and a rule, and the headings dropped before a run
-is when the pane is short. It measures the idle pane the same way — the bar, the
-runs under it headed as the menu heads them, every one of them pressable, and
-the line a session with nothing to list gets instead. `tests/wires.test.ts`
+carrying its state's own mark and a rule, and the headings kept when the pane is
+too short for every run — what gives way then is the list's own extent, which
+scrolls: the arrows are pressable, an unscrolled list opens on the run the pane
+is drawing, and asked for further than the list goes it settles on the last
+screenful. It measures the idle pane the same way — the bar, the runs under it
+headed as the menu heads them, every one of them pressable, the same bar down
+its edge, and the line a session with nothing to list gets instead. `tests/wires.test.ts`
 counts the arrowheads into a phase — one per agent where they all ran at once,
 one where they ran one at a time, and one again where the phase ran in waves,
 which is neither and is the shape a nested run opened out always has — checks that the arc is only ever drawn where

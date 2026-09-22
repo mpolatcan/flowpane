@@ -228,3 +228,37 @@ test('a model id of no family the pane knows is passed on as it stands', () => {
 test('a model id with no version at all is named by its family alone', () => {
   expect(modelName('claude-opus')).toBe('Opus')
 })
+
+test('a transcript states what the agent was holding, so a helper that ran before the pane did is not free', () => {
+  const read = readAgentTranscript(
+    [
+      JSON.stringify({
+        type: 'assistant',
+        timestamp: new Date(STARTED).toISOString(),
+        message: {
+          usage: { input_tokens: 400, cache_read_input_tokens: 1_600, output_tokens: 90 },
+          content: [{ type: 'tool_use', id: 'c1', name: 'Read', input: { file_path: '/a' } }],
+        },
+      }),
+      JSON.stringify({
+        type: 'assistant',
+        timestamp: new Date(STARTED + 10).toISOString(),
+        message: {
+          usage: { input_tokens: 500, cache_read_input_tokens: 3_100, cache_creation_input_tokens: 200, output_tokens: 40 },
+          content: [{ type: 'text', text: 'done' }],
+        },
+      }),
+      // The row that closes a stream carries an empty usage. Taken as the
+      // newest, it put every replayed agent back at nothing.
+      JSON.stringify({
+        type: 'assistant',
+        timestamp: new Date(STARTED + 20).toISOString(),
+        message: { usage: {}, content: [{ type: 'text', text: '' }] },
+      }),
+    ].join('\n'),
+  )
+
+  // The newest request's context, the way the live reader keeps it: what the
+  // agent was holding, not what every request added up to.
+  expect(read.tokens).toBe(3_800)
+})

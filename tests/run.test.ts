@@ -125,6 +125,32 @@ test('every node carries its tokens and its model', () => {
   }
 })
 
+test('a node says what it spent even where nothing recorded a figure', () => {
+  const run = emptyRun()
+
+  applyJournal(run, JOURNAL, READ_AT)
+  applyRunFile(run, SUMMARY, READ_AT)
+
+  // Two agents nothing counted: one that really spent nothing, and one whose
+  // spend no file states. Drawn as a blank slot they read the same, and a card
+  // three fields wide beside a card two fields wide read as a different kind of
+  // node rather than as the same node with one fact missing.
+  run.agents[0].tokens = 0
+  run.agents[1].tokens = undefined
+  run.agents[1].liveTokens = undefined
+
+  for (const orientation of ['horizontal', 'vertical', 'timeline'] as const) {
+    const canvas = new Canvas(100, 24)
+
+    paint(canvas, run, { nowMs: READ_AT, tick: -1, orientation })
+
+    const drawn = rowsOf(canvas).join('\n')
+
+    expect(drawn).toContain('\u2211 0')
+    expect(drawn).toContain('\u2211 \u2014')
+  }
+})
+
 test('a run still going is found by its script, which the summary is not there to name', () => {
   // `<workflowName>-<runId>.js`, and a workflow is free to be called `wf_`
   // something too, so the split is the last one, not the first.

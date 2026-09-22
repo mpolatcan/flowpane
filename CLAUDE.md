@@ -11,7 +11,7 @@ workflow writes, and everything it says has to fit in cells.
 ## Commands
 
 ```bash
-claude plugin test .          # the test suite — 328 tests across 22 files
+claude plugin test .          # the test suite — 336 tests across 22 files
 bunx tsc --noEmit             # typecheck (hooks/ and types/ only; see tsconfig.json)
 ```
 
@@ -114,8 +114,8 @@ same pass, rather than at some later release. Five places carry it:
 | `README.md` and `docs/controls.md` | the bottom row, written out as `flowpane <version>` |
 
 `bun dev/checkmeta.ts` holds the first two together, which is the pair that can
-disagree in silence. Two versions can go out on one day — 0.6.0 and 0.7.0 both
-did — so the date is held to *not earlier* than the release before it rather
+disagree in silence. Several versions can go out on one day — 0.6.0, 0.7.0 and
+0.8.0 all did — so the date is held to *not earlier* than the release before it rather
 than later.
 
 `dev/reload.sh` is the one install that moves without a bump, and it moves by
