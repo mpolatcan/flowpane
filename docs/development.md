@@ -385,6 +385,14 @@ read. The reading itself is a function of the file's text, so
 only repeat. `dev/checkmeta.ts` owns the last half — that the constant the pane
 falls back to, when the read failed, is the version the manifest ships.
 
+That version is also what the engine caches by. An installed plugin sits under
+`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`, so an install over a
+version already cached resolves to the directory already there and copies
+nothing — which is why `dev/reload.sh` deletes that tree before it reinstalls,
+and why a change to what the pane draws bumps the version in the same pass
+rather than at some later release. `CLAUDE.md` lists the five places the version
+is written down.
+
 `dev/preview.ts`, `dev/stress.ts`, `dev/checkpic.ts`,
 `dev/edges.ts`, `dev/shot.ts` and `dev/recover.ts` exercise the drawing, the
 derived graph and the file reads without a session, `dev/checkmeta.ts` holds the

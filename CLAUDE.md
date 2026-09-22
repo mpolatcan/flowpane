@@ -11,7 +11,7 @@ workflow writes, and everything it says has to fit in cells.
 ## Commands
 
 ```bash
-claude plugin test .          # the test suite — 316 tests across 22 files
+claude plugin test .          # the test suite — 328 tests across 22 files
 bunx tsc --noEmit             # typecheck (hooks/ and types/ only; see tsconfig.json)
 ```
 
@@ -93,6 +93,34 @@ afterwards: hooks are read once, when it starts.
 Both builds watch the same journals and both open a pane on a Workflow launch,
 so with the two enabled a live run draws twice. `/flowpane` toggles the released
 one shut.
+
+## The version is the cache key
+
+The engine caches an installed plugin under
+`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`, so an install over a
+version it already holds resolves to a directory it already has and copies
+nothing. A change that ships under a version somebody is already on is a change
+they never receive, and the pane they keep drawing is the old one.
+
+So a change to what the pane draws or what it reads bumps the version in the
+same pass, rather than at some later release. Five places carry it:
+
+| Where | What it is |
+| --- | --- |
+| `.claude-plugin/plugin.json` | the version the engine installs and caches by — the one that matters |
+| `hooks/about.ts` `VERSION` | what the pane falls back to when the manifest could not be read |
+| `hooks/about.ts` `RELEASED` | the day it went out |
+| `tests/about.test.ts` `LAST_RELEASE` | the release before this one, which the two above are read against |
+| `README.md` and `docs/controls.md` | the bottom row, written out as `flowpane <version>` |
+
+`bun dev/checkmeta.ts` holds the first two together, which is the pair that can
+disagree in silence. Two versions can go out on one day — 0.6.0 and 0.7.0 both
+did — so the date is held to *not earlier* than the release before it rather
+than later.
+
+`dev/reload.sh` is the one install that moves without a bump, and it moves by
+deleting the cached tree and reinstalling. Nothing else can: a released install
+is reached only through the version.
 
 ## Layout of the repo
 

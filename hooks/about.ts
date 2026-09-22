@@ -31,7 +31,8 @@ export const MAINTAINER = 'Mutlu Polatcan'
  * claiming the 15th, because bumping the version is the visible half of a
  * release and this line is the half nobody looks at. A date left behind is worse
  * than no date, since the row is well formed and reads as true. The test suite
- * holds it to the day the release before it went out.
+ * holds it to the day the release before it went out, or a later one: two
+ * releases can go out on one day, and 0.6.0 and 0.7.0 did.
  */
 export const RELEASED = '22-09-2026'
 
@@ -52,7 +53,7 @@ export const RELEASED = '22-09-2026'
  * failed, which is the only case where the two can still disagree, and
  * `dev/checkmeta.ts` keeps it honest for that case.
  */
-export const VERSION = '0.6.0'
+export const VERSION = '0.7.0'
 
 /** What the manifest said, once a session has read it. */
 let shipped: string | undefined

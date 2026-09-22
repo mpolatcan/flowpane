@@ -8,7 +8,7 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | --- | --- |
 | A node's label | opens that agent's detail dialog; click again to close |
 | ⚙ Settings | opens the settings dialog over the drawing |
-| `flowpane 0.6.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
+| `flowpane 0.7.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
 | A setting's value | unrolls that setting's list where it stands; press it again to roll the list up |
 | The graph, with any dialog open | takes no presses — it is pushed back behind the dialog until the dialog shuts |
 | Layout | horizontal, vertical, timeline, or fits the shape — picked by name |
@@ -148,7 +148,7 @@ them.
 
 ```
 ────────────────────────────────────────────────────────────────────────────────────────
-⚙ Settings │ Layout: fits │ Theme: tokyo-night │ Detail height: 24 rows   flowpane 0.6.0
+⚙ Settings │ Layout: fits │ Theme: tokyo-night │ Detail height: 24 rows   flowpane 0.7.0
 ```
 
 A line divides it from the drawing. Everything above the line is one canvas and
@@ -197,10 +197,10 @@ which is the one a reader changes most.
 The same pane at 88, 72, 44, 30 and 22 columns:
 
 ```
-⚙ Settings │ Layout: fits │ Theme: tokyo-night │ Detail height: 24 rows   flowpane 0.6.0
-⚙ Settings │ Layout: fits │ Theme: tokyo-night            flowpane 0.6.0
-⚙ Settings │ Layout: fits     flowpane 0.6.0
-⚙ Settings      flowpane 0.6.0
+⚙ Settings │ Layout: fits │ Theme: tokyo-night │ Detail height: 24 rows   flowpane 0.7.0
+⚙ Settings │ Layout: fits │ Theme: tokyo-night            flowpane 0.7.0
+⚙ Settings │ Layout: fits     flowpane 0.7.0
+⚙ Settings      flowpane 0.7.0
 ⚙ Settings            
 ```
 
@@ -226,7 +226,7 @@ reader presses to find out what this is, is what it is called.
 ## What the pane is
 
 ```
-╭─────────────────── flowpane 0.6.0 ───────────────────── ✕ ─╮
+╭─────────────────── flowpane 0.7.0 ───────────────────── ✕ ─╮
 │                                                            │
 │ A live picture of the agents a workflow runs: what each    │
 │ one is doing, what it has spent, and what it answered.     │
