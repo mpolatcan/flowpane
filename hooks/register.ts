@@ -887,17 +887,22 @@ async function actOnPress($: EngineInterface): Promise<void> {
 /**
  * The layout words `/flowpane` takes, against the orientations they name.
  *
- * The first three name the axis the run reads along, which is what a reader
+ * The first two name the axis the run reads along, which is what a reader
  * picking between them is choosing. They were `across` and `down`, which name
  * the same two axes in words the pane uses for a dozen other things — a card's
  * frame is drawn `across` and `down`, a band's rule runs `across` — so the one
  * place the word had to mean the layout was the one place it did not stand out.
  * `across` and `down` still work, unlisted, for anyone who learned them.
+ *
+ * `list` names the drawing rather than an axis, because that is what picking it
+ * changes: the phases still run down the pane, and what stands in each of them
+ * is a row an agent instead of a band of cards.
  */
 const LAYOUT_WORDS: Record<string, Orientation> = {
   horizontal: 'horizontal',
   vertical: 'vertical',
   timeline: 'timeline',
+  list: 'list',
   fits: 'auto',
   across: 'horizontal',
   down: 'vertical',
@@ -937,7 +942,7 @@ const HELP = ((forms: [string, string][]) => {
   ['', 'open the pane, or close it'],
   ['runs', 'list this session’s runs'],
   ['<n>', 'show run <n>'],
-  ['horizontal|vertical|timeline|fits', 'lay the graph out'],
+  ['horizontal|vertical|timeline|list|fits', 'lay the graph out'],
   ['detail <n>', 'rows the detail dialog takes (5–32)'],
   ['theme [name]', 'list the palettes, or paint in one'],
   ['about', 'what the pane is, and what presses it'],
@@ -1086,8 +1091,8 @@ async function applyArgs($: EngineInterface, args: string): Promise<string> {
 
 /**
  * A layout by either name. The button and `/flowpane` say what the layout looks like
- * — horizontal, vertical, timeline, fits — and the setting is named after the axis it
- * uses. One vocabulary would be better; until the stored values can change, both
+ * — horizontal, vertical, timeline, list, fits — and the setting is named after the
+ * axis it uses. One vocabulary would be better; until the stored values can change, both
  * are read wherever a layout is named.
  */
 export function orientationOf(value: unknown): Orientation | null {
@@ -1709,7 +1714,7 @@ const FOOTER_GAP = 2
  *
  * The row says the state and the dialog changes it, so the two have to agree
  * word for word: a footer reading `Layout: vertical` beside a dialog offering
- * `horizontal vertical timeline fits` is two names for one setting. They agree on the
+ * `horizontal vertical timeline list fits` is two names for one setting. They agree on the
  * order as well, so a reader scanning the row and a reader scanning the dialog
  * are reading the same list.
  */

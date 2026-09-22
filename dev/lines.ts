@@ -33,7 +33,7 @@ import { journalRun, runDirs } from './load'
 
 const COLUMNS = [20, 26, 34, 46, 60, 74, 88, 102, 120, 148, 180, 220]
 const ROWS = [6, 9, 12, 16, 22, 28, 34, 44, 60, 80]
-const LAYOUTS: Orientation[] = ['horizontal', 'vertical', 'timeline']
+const LAYOUTS: Orientation[] = ['horizontal', 'vertical', 'timeline', 'list']
 
 const ARROWS = new Set([0x25b8, 0x25be, 0x25b4, 0x25c2])
 /**

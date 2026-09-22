@@ -405,6 +405,7 @@ test('the layout list unrolls in the order the control walks', () => {
     'set:orientation:horizontal',
     'set:orientation:vertical',
     'set:orientation:timeline',
+    'set:orientation:list',
     'set:orientation:auto',
   ])
 })

@@ -21,7 +21,7 @@ import { aboutRows, aboutText, NAME, noteShipped, RELEASED, shippedVersion, VERS
  * true, because a date left behind is still a well-formed date. Read against
  * the release before it, a date that never moved is the one thing that shows.
  */
-const LAST_RELEASE = { version: '0.7.0', released: '22-09-2026' }
+const LAST_RELEASE = { version: '0.8.0', released: '22-09-2026' }
 
 /** A day-first date as a string that sorts by day. */
 function sortable(date: string): string {

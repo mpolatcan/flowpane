@@ -547,6 +547,7 @@ function controls(): { key: string; label: string; on: boolean; live: boolean }[
     horizontal: 'horizontal',
     vertical: 'vertical',
     timeline: 'timeline',
+    list: 'list',
     auto: 'fits',
   }
   const state = [

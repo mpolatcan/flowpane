@@ -270,8 +270,9 @@ length either side of the caption and its handle together. It measures what one 
 every agent it ran, with no step left rolled up behind a count; a step folded
 back standing as one row saying how many agents are behind it; and a phase of
 the calling run that fanned out to the same shape keeping every card. It measures the nested
-register across the three layouts: that a nested phase's rule is drawn in the
-dashed stroke and the same run with the marker off its name draws none; that the
+register across all four layouts: that a nested phase's rule is drawn in the
+dashed stroke and the same run with the marker off its name draws none, across,
+down, on the timeline and in the list alike; that the
 ▸ takes a press laid out across, where there was none; that a shut nested run
 stands one bar a trip on the timeline rather than one an agent, and opened
 stands every agent on a row of its own with a press each. It measures the two
@@ -342,14 +343,14 @@ rather than after it. A nested run the script declared and never reached draws n
 row at all, since a row standing for a trip through it would be standing for
 nothing.
 
-The order the four layouts are walked in is pinned in two places on purpose —
+The order the five layouts are walked in is pinned in two places on purpose —
 `tests/press.test.ts` through `nextOrientation`, `tests/settings.test.ts`
 through the layout list's press targets — and both write the order out rather
 than reading `ORIENTATIONS`. The footer's control and the dialog's list both
 take their order from that one array, so every check of their agreement was the
 array agreeing with itself: swapped, the two moved together and nothing noticed.
 The order is a decision — the two layouts a reader switches between most, then
-the two they set once — so it is written down where a change to it has to be
+the three they set once — so it is written down where a change to it has to be
 made twice.
 
 The numbers the drawing turns on are pinned as drawings rather than as their own

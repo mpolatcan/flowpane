@@ -145,7 +145,7 @@ export type PressResult = {
 }
 
 /** The orientations the layout control walks, in the order it walks them. */
-export const ORIENTATIONS: Orientation[] = ['horizontal', 'vertical', 'timeline', 'auto']
+export const ORIENTATIONS: Orientation[] = ['horizontal', 'vertical', 'timeline', 'list', 'auto']
 
 export function nextOrientation(current: Orientation): Orientation {
   const at = ORIENTATIONS.indexOf(current)

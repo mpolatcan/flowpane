@@ -11,7 +11,7 @@ workflow writes, and everything it says has to fit in cells.
 ## Commands
 
 ```bash
-claude plugin test .          # the test suite — 353 tests across 23 files
+claude plugin test .          # the test suite — 355 tests across 23 files
 bunx tsc --noEmit             # typecheck (hooks/ and types/ only; see tsconfig.json)
 ```
 
@@ -47,8 +47,8 @@ the working directory, so left alone they see this repository's own runs and no
 others. Every one of those is finished and none of them is wide, which makes a
 clean sweep there say less than it looks like it says: a header counting the
 agents still going never appears in it, and neither does a band of ninety-five
-agents wrapping into five columns. Both of those held faults nothing in the
-repository's own corpus could show.
+agents running four panes past the edge. Both of those held faults nothing in
+the repository's own corpus could show.
 
 `FLOWPANE_RUNS` points any of the tools at another session's runs:
 
@@ -58,7 +58,7 @@ FLOWPANE_RUNS=~/.claude/projects/<project>/<session>/subagents/workflows bun dev
 
 So a change to what the pane draws is swept over a handful of other corpora
 before it is handed over — a run with a phase entered ten times, a run with a
-band too wide to draw as one row, a run still going — and
+band far wider than any pane, a run still going — and
 `bun dev/checktokens.ts --all` reads every agent transcript on the machine
 against the figure the engine reported for it.
 
@@ -209,16 +209,21 @@ test and wrong in a terminal.
   it. Bars, ticks, grid columns and the now-marker all take their column from the
   single millisecond-to-cell function, which subtracts the sideways scroll, and
   all clip to the axis columns rather than to the pane.
-- **A section is never narrower than a name, and a node never shorter than its
-  frame.** The pane divides itself only among the phases — and, down the pane,
-  the agents — it can give a column wide enough to name. Past that the columns
-  take the width they need. Laid out across, the drawing runs past the pane's
-  edge and the body scrolls to the rest; down the pane a band wraps instead,
-  into as many rows as its nodes need at a width they can be named at, shared
-  out evenly and centred, so the drawing stays inside the width it was handed.
-  The height keeps the same bargain: a column with more nodes than the pane can
-  stand as cards keeps the cards and scrolls, rather than flattening every node
-  in the drawing to a row. See `docs/header.md`.
+- **A node is the same size at every size of pane, and what the pane cannot
+  hold it scrolls to.** One width, `NODE_W`, and one height, `CARD_H`, in every
+  layout. The pane used to measure a node against the room there was for it —
+  the phases divided the width between them, a band wrapped into as many rows as
+  its nodes needed, and past a certain height every node flattened from a card
+  to a row — so the same run was a different picture in a narrow window than in
+  a wide one, and dragging the pane's edge redrew the drawing rather than moving
+  it. The drawing runs past the edge now, both ways, and the rails say which way
+  it goes. A phase is left out only for being ahead of the run. See
+  `docs/header.md`.
+- **The pane's size picks the window, never the drawing.** The flat list is a
+  layout the reader asks for, beside `horizontal`, `vertical` and `timeline` —
+  it used to be what a pane too small for bands of cards collapsed into. The one
+  size left that changes anything is a body with no room for a single card,
+  where there is no card to scroll through. See `docs/settings.md`.
 
 ## Conventions
 

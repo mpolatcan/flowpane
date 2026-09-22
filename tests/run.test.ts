@@ -263,9 +263,9 @@ function uncountedRun(n: number): RunState {
 test('a node drawn as a row says its missing count in the tight spelling', () => {
   const canvas = new Canvas(70, 14)
 
-  // Six nodes across a narrow pane flattens the cards to rows, and a row has no
-  // cell to spare for the air a card holds between the mark and the figure.
-  paint(canvas, uncountedRun(6), { nowMs: READ_AT, tick: -1, orientation: 'vertical' })
+  // The flat list draws a row an agent, and a row has no cell to spare for the
+  // air a card holds between the mark and the figure.
+  paint(canvas, uncountedRun(6), { nowMs: READ_AT, tick: -1, orientation: 'list' })
 
   const drawn = rowsOf(canvas).join('\n')
 

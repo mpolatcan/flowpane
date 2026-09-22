@@ -566,16 +566,17 @@ a phase is a different stretch of clock. Seventy-eight agents wanted seventy-
 eight rows and a docked pane has about thirty.
 
 So it gives up a column for a rail and lets the reader move, which is what the
-other two layouts have always done. The bar at the top, the ruler under it and
+other layouts have always done. The bar at the top, the ruler under it and
 the Ahead band at the foot stay where they are; the bands scroll between them.
 Where the axis is wider than the pane there is a second rail along the foot, and
 the two move the drawing in the two directions independently.
 
-The side rail is settled in one pass rather than the graph's two. A rail costs
-the graph a column, a narrower column changes what fits, and what fits decides
-whether a rail was needed at all — so the graph lays out, looks, and lays out
-again. A timeline's rows are its agents, and its agents do not change when the
-pane narrows. The foot rail does cost a row, and a row changes how many bands
+The side rail is settled in one pass rather than the graph's three. A rail costs
+the graph a column and the foot rail a row; either one changes how far the
+drawing reaches past the pane, and that is what decides whether either was
+wanted at all. So the graph latches the two and lays out again until they stop
+moving — they only ever turn on, so three passes settle them. A timeline's rows
+are its agents, and its agents do not change when the pane narrows. The foot rail does cost a row, and a row changes how many bands
 are shown, so that one is measured twice: once to ask whether the axis overflows
 at full height, then again with the row taken.
 

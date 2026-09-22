@@ -1,6 +1,6 @@
 {
   "name": "flowpane",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "A live workflow pane: replaces the default Workflow progress list with a phase-by-phase graph or a timeline beside the transcript, showing each agent's state, timing, live token spend, tool calls, what it is saying, and prompt.",
   "author": {
     "name": "Mutlu Polatcan",
@@ -21,7 +21,7 @@
     "orientation": {
       "type": "string",
       "title": "Layout",
-      "description": "Which way the phases run: 'horizontal' (or 'across') runs them across the pane, 'vertical' (or 'down') runs them down it, 'timeline' draws bars against the clock, and 'auto' (or 'fits') follows the pane's shape. The settings dialog lists the four by name. The names these carried before 0.5.0 — 'flow', 'stack' and 'time' — still select their layouts.",
+      "description": "Which way the phases run: 'horizontal' (or 'across') runs them across the pane, 'vertical' (or 'down') runs them down it, 'timeline' draws bars against the clock, 'list' draws a row per agent instead of bands of cards, and 'auto' (or 'fits') follows the pane's shape. The settings dialog lists the five by name. The names these carried before 0.5.0 — 'flow', 'stack' and 'time' — still select their layouts.",
       "default": "auto"
     },
     "detailRows": {

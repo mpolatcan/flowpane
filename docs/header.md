@@ -717,9 +717,12 @@ a list is drawn in the one quiet tone the rules take, and a graph adds the
 wires' own hue on top of it. A reader flipping between two runs read that as
 the pane being inconsistent, which is exactly what it was.
 
-Below even a four-row band the pane draws the phases as a flat list of rows: one
-agent per row, in the run's order, with no edges between them. That is what a
-short seat gets.
+The flat list — one agent per row, in the run's order, with no edges drawn
+between them — is a layout the reader asks for rather than one a short seat is
+handed. It is `list` in the settings dialog and `/flowpane list` on the command
+line, and it sits beside the other three rather than under them. The pane's size
+reaches it in one case only: a body with no room for a single card, where there
+is no card to draw and a row each is the honest drawing.
 
 ### The list keeps one line: the fork out of the phase's rule
 
@@ -763,80 +766,75 @@ the pane has down the page.
 
 ### How many sections the pane divides itself into
 
-Every phase gets a section the same size as every other, and it gets one only
-while the pane has room to give it a name. Seventeen phases divided into a
-hundred and ten columns is six cells each, and a column of six carries no name
-at all.
+Every phase gets a section the same size as every other, and its cards stand in
+the middle of it. The sections divide the pane between them only while a section
+can hold a whole node and the gutter its wires run down. Past that they are the
+wrong device — they would set a thirty-two-cell card in a thirteen-cell section
+— so the columns stand at the gutter they need, the drawing runs past the pane's
+edge, and the body scrolls to the rest of it.
 
-The floor was twelve cells, which is where a *row* stops being legible. A card
-is a row inside a frame, and the frame costs four cells more than the rule and
-mark a row is drawn with: `╭─ ✔ name ─╯` spends eight cells before a letter of
-the name, where `▌✔ name` spends four. So a twelve-cell floor left a card four
-cells of name, and a phase called `Base Branch Health` came out `Bas…` on every
-card in it — the floor was being paid to the frame.
+What a section has to be worth is fixed, because a node is thirty-two cells wide
+in every layout at every size of pane. A column is thirty-two cells and a section
+is thirty-nine. Seventeen phases divided into a hundred and ten columns is six
+cells each, which is not a section but the gap between two wires, so that pane
+draws three columns and scrolls to the other fourteen.
+
+The pane used to answer the same question with the node's own width, and it had
+a floor of twelve cells to answer it down to. Twelve is where a *row* stops
+being legible. A card is a row inside a frame, and the frame costs four cells
+more than the rule and mark a row is drawn with: `╭─ ✔ name ─╯` spends eight
+cells before a letter of the name, where `▌✔ name` spends four. So a twelve-cell
+floor left a card four cells of name, and a phase called `Base Branch Health`
+came out `Bas…` on every card in it — the floor was being paid to the frame.
 
 And the squeeze bought nothing, because the drawing overran the pane anyway:
 seventeen columns of twelve cells and their gutters is three hundred and
 twenty-three, on a pane of a hundred and ten. The reader got both — a drawing
-squeezed to fit *and* a drawing to scroll.
-
-So the pane divides itself only among the sections it can name. Past that the
-sections stop dividing the pane and take the width they need: the columns that
-are drawn fill the pane exactly, at a width whose card carries the twelve cells
-the floor promised, and the body scrolls to the rest of them.
+squeezed to fit *and* a drawing to scroll. Now they get the second alone.
 
 ```
- 60 columns   3 of the run's 17 phases          200 columns   7 of them
- 80              4                              a card of 20 to 26 cells,
-110              4                              cut between two columns
-140              5                              rather than through one
+ 60 columns   1 of the run's 17 phases     a card of 32 cells at every width,
+ 80              2                         and as many whole columns as the
+110              3                         pane has room to stand
+200              5
 ```
 
-The same rule runs down the pane, where a section is a band and the division is
-between the agents standing side by side inside one. A band of eight agents on
-a hundred and ten columns gave each card twelve cells for the same reason.
+The same question is asked down the pane, where a section is a band and the
+nodes stand side by side inside it. A band of eight is eight cards of thirty-two
+and the gaps between them, which is two hundred and seventy-one cells and wider
+than any pane here. The band stands whole anyway.
 
-Down the pane it is answered with a second row rather than a sideways scroll. A
-band takes as many rows as its nodes need at a width they can be named at, and
-the drawing stays inside the pane it was handed: eight agents on a hundred and
-ten columns is two rows of four cards of twenty-six. Laid out across, the pane
-has phases to its right and the scroll goes between them; down the pane it has
-the rest of its own width beside every band, and a band pinned to the left with
-its tail off the edge was leaving that width empty to pay for a scroll.
-
-The rows are shared out rather than filled to the brim. Nine nodes into rows of
-seven is a row of seven with one under it, which reads as a fan with an
-afterthought; five and four is a block, and a block is what the band is. The
-width the cards get is then taken from the widest row of the drawing — so the
-band that wrapped widens every card in the run, rather than the run keeping the
-narrow cards the unwrapped band would have forced.
+It used to wrap. A band took as many rows as its nodes needed at a width they
+could be named at — eight agents on a hundred and ten columns was two rows of
+four cards of twenty-six — and the width the cards got was then taken from the
+widest row of the whole drawing, so the band that wrapped set the width of every
+card in the run. A reader dragging one edge of the pane watched the drawing
+re-form rather than move: the cards changed width, a band of eight became two
+rows of four and then one row of eight again, and nothing was where it had been
+a moment before.
 
 ```
 110 columns, a band of eight
 
-before                                        after
-╭─ ✔ one ──╮ ╭─ ✔ two ──╮ … ✔ eight ─╮        ╭───── ✔ one ─────╮ ╭──── ✔ two ────╮ …
-│ ⧖ 5.0s   │ │ ⧖ 5.0s   │   off the  │        │  ⧖ 5.0s ∑ 12k   │ │ ⧖ 5.0s ∑ 12k  │
-╰──────────╯ ╰──────────╯   pane ────╯        ╰─────────────────╯ ╰───────────────╯
-      ╭─ ✔ paint ╮  the band of two           ╭──── ✔ five ─────╮ ╭──── ✔ six ────╮ …
-      │ ⧖ 5.0s   │  under the first
-      ╰──────────╯  card of the one
-                    above it                          both bands centred
+before                                    after
+╭──── ✔ one ────╮ ╭──── ✔ two ────╮ …    ╭───────── ✔ one ──────────╮ ╭──────
+│  ⧖ 5.0s ∑ 12k │ │ ⧖ 5.0s ∑ 12k │      │      ⧖ 5.0s   ∑ 12.1k     │ │   ⧖ 5.
+╰───────────────╯ ╰───────────────╯      ╰───────── Haiku 4.5 ───────╯ ╰──────
+╭──── ✔ five ───╮ ╭──── ✔ six ────╮ …
+│  ⧖ 5.0s ∑ 12k │ │ ⧖ 5.0s ∑ 12k │       one row, at the width every
+╰───────────────╯ ╰───────────────╯       other card in the run is
+                                        drawn at, and the body scrolls
+  every card in the run narrowed         to the six past the edge
+  to the width this one band needed
 ```
 
-Every band stands in the middle of the pane. Opened at the left instead, a band
-of one sat under the first card of the band above it and the drawing read as a
-left margin with a ragged edge down the rest of the pane.
+A band narrower than the pane stands in the middle of it. Opened at the left
+instead, a band of one sat under the first card of the band above it and the
+drawing read as a left margin with a ragged edge down the rest of the pane. A
+band wider than the pane has no middle to stand in, so it opens at the left the
+way the run itself does and runs off the right edge.
 
-Only the outer row of a wrapped band faces anything outside it: a wire into the
-second row would be drawn down through the cards on the first, and a line
-through a card is a line through a word. So the barrier lands on the row that
-faces it — the first row for what arrives, the last for what leaves — and what
-crosses between two bands is bundled onto those rows rather than drawn carry by
-carry. The rows between are held by the band's own rule, which is what says they
-belong to this phase.
-
-A drawing wider than the pane — which, laid out across, is most of them — is
+A drawing wider than the pane — which, in either layout, is now most of them — is
 what the wheel over the foot rail moves, see [controls.md](controls.md). A live
 run's window is already centred on the phase at work, so a reader arrives where
 the run is rather than at the start of one that finished an hour ago.
@@ -870,10 +868,10 @@ before                          after
                                 ╰────── Opus 4.8 ──────╯   ▾
 ```
 
-The floor is two cards. Two is what it takes to have anything to scroll
-between; below that the pane shows one card and a sliver of the next, and there
-a row each says more than a frame does. So a short pane still falls to rows —
-and then scrolls, which it did not before either.
+The floor is one card. Three rows is what a card is, and a body with fewer than
+three has no card to draw in it at all — there a row each says everything a
+frame could, so the pane draws the list it would draw if the reader had asked
+for one. Every body deeper than that keeps its cards and scrolls.
 
 The phase names do not move. They are column heads, and a column head that
 scrolled away would leave a reader looking at four columns of cards with nothing
@@ -882,15 +880,8 @@ captioned on the same row, so its caption is drawn with the header rather than
 with the strip; drawn with the strip, it forced the body's window two rows
 higher than the drawing, and a card carried far enough up landed on the names.
 
-Two numbers rather than one, because the width a column is *given* and the
-width below which it stops dividing are different questions. Nineteen cells is
-a card with eleven of name, which is every label on the pipeline this was built
-for; treating nineteen as too narrow would have spent a scroll to buy five
-cells nobody needed. So the pane gives up dividing at sixteen and widens to
-twenty.
-
 Down the pane the same bargain was struck the other way round, and lost for
-longer. There a phase is a band of rows and the bands share the body between
+longer. There a phase is a band of rows and the bands shared the body between
 them, so the depth each got was the body divided by the number of phases — and a
 run of seventeen phases in a body of twenty-five gave every band one row, which
 is a row, not a card. The layout then fell to the flat list for the whole
@@ -898,15 +889,12 @@ drawing. It was not a rare case: any run with more phases than a third of the
 pane's rows hit it, which is most of them, so the vertical layout was in
 practice a list that could not scroll.
 
-The test is the width's test now: whether the body can stand two whole bands —
-at the depth the bands of this drawing actually take, which for a band that
-wrapped is several rows of cards rather than one. Past that the pane spends its
-rows on twice as many nodes by drawing each as a row; past that again the bands
-keep the depth they need, the drawing runs past the foot of the pane, and the
-body scrolls down to the rest — the same rail, the same wheel, the same floor of
-two. What is left of the list is the narrow case: a pane that cannot stand two
-legible nodes side by side, so a band has nothing to wrap into and one node a
-row is the list with a frame drawn round each row.
+Every band asks the same of the body now, and asks it whatever the body is: the
+nine rows set out above, or an even share of the pane where the pane has more
+than nine rows a band to give. The bands keep that depth at every size, the
+drawing runs past the foot, and the body scrolls down to the rest — the same
+rail, the same wheel, the same floor of one card. Nothing about the pane's own
+height chooses what a node is any more.
 
 ## The borders between phases
 

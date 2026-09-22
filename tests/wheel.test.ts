@@ -56,6 +56,20 @@ const JOURNAL = [
   .map(l => JSON.stringify(l))
   .join('\n')
 
+/** The same four phases with one agent each: a drawing with nowhere sideways to go. */
+const SLIM = [
+  { type: 'launched' },
+  ...PHASES.map((phase, p) => ({
+    type: 'started',
+    agentId: `a${p}`,
+    label: `${phase.toLowerCase()}-one`,
+    phase,
+  })),
+  ...PHASES.map((phase, p) => ({ type: 'result', agentId: `a${p}`, result: 'one' })),
+]
+  .map(l => JSON.stringify(l))
+  .join('\n')
+
 const LAUNCH = {
   status: 'async_launched',
   taskId: 't1',
@@ -164,7 +178,7 @@ function renderPane($: any) {
  * wheel that moved nothing still costs a frame if it repaints anyway, and
  * nothing the pane draws would show the difference.
  */
-function stubEngine(on: any, painted?: string[]): void {
+function stubEngine(on: any, painted?: string[], journal: string = JOURNAL): void {
   on('env.get', () => ({ value: HOME }))
   on('ui.open', () => ({ value: undefined }))
   on('ui.close', () => ({ value: undefined }))
@@ -188,7 +202,7 @@ function stubEngine(on: any, painted?: string[]): void {
   }))
   on('fs.read', ($$: unknown, e: { path: string }) => {
     if (e.path === `${TRANSCRIPT}/journal.jsonl`) {
-      return { value: JOURNAL }
+      return { value: journal }
     }
 
     throw new Error(`unexpected read: ${e.path}`)
@@ -196,9 +210,15 @@ function stubEngine(on: any, painted?: string[]): void {
 }
 
 /** A run drawn into a pane too small for it: both ways across, down alone. */
-async function shownRun($: any, on: any, clock: any, layout = 'horizontal'): Promise<string[]> {
+async function shownRun(
+  $: any,
+  on: any,
+  clock: any,
+  layout = 'horizontal',
+  journal: string = JOURNAL,
+): Promise<string[]> {
   on('tool.call', { tool: 'Workflow' }, () => ({ result: LAUNCH }))
-  stubEngine(on)
+  stubEngine(on, undefined, journal)
 
   await $.tool.call({ tool: 'Workflow', script: SCRIPT })
   await clock.advance(600)
@@ -236,8 +256,8 @@ test('a wheel over the rail along the foot moves the drawing sideways', async ($
   await $.ui.scroll({ requestId: 'flowpane', by: -1, pointer: { row: railRow(base) } })
 
   const moved = paneOf(await renderPane($))
-  const was = findAt(base, 'Weigh')
-  const now = findAt(moved, 'Weigh')
+  const was = findAt(base, 'Merge')
+  const now = findAt(moved, 'Merge')
 
   // Sideways and only sideways: the phase heading is further along its own row
   // than it was, and it is on the same row.
@@ -272,11 +292,12 @@ test('a wheel that moves nothing leaves the drawing where it was', async ($, on)
 
 test('a wheel on the last row moves the drawing up and down where no rail is drawn there', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
-  const base = await shownRun($, on, clock, 'vertical')
+  const base = await shownRun($, on, clock, 'vertical', SLIM)
 
-  // Down the pane the same run needs no columns it has not got, so the foot
-  // carries no sideways rail and its last row is drawing like any other. The
-  // rail's row is the one the wheel turns sideways on, and it is not this one.
+  // A run of one agent a phase needs no columns it has not got, so down the
+  // pane the foot carries no sideways rail and its last row is drawing like any
+  // other. The rail's row is the one the wheel turns sideways on, and it is not
+  // this one.
   expect(railRow(base)).toBe(-1)
 
   // Back, rather than on: the pane follows the phase at the front, so the
@@ -284,8 +305,8 @@ test('a wheel on the last row moves the drawing up and down where no rail is dra
   await $.ui.scroll({ requestId: 'flowpane', by: -1, pointer: { row: base.length - 1 } })
 
   const moved = paneOf(await renderPane($))
-  const was = findAt(base, 'two')
-  const now = findAt(moved, 'two')
+  const was = findAt(base, 'Merge')
+  const now = findAt(moved, 'Merge')
 
   // A reader whose pointer happened to rest along the bottom edge turned the
   // wheel and watched the drawing go sideways, in a layout with nowhere

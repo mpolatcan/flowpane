@@ -250,7 +250,7 @@ test('the phases it could not fit open a band of their own at the foot', () => {
     ['Escalate', []],
     ['Report', []],
   ])
-  const canvas = new Canvas(110, 34)
+  const canvas = new Canvas(110, 46)
 
   paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical' })
 
@@ -284,15 +284,19 @@ test('the phases it could not fit open a band of their own at the foot', () => {
   // Still one band for all of them, not a band each.
   expect(lines.filter(line => /^\u254c+ Ahead \u254c+$/.test(line.trimEnd())).length).toBe(1)
 
+  // The rail along the foot is the pane's own furniture rather than part of the
+  // drawing, so the drawing ends above it where one is drawn.
+  const foot = lines.length - (/[\u25c2\u25b8]/.test(lines[lines.length - 1] ?? '') ? 1 : 0)
+
   // Nothing under it but blank rows: the band is the drawing's last section.
-  expect(at + 1).toBeLessThan(lines.length - 1)
-  expect(lines.slice(at + 4).every(line => line.trim() === '')).toBe(true)
+  expect(at + 1).toBeLessThan(foot - 1)
+  expect(lines.slice(at + 4, foot).every(line => line.trim() === '')).toBe(true)
 
   // And centred in what the drawing left, not held against either end of it.
   // Against the pane's own bottom edge the band read as the seat's furniture;
   // against the last node the same blank rows simply moved underneath it.
   const above = at - 1 - lines.findLastIndex((line, y) => y < at && line.trim() !== '')
-  const below = lines.length - (at + 4)
+  const below = foot - (at + 4)
 
   expect(above).toBeGreaterThan(0)
   expect(Math.abs(above - below)).toBeLessThanOrEqual(2)
@@ -306,10 +310,22 @@ test('a pane with no rows to spare names them in one rule instead', () => {
   ])
   const canvas = new Canvas(90, 10)
 
-  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical' })
+  // A band of cards is deeper than a pane this short, so the drawing runs past
+  // the foot and the rule naming what is ahead goes with it. Scrolled to the
+  // end of the drawing, which is where a reader meets it.
+  paint(canvas, run, {
+    nowMs: STARTED + 20_000,
+    tick: 0,
+    orientation: 'vertical',
+    follow: false,
+    bodyScroll: { x: 0, y: 99 },
+  })
 
   const lines = rowsOf(canvas)
-  const row = lines.find(line => /^\u254c+ .+ \u254c+$/.test(line)) ?? ''
+  // The rail along the pane's right-hand edge takes the last cell of the row
+  // the rule is drawn on, so the rule is looked for inside the line rather than
+  // as the whole of it.
+  const row = lines.find(line => /\u254c+ .+ \u254c+/.test(line)) ?? ''
 
   // The band costs two rows, and a short pane has not got two to give. The
   // names go into the rule rather than off the pane, and the caption — the one
@@ -448,7 +464,7 @@ test('a phase whose slice is already legible keeps every phase on the pane', () 
   expect(extentOf(view).w).toBeLessThanOrEqual(110)
 })
 
-test('down, a band of more agents than the pane can name wraps into rows of them', () => {
+test('down, a band of more agents than the pane holds stands whole and runs past its edge', () => {
   const eight = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight']
   const run = runOf([
     ['Survey', eight],
@@ -459,30 +475,33 @@ test('down, a band of more agents than the pane can name wraps into rows of them
 
   expect(view.density).toBe('card')
 
-  const nodes = view.lanes.flatMap(lane => lane.nodes)
-
-  for (const node of nodes) {
-    expect(node.w).toBeGreaterThanOrEqual(20)
+  // Every node the same width, and that width the one a node is drawn at
+  // everywhere. The band used to take a second row rather than run past the
+  // edge, which kept the drawing inside the pane by changing its shape: eight
+  // agents were a fan on a wide seat and a block of four and four on a narrow
+  // one, for no reason a reader could see in the run.
+  for (const node of view.lanes.flatMap(lane => lane.nodes)) {
+    expect(node.w).toBe(32)
   }
 
-  // The band takes a second row rather than eight slivers on one, and the
-  // drawing stays inside the pane it was handed. Eight cards across a hundred
-  // and ten columns was thirteen cells each, four of them name, and the tail of
-  // the band was off the pane behind a sideways scroll nobody went looking for.
   const survey = view.lanes[0]
 
-  expect(survey.rows).toBe(2)
-  expect(new Set(survey.nodes.map(node => node.row)).size).toBe(2)
-  expect(extentOf(view).w).toBeLessThanOrEqual(110)
+  expect(survey.rows).toBeUndefined()
+  expect(new Set(survey.nodes.map(node => node.y)).size).toBe(1)
+  expect(extentOf(view).w).toBeGreaterThan(110)
 
-  // A band's nodes stand in the middle of the pane, whether the band wrapped or
-  // holds one node. Opened at the left instead, a band of one sat under the
-  // first card of the band above it and the drawing read as a left margin with
-  // a ragged edge down the rest of the pane.
+  // A band that fits stands in the middle of the pane; a band that does not
+  // opens at the edge and the body scrolls along it.
   for (const lane of view.lanes) {
     const first = lane.nodes[0]
     const last = lane.nodes[lane.nodes.length - 1]
     const right = 110 - (last.x + last.w)
+
+    if (right < 0) {
+      expect(first.x).toBe(1)
+
+      continue
+    }
 
     expect(Math.abs(first.x - right)).toBeLessThanOrEqual(1)
   }
@@ -683,46 +702,52 @@ test('every rail the pane draws has somewhere to go, and every overrun has a rai
   expect(wrong.slice(0, 5)).toEqual([])
 })
 
-test('across, a pane too short for two cards falls back to a row each', () => {
+test('across, a pane too short for two cards keeps them and scrolls to the rest', () => {
   const run = runOf([
     ['Gather', ['rivers', 'reefs']],
     ['Draft', ['rivers', 'reefs', 'dunes', 'forests', 'ridges', 'marshes']],
     ['Assemble', ['joined']],
   ])
 
-  // Two cards and the gap between them is what it takes to have anything to
-  // scroll between. Below that a card and a sliver of the next says less than
-  // six rows do.
-  expect(layout(run, 110, 8, 'horizontal').density).toBe('row')
-  // And two of them is enough to keep them.
+  // A short body used to flatten every node in the drawing to a row, so the
+  // same run was a graph on one seat and a list on another. The height asks
+  // nothing of the nodes now: they keep their frames, the drawing runs past the
+  // foot of the pane, and the body scrolls down to the rest.
+  const short = layout(run, 110, 8, 'horizontal')
+
+  expect(short.density).toBe('card')
+  expect(extentOf(short).h).toBeGreaterThan(8)
+
   expect(layout(run, 110, 14, 'horizontal').density).toBe('card')
 })
 
-test('a band too short even for a row falls to the list, which says so', () => {
+test('down, a pane too narrow for a whole band keeps its cards and runs past the edge', () => {
   const run = runOf([
     ['Survey', ['paint', 'layout', 'journal', 'README', 'plugin']],
     ['Review', ['paint', 'layout', 'journal', 'plugin']],
     ['Check', ['README']],
   ])
 
-  // Thirty-six columns stands one row of a legible width and no more, so a
-  // band has nothing to wrap into: one node a row is the list with a frame
-  // drawn round each row, and the list is the honest drawing of that pane.
+  // Thirty-six columns stands one card and no more. It used to fall back to
+  // the list there, on the grounds that a band with nothing to wrap into is a
+  // column of nodes with the pane's width beside it — but that was the nodes
+  // being sized to the pane. They are not, so a narrow pane is a drawing that
+  // runs off the edge rather than a drawing that becomes something else.
   const view = layout(run, 36, 20, 'vertical')
 
-  expect(view.density).toBe('row')
-  expect(view.list).toBe(true)
+  expect(view.density).toBe('card')
+  expect(view.list ?? false).toBe(false)
+  expect(extentOf(view).w).toBeGreaterThan(36)
 
   const canvas = new Canvas(36, 20)
 
   paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical' })
 
-  // The order down the page is what says what fed what, so nothing is drawn
-  // between the rows.
-  expect(rowsOf(canvas).join('\n')).not.toContain('\u25be')
+  // The card is a card at that width: its own frame, closed, not a row.
+  expect(rowsOf(canvas).some(row => row.includes('\u256d'))).toBe(true)
 })
 
-test('a column too narrow to close a card draws rows instead', () => {
+test('a column is the same width on a pane that cannot hold it as on one that can', () => {
   const six = runOf([
     ['Gather', ['rivers', 'reefs']],
     ['Draft', ['rivers', 'reefs']],
@@ -731,26 +756,27 @@ test('a column too narrow to close a card draws rows instead', () => {
     ['Measure', ['rivers', 'reefs']],
     ['Assemble', ['join']],
   ])
-  // Room enough down the pane for cards, and nothing like enough across it:
-  // six phases and their gutters in twenty columns.
+  // Six phases and their gutters in twenty columns: nothing like room for one
+  // of them. The column used to shrink to the share it was given and the card
+  // came back as `\u256d \u2714 r` with nothing closing it — a box the reader had to
+  // finish themselves — so under eight cells the drawing gave up the frames.
   const tight = layout(six, 20, 28, 'horizontal')
+  const roomy = layout(six, 120, 28, 'horizontal')
 
-  expect(tight.density).toBe('row')
-  expect(Math.max(...tight.lanes.map(l => l.w))).toBeLessThan(8)
+  expect(tight.density).toBe('card')
+  expect(Math.max(...tight.lanes.map(l => l.w))).toBe(Math.max(...roomy.lanes.map(l => l.w)))
+  expect(extentOf(tight).w).toBeGreaterThan(20)
 
   const canvas = new Canvas(20, 28)
 
-  paint(canvas, six, { nowMs: STARTED + 20_000, tick: 0, orientation: 'horizontal' })
+  // Held at the start of the drawing rather than on the phase the run is
+  // working in, so what the pane shows is the first card rather than the tail
+  // of the last.
+  paint(canvas, six, { nowMs: STARTED + 20_000, tick: 0, orientation: 'horizontal', follow: false })
 
-  // A card that narrow was drawn with its name over its own top-right corner,
-  // so the box had three sides and the name stood outside it.
-  expect(rowsOf(canvas).some(row => row.includes('╭'))).toBe(false)
-
-  // Wide enough for a card, and the card closes.
-  const roomy = layout(six, 120, 28, 'horizontal')
-
-  expect(roomy.density).toBe('card')
-  expect(Math.min(...roomy.lanes.map(l => l.w))).toBeGreaterThanOrEqual(8)
+  // The card opens on the pane and closes past its edge, which is what a
+  // sideways scroll is for.
+  expect(rowsOf(canvas).some(row => row.includes('\u256d'))).toBe(true)
 })
 
 /**
@@ -906,23 +932,25 @@ test('a timeline too fine for the pane scrolls sideways along its own scale', ()
 const ROW_SPEND = 5
 const NAME_MIN = 8
 
-test('a column the pane cannot give eight cells of a name takes the width it needs', () => {
+test('a column is the width it is drawn at, whatever the pane is', () => {
   const widthOf = (columns: number) => layout(RUN, columns, 12, 'horizontal').lanes[0].w
 
-  // Three phases across fifty-two columns get eleven or twelve cells each once
-  // the gutters are paid, and a row spends five of them on its state rule, its
-  // mark and the air between. Six cells of name cannot tell `Preflig…` from
-  // `Pre-comm…`, so the pane stops dividing itself between the phases: the
-  // columns take the width they need, the drawing runs past the pane's edge,
-  // and the body scrolls to the rest.
-  const kept = [47, 50, 52].map(columns => `${columns}: ${widthOf(columns) - ROW_SPEND >= NAME_MIN}`)
+  // The pane used to divide itself between its phases, and stop dividing once
+  // a column could no longer carry a name: three phases across fifty-two
+  // columns got eleven or twelve cells each, six of them name once a row had
+  // paid for its state rule and its mark, and `Preflig\u2026` could not be told from
+  // `Pre-comm\u2026`. Two devices met by dragging one edge, and a threshold a
+  // reader crossed without being told.
+  //
+  // One width now, at every pane width, with the drawing running past the edge
+  // wherever it does not fit.
+  const kept = [20, 47, 52, 53, 110, 240].map(widthOf)
 
-  expect(kept.join(', ')).toBe('47: true, 50: true, 52: true')
+  expect(kept.join(', ')).toBe('32, 32, 32, 32, 32, 32')
 
-  // And the threshold is visible from outside: one column wider the share is
-  // worth having, the pane divides itself again, and every column gets
-  // narrower as the pane gets wider.
-  expect(widthOf(53)).toBeLessThan(widthOf(52))
+  // And a name has its cells whatever the pane is: no column is drawn narrower
+  // than what a card spends on itself and a name needs after it.
+  expect(kept[0] - ROW_SPEND).toBeGreaterThanOrEqual(NAME_MIN)
 })
 
 test('a pane as tall as it is wide reads downward, even where the phases would fit across', () => {
@@ -934,15 +962,32 @@ test('a pane as tall as it is wide reads downward, even where the phases would f
   expect(resolveOrientation('auto', 100, 40, 3)).toBe('horizontal')
 })
 
-test('a pane too short to stand one band draws the run as a list', () => {
-  // A band is a rule with its node clear of it, the row above for the wires to
-  // gather on and the row below for the node's own exit points. A body that
-  // cannot hold those draws every wire through the rule itself, so the pane
-  // says more as a list of rows with no edges drawn between them.
-  expect(layout(RUN, 90, 7, 'vertical').list).toBe(true)
+test('a body with no room for one card draws the run as a list', () => {
+  // The one pane a card cannot be drawn on at all. Everywhere else the card is
+  // drawn and what is past the pane is scrolled to, so the list is what is left
+  // when there is not one card's worth of body to scroll through.
+  expect(layout(RUN, 90, 6, 'vertical').list).toBe(true)
 
-  // One row more and the band fits, which is the whole of the difference.
-  expect(layout(RUN, 90, 8, 'vertical').list ?? false).toBe(false)
+  // One row more and the card stands, which is the whole of the difference.
+  expect(layout(RUN, 90, 7, 'vertical').list ?? false).toBe(false)
+})
+
+test('the flat list is drawn because the reader asked for it, not because the pane is small', () => {
+  // A row an agent, at a pane size that stands cards perfectly well: the list is
+  // a drawing now, not the shape a narrow pane collapses into.
+  const listed = layout(RUN, 160, 40, 'list')
+
+  expect(listed.list).toBe(true)
+  expect(listed.density).toBe('row')
+  expect(listed.lanes.every(lane => lane.nodes.every(node => node.h === 1))).toBe(true)
+  expect(listed.lanes.flatMap(lane => lane.nodes).length).toBe(RUN.agents.length)
+
+  // And a pane far too narrow for a band of five cards keeps them: what it
+  // cannot hold it scrolls to.
+  const narrow = layout(RUN, 40, 40, 'vertical')
+
+  expect(narrow.list ?? false).toBe(false)
+  expect(narrow.lanes[0].nodes[0].h).toBe(CARD_H)
 })
 
 test('a phase the run never reached stands its row in the middle of the band', () => {
@@ -974,41 +1019,42 @@ function bandOf(names: string[]): RunState {
   ])
 }
 
-test('a band that wrapped takes the depth of every row it wrapped on to', () => {
+test('a band is one row deep whatever it holds, and the pane is as wide as it needs', () => {
   const eight = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight']
 
   // A body of the same height either way, and the only difference between the
-  // two runs is how many agents the first band holds.
+  // two runs is how many agents the first band holds. That difference used to
+  // be answered down the pane — the wide band wrapped on to a second row, and
+  // the depth it took then turned every node in the drawing into a row. It is
+  // answered across the pane now: the band is one row of cards either way, and
+  // the wide one runs past the edge.
   const wide = layout(bandOf(eight), 110, 22, 'vertical')
   const narrow = layout(bandOf(['one', 'two']), 110, 22, 'vertical')
 
-  expect(wide.lanes[0].rows).toBe(2)
+  expect(wide.lanes[0].rows).toBeUndefined()
   expect(narrow.lanes[0].rows).toBeUndefined()
 
-  // The test the density makes is whether the body can stand two whole bands,
-  // and a band that wrapped is two rows of cards deep rather than one. Asked of
-  // one row's worth, the pane said cards and then drew a band twice that deep:
-  // the second row of the widest band ran off the foot of the pane, and the
-  // bands under it went with it. Asked of the depth the bands actually take,
-  // the pane spends its rows on twice as many nodes by drawing each as a row.
-  expect(wide.density).toBe('row')
+  expect(wide.density).toBe('card')
   expect(narrow.density).toBe('card')
+
+  expect(extentOf(wide).w).toBeGreaterThan(extentOf(narrow).w)
 })
 
-test('a band about to wrap keeps the wider gap between its nodes', () => {
+test('the gap between two nodes of a band is two cells, whatever the band holds', () => {
   const nine = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
-  const view = layout(bandOf(nine), 110, 34, 'vertical')
-  const [first, second] = view.lanes[0].nodes
+  const gapOf = (names: string[]) => {
+    const [first, second] = layout(bandOf(names), 110, 34, 'vertical').lanes[0].nodes
 
-  expect(view.lanes[0].rows).toBe(2)
+    return second.x - (first.x + first.w)
+  }
 
-  // Neither gap stands nine nodes whole, so the band is going to wrap however
-  // the gap is chosen — and a band cut to the nodes one row holds has the width
-  // for air between them. Falling back to the narrow gap instead spent the
-  // cells it saved on nothing: the nodes came out the same width, one column
-  // apart, with an edge that has to pass the band left no clear column to run
-  // down.
-  expect(second.x - (first.x + first.w)).toBe(2)
+  // The gap used to fall back to one cell where two left the band too narrow to
+  // name its nodes, which was the gap paying for a width the nodes no longer
+  // give up. An edge that has to pass a band needs a clear column to run down,
+  // and with a single one there is none: it falls out to the margin and draws
+  // three sides of a rectangle round the band instead.
+  expect(gapOf(nine)).toBe(2)
+  expect(gapOf(['one', 'two'])).toBe(2)
 })
 
 /** How many nodes stand on each of a band's rows, top row first. */
@@ -1022,22 +1068,19 @@ function perRow(lane: { nodes: { y: number }[] }): number[] {
   return [...rows.entries()].sort(([a], [b]) => a - b).map(([, count]) => count)
 }
 
-test('a band that does not divide shares its nodes out over its rows', () => {
+test('a band stands every node it holds on one row', () => {
   const nine = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
-  // Wide enough that a row of this band holds seven, so the two ways of
-  // dividing nine differ.
   const view = layout(bandOf(nine), 160, 34, 'vertical')
 
-  expect(view.lanes[0].rows).toBe(2)
+  expect(view.lanes[0].rows).toBeUndefined()
 
-  // Filled to the brim instead, nine nodes into rows of seven is seven and two:
-  // a fan with an afterthought hanging under it, and a second row of two cards
-  // adrift in the middle of an otherwise empty band. Shared out, the two rows
-  // come out five and four, which reads as the block the band is.
-  expect(perRow(view.lanes[0])).toEqual([5, 4])
+  // Nine is the number that used to show how a wrapped band divided itself —
+  // into five and four rather than seven and two. A band is a fan now however
+  // many agents ran in it, and a fan is one row.
+  expect(perRow(view.lanes[0])).toEqual([9])
 })
 
-test('a band that wrapped keeps the band under it clear of its last row', () => {
+test('every band opens clear of the one above it', () => {
   const run = runOf([
     ['Survey', ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']],
     ['Review', ['paint', 'layout']],
@@ -1048,13 +1091,13 @@ test('a band that wrapped keeps the band under it clear of its last row', () => 
 
   const view = layout(run, 100, 36, 'vertical')
 
-  expect(view.lanes[0].rows).toBe(3)
+  expect(view.lanes[0].rows).toBeUndefined()
 
-  // A band takes the depth its own rows need. Given an even share of the body
-  // instead — five bands, a fifth of the pane each — a band that wrapped on to
-  // three rows is drawn over the two under it: the rule naming the next phase
-  // lands between the wrapped band's own rows, and its cards land on top of
-  // them.
+  // A band takes the depth it needs, and the band under it opens after it.
+  // Given an even share of the body instead — five bands, a fifth of the pane
+  // each — a band deeper than its share is drawn over the ones below: the rule
+  // naming the next phase lands inside the band above it, and its cards land on
+  // top of that band's own.
   view.lanes.forEach((lane, place) => {
     if (place === 0) {
       return

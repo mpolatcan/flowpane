@@ -487,7 +487,7 @@ export type RunWindow = {
 
 export type PaintResult = {
   hotspots: Hotspot[]
-  orientation: 'horizontal' | 'vertical' | 'timeline'
+  orientation: 'horizontal' | 'vertical' | 'timeline' | 'list'
   /** The detail list's extent and window, when one is drawn. */
   detail?: DetailView
   /** Where the drawing sits in the body, when it is larger than the body. */
@@ -3447,53 +3447,13 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
       ? exitOf(from, 'horizontal').y === entryOf(to, 'horizontal').y
       : exitOf(from, 'vertical').x === entryOf(to, 'vertical').x)
 
-  /**
-   * The nodes of a band a wire from outside it can reach.
-   *
-   * A band that wrapped stands its nodes on several rows, and only the outer
-   * two face anything: a wire into the second row would be drawn down through
-   * the row of cards above it, and a line through a card is a line through a
-   * word. So the barrier lands on the row that faces it — the first row for
-   * what arrives, the last for what leaves — and the rows between are held by
-   * the band's own rule, which is what says they belong to this phase.
-   *
-   * A band on one row is every band in most runs, and answers with all of it.
-   */
-  const facing = (lane: LaneBox, nodes: NodeBox[], side: 'head' | 'tail'): NodeBox[] => {
-    const rows = lane.rows ?? 1
-
-    if (rows < 2) {
-      return nodes
-    }
-
-    const want = side === 'head' ? 0 : rows - 1
-    const kept = nodes.filter(node => (node.row ?? 0) === want)
-
-    return kept.length > 0 ? kept : lane.nodes.filter(node => (node.row ?? 0) === want)
-  }
-
-  /**
-   * Whether a carry can be drawn as a line at all, which a wrapped band decides.
-   *
-   * Between two bands it has to leave the row facing the next band and arrive
-   * on the row facing the last; inside one, both ends have to stand on the same
-   * row. Anything else is a line across cards. The edge is not lost to the
-   * reader — the two agents are still a row apart in a band the rule names —
-   * but it is not drawn as a wire through the drawing.
-   */
-  const reaches = (from: NodeBox, to: NodeBox, span: number): boolean => {
-    const above = view.lanes[laneOf.get(from.agent.agentId) ?? -1]
-    const below = view.lanes[laneOf.get(to.agent.agentId) ?? -1]
-
-    if (span === 0) {
-      return (from.row ?? 0) === (to.row ?? 0)
-    }
-
-    return (
-      (above === undefined || (from.row ?? 0) === (above.rows ?? 1) - 1) &&
-      (below === undefined || (to.row ?? 0) === 0)
-    )
-  }
+  // A band used to wrap, and then only its outer rows faced anything outside
+  // it: a wire into the second row would have been drawn down through the cards
+  // on the first, and a line through a card is a line through a word. So a
+  // barrier landed on the row facing it and a carry between two rows the wire
+  // could not reach was left undrawn. A band stands whole on one row now — see
+  // `stackLayout` — so every card of it faces both ways and every carry is a
+  // line that can be drawn.
 
   /** The gutters drawn as one bundle, whose carries are not drawn again. */
   const bundled = new Set<number>()
@@ -3514,18 +3474,13 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
 
     const crossing = carries.filter(e => laneOf.get(e.fromId) === i - 1 && laneOf.get(e.toId) === i)
     const askew = crossing.filter(e => !abreast(byId.get(e.fromId), byId.get(e.toId)))
-    /**
-     * A band that wrapped always bundles what crosses it.
-     *
-     * Only the outer row of a wrapped band faces the band beyond it, so a wire
-     * from a row inside cannot be drawn without crossing the cards between —
-     * and dropping it instead left the two bands with nothing between them at
-     * all, which says they are unrelated. The bundle is drawn from the rows
-     * that do face each other and stands for every carry in the gutter.
-     */
-    const wrapped = (left.rows ?? 1) > 1 || (right.rows ?? 1) > 1
+    // A band that wrapped used to bundle what crossed it whatever else was
+    // true, because a wire from a row inside it could not be drawn without
+    // crossing the cards between. Bands stand whole now, so what is left is the
+    // reason a band on one row bundles: too many carries, turning too close
+    // together, to be followed one by one.
     const wants =
-      crossing.length > 0 && (wrapped || (askew.length > 0 && deeper(view, right) && crowded(view, crossing, byId)))
+      crossing.length > 0 && askew.length > 0 && deeper(view, right) && crowded(view, crossing, byId)
     const bundle = () => {
       const pick = (ids: string[]) =>
         [...new Set(ids)].flatMap(id => {
@@ -3537,8 +3492,8 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
       bundled.add(i)
       paintBarrier(
         c,
-        facing(left, pick(crossing.map(e => e.fromId)), 'tail'),
-        facing(right, pick(crossing.map(e => e.toId)), 'head'),
+        pick(crossing.map(e => e.fromId)),
+        pick(crossing.map(e => e.toId)),
         right.busAt,
         view.orientation,
         true,
@@ -3558,8 +3513,8 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
       } else {
         paintAlongside(
           c,
-          facing(left, left.nodes, 'tail'),
-          facing(right, right.nodes, 'head'),
+          left.nodes,
+          right.nodes,
           right.busAt,
           view.orientation,
         )
@@ -3595,8 +3550,8 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
 
       paintBarrier(
         c,
-        facing(left, ends(waves[i - 1], group => group[group.length - 1], left.nodes), 'tail'),
-        facing(right, ends(waves[i], group => group[0], right.nodes), 'head'),
+        ends(waves[i - 1], group => group[group.length - 1], left.nodes),
+        ends(waves[i], group => group[0], right.nodes),
         right.busAt,
         view.orientation,
         false,
@@ -3648,7 +3603,7 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
       const to = byId.get(carry.toId)
       const lane = laneOf.get(carry.toId) ?? -1
 
-      if (!from || !to || lane - (laneOf.get(carry.fromId) ?? 0) !== 1 || !reaches(from, to, 1)) {
+      if (!from || !to || lane - (laneOf.get(carry.fromId) ?? 0) !== 1) {
         continue
       }
 
@@ -3833,12 +3788,6 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
     // pointing at nothing. The loop mark on the card already says the phase was
     // entered again.
     if (span < 0) {
-      continue
-    }
-
-    // Either end on a row of a wrapped band the wire cannot reach: see
-    // `reaches`.
-    if (!reaches(from, to, span)) {
       continue
     }
 
@@ -4899,6 +4848,7 @@ const LAYOUTS: { value: Orientation; label: string }[] = [
   { value: 'horizontal', label: 'horizontal' },
   { value: 'vertical', label: 'vertical' },
   { value: 'timeline', label: 'timeline' },
+  { value: 'list', label: 'list' },
   { value: 'auto', label: 'fits' },
 ]
 

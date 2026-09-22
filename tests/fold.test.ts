@@ -229,12 +229,11 @@ function runWithNested(phase: string, inside: string[], phases = 9): RunState {
 test('a nested run a reader opened is drawn in a gutter of its own', () => {
   const phase = '\u25b8 code-review:ai-review'
   const run = runWithNested(phase, ['plan', 'review', 'verify'])
-  // Narrow, because that is where the list is drawn: a band of three agents
-  // needs forty columns before boxes carry a name, and under that the pane
-  // gives each agent a row instead.
   const canvas = new Canvas(36, 30)
 
-  paint(canvas, run, { nowMs: STARTED + 40_000, tick: -1, orientation: 'vertical', opened: [phase] })
+  // The list, because that is the drawing the gutter is a device of: a band of
+  // cards is one row high and never drifts from the rule that named it.
+  paint(canvas, run, { nowMs: STARTED + 40_000, tick: -1, orientation: 'list', opened: [phase] })
 
   const rows = rowsOf(canvas)
   const find = (text: string) => rows.findIndex(row => row.includes(text))
@@ -385,9 +384,8 @@ test('the phases the run went round on are tied together by a rail', () => {
   // Once, three times, once, three times, once: a body that repeated with a
   // phase inside it that did not, and a phase either end that stands outside.
   const run = runOf([
-    // Four agents in a phase of its own, on a pane too narrow to stand two of
-    // them side by side, so the drawing falls to the list — which is where the
-    // rail is.
+    // Four agents in a phase of its own, drawn as the flat list — which is
+    // where the rail is.
     agentOf('Gather', 'alpha'),
     agentOf('Gather', 'beta'),
     agentOf('Gather', 'gamma'),
@@ -405,7 +403,7 @@ test('the phases the run went round on are tied together by a rail', () => {
 
   const canvas = new Canvas(36, 26)
 
-  paint(canvas, run, { nowMs: STARTED + 20_000, tick: -1, orientation: 'vertical' })
+  paint(canvas, run, { nowMs: STARTED + 20_000, tick: -1, orientation: 'list' })
 
   const rows = rowsOf(canvas)
   const find = (text: string) => rows.findIndex(row => row.includes(text))
@@ -491,7 +489,10 @@ test('a reader who scrolls away is left there until the run changes phase', () =
 test('across, a nested run opens on the same mark it does down the pane', () => {
   const phase = '▸ code-review:ai-review'
   const run = runWithNested(phase, ['plan', 'review', 'verify'], 3)
-  const canvas = new Canvas(110, 26)
+  // Wide enough to stand all five phases: a column is the same width whatever
+  // the pane is, so a pane that cannot hold them scrolls to the rest and the
+  // nested one is not on it.
+  const canvas = new Canvas(192, 26)
   const shut = paint(canvas, run, { nowMs: STARTED + 40_000, tick: -1, orientation: 'horizontal' })
 
   // A phase's caption is the one row of it that says what the phase *is*, so a
@@ -499,7 +500,7 @@ test('across, a nested run opens on the same mark it does down the pane', () => 
   expect(shut.hotspots.some(spot => spot.agentId === `@band:${phase}`)).toBe(true)
   expect(rowsOf(canvas).join('\n')).toContain('▸ ')
 
-  const open = new Canvas(110, 26)
+  const open = new Canvas(192, 26)
 
   paint(open, run, { nowMs: STARTED + 40_000, tick: -1, orientation: 'horizontal', opened: [phase] })
 
@@ -512,11 +513,11 @@ test('across, a nested run opens on the same mark it does down the pane', () => 
 
 test('a nested phase draws its rule dashed, and a phase of this run does not', () => {
   /** How much of the drawing is in the dashed register, at a given layout. */
-  const dashes = (run: RunState, orientation: 'horizontal' | 'vertical' | 'timeline') => {
-    // Tall enough that the stack stands every band: down the pane a band is its
-    // node with two rows of air either side, so a run of four wants more rows
-    // than one of four rules and four cards would.
-    const canvas = new Canvas(110, 34)
+  const dashes = (run: RunState, orientation: 'horizontal' | 'vertical' | 'timeline' | 'list') => {
+    // Big enough that the drawing stands whole: a node is the same size whatever
+    // the pane is, so a pane smaller than the run scrolls to the rest, and a
+    // phase off the window is a phase whose rule is not drawn.
+    const canvas = new Canvas(192, 48)
 
     paint(canvas, run, { nowMs: STARTED + 40_000, tick: -1, orientation })
 
@@ -528,7 +529,7 @@ test('a nested phase draws its rule dashed, and a phase of this run does not', (
   // makes it a nested one.
   const plain = runWithNested('code-review:ai-review', ['plan', 'review', 'verify'], 3)
 
-  for (const orientation of ['horizontal', 'vertical', 'timeline'] as const) {
+  for (const orientation of ['horizontal', 'vertical', 'timeline', 'list'] as const) {
     // The pane already spends the dashed stroke on work that is not this run's
     // own — the phases it skipped, the strip naming the ones still ahead. A
     // nested run is the third of those, and this run has neither of the others.
@@ -618,7 +619,7 @@ test('down, a phase of more than one agent forks out of its own rule', () => {
   ])
   const canvas = new Canvas(36, 30)
 
-  paint(canvas, run, { nowMs: STARTED + 40_000, tick: -1, orientation: 'vertical' })
+  paint(canvas, run, { nowMs: STARTED + 40_000, tick: -1, orientation: 'list' })
 
   const rows = rowsOf(canvas)
   const find = (text: string) => rows.findIndex(row => row.includes(text))
@@ -848,7 +849,7 @@ test('the gutter an opened nested run stands in is two cells wide', () => {
   const run = runWithNested(phase, ['plan', 'review', 'verify'])
   const canvas = new Canvas(36, 30)
 
-  paint(canvas, run, { nowMs: STARTED + 40_000, tick: -1, orientation: 'vertical', opened: [phase] })
+  paint(canvas, run, { nowMs: STARTED + 40_000, tick: -1, orientation: 'list', opened: [phase] })
 
   const rows = rowsOf(canvas)
   const startOf = (label: string) => rows[rows.findIndex(row => row.includes(` ${label} `))].indexOf('\u258c')
@@ -865,7 +866,7 @@ test('the two cells an opened nested run is stood in carry the gutter and nothin
   const run = runWithNested(phase, ['plan', 'review', 'verify'])
   const canvas = new Canvas(36, 30)
 
-  paint(canvas, run, { nowMs: STARTED + 40_000, tick: -1, orientation: 'vertical', opened: [phase] })
+  paint(canvas, run, { nowMs: STARTED + 40_000, tick: -1, orientation: 'list', opened: [phase] })
 
   const rows = rowsOf(canvas)
   const row = rows[rows.findIndex(r => r.includes(' plan '))]
@@ -931,7 +932,7 @@ function runLooped(times: number): RunState {
 function markedRows(columns: number, times = 6): string[] {
   const canvas = new Canvas(columns, 7)
 
-  paint(canvas, runLooped(times), { nowMs: STARTED + 60_000, tick: -1, orientation: 'vertical' })
+  paint(canvas, runLooped(times), { nowMs: STARTED + 60_000, tick: -1, orientation: 'list' })
 
   return rowsOf(canvas).filter(row => row.includes('▌'))
 }

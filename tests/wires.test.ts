@@ -257,16 +257,14 @@ function railedNested(): RunState {
 }
 
 /**
- * The same skip, from a phase whose name is longer than half a card.
+ * The same skip, from a phase named at a given length.
  *
- * Down the pane the arriving wire's arrowhead stands in the middle of the row
- * the label shares with it, so a label has half a card's width and no more. A
- * short name leaves room for the word in front of it at every size this pane is
- * drawn at; a long one is what the ladder is for.
+ * A written source has the card it points at to write in and no more, so what
+ * decides whether the word in front of the name fits is the name, not the pane:
+ * a card is the same width at every size the pane is drawn at.
  */
-function railedNamed(): RunState {
+function railedNamed(named: string): RunState {
   const run = railedMiddle()
-  const named = 'Gather the evidence'
 
   run.phases = run.phases.map(p => (p === 'Gather' ? named : p))
 
@@ -313,7 +311,18 @@ function drawn(run: RunState, columns: number, rows: number, orientation: 'horiz
   const canvas = new Canvas(columns, rows)
   // The painter's own layout, not a fresh one at the same size: a drawing too
   // big for the pane gives a column to its scroll rail, and the boxes move.
-  const drawn = paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation })
+  //
+  // Held at the drawing's own origin rather than on the phase the run is
+  // working in, because every test here reads a cell off the canvas at a box's
+  // own coordinates. A window that has scrolled is the same drawing at a
+  // different offset, and the two stop lining up.
+  const drawn = paint(canvas, run, {
+    nowMs: STARTED + 20_000,
+    tick: 0,
+    orientation,
+    follow: false,
+    bodyScroll: { x: 0, y: 0 },
+  })
 
   return {
     canvas,
@@ -377,7 +386,7 @@ function saidOver(rows: string[], node: { x: number; y: number; w: number }): st
 }
 
 test('a card fed from further back says which phase fed it, in words', () => {
-  const { rows, view } = drawn(railedPast(), 100, 30, 'horizontal')
+  const { rows, view } = drawn(railedPast(), 168, 30, 'horizontal')
   const draft = view.lanes.find(l => l.phase === 'Draft')
   const nodes = draft?.nodes ?? []
 
@@ -418,8 +427,8 @@ test('a written source stands above the card in either layout', () => {
   // feeds, and one it writes instead of drawing says it the same way. Where a
   // wire is already arriving on that row, that arrowhead serves both and the
   // source is written up against it rather than given a second one.
-  const across = drawn(railedPast(), 100, 30, 'horizontal')
-  const down = drawn(railedMiddle(), 100, 30, 'vertical')
+  const across = drawn(railedPast(), 168, 30, 'horizontal')
+  const down = drawn(railedMiddle(), 104, 52, 'vertical')
 
   for (const { rows, view } of [across, down]) {
     const draft = view.lanes.find(l => l.phase === 'Draft')
@@ -441,24 +450,29 @@ test('a written source stands above the card in either layout', () => {
 })
 
 test('the word in front of a written source gives way before the name does', () => {
-  // Down the pane the arriving wire's arrowhead stands in the middle of the row
-  // the label shares with it, so the label has half a card's width and no more.
-  // `from Prefli…` names nothing while spelling out a word the reader has
-  // already met spelled out on a wider card in the same drawing — the ladder a
-  // token count runs down, for the same reason.
-  const saidIn = ({ rows, view }: ReturnType<typeof drawn>): string => {
+  // A label has the card it points at to write in, so a name long enough leaves
+  // no room for the word. `from Gather the evidence in fu…` names nothing while
+  // spelling out a word the reader has already met spelled out on a shorter
+  // name in the same drawing — the ladder a token count runs down, for the same
+  // reason.
+  //
+  // The name is what decides it, at one pane size for both: a card is the same
+  // width whatever the pane is, so the same label on the same card cannot say
+  // one thing in a wide window and another in a narrow one.
+  const saidIn = (named: string): string => {
+    const { rows, view } = drawn(railedNamed(named), 104, 52, 'vertical')
     const node = view.lanes.find(l => l.phase === 'Draft')?.nodes[0]
 
     return node === undefined ? '' : saidOver(rows, node).trim()
   }
 
-  // Wide enough for both, and the label says both.
-  expect(saidIn(drawn(railedNamed(), 100, 30, 'vertical'))).toContain('from Gather the evidence')
+  // Short enough for both, and the label says both.
+  expect(saidIn('Gather the evidence')).toContain('from Gather the evidence')
 
-  // Not wide enough for both. The name comes through whole and the word goes.
-  const tight = saidIn(drawn(railedNamed(), 80, 30, 'vertical'))
+  // Too long for both. The name comes through whole and the word goes.
+  const tight = saidIn('Gather the evidence in full')
 
-  expect(tight).toContain('Gather the evidence')
+  expect(tight).toContain('Gather the evidence in full')
   expect(tight).not.toContain('from')
   expect(tight).not.toContain('\u2026')
 })
@@ -468,7 +482,7 @@ test('a written source stands centred on the card it points at', () => {
   // edge it hung off a card wider than it by the whole of the difference, which
   // read as a label belonging to whatever was further left rather than to the
   // card it points at.
-  const { rows, view } = drawn(railedPast(), 120, 30, 'horizontal')
+  const { rows, view } = drawn(railedPast(), 168, 30, 'horizontal')
   const nodes = view.lanes.find(l => l.phase === 'Draft')?.nodes ?? []
 
   expect(nodes.length).toBe(2)
@@ -503,7 +517,7 @@ test('a source that is a nested run is named without the mark that unfolds it', 
 })
 
 test('a phase that ran in waves is entered at its first and left from its last', () => {
-  const { rows, view } = drawn(waved(), 96, 46, 'vertical')
+  const { rows, view } = drawn(waved(), 170, 46, 'vertical')
   const review = view.lanes.find(l => l.phase === 'Review')
   const nodes = review?.nodes ?? []
 
@@ -595,7 +609,7 @@ test('the carries that change row all turn in one column', () => {
 })
 
 test('down the pane, they turn in one row', () => {
-  const { rows, view } = drawn(fannedOut(), 120, 34, 'vertical')
+  const { rows, view } = drawn(fannedOut(), 136, 34, 'vertical')
   const [from, to] = view.lanes
   const band = { start: (from?.nodes[0]?.y ?? 0) + (from?.nodes[0]?.h ?? 0), end: to?.nodes[0]?.y ?? 0 }
   const turns = new Set<number>()
@@ -750,19 +764,36 @@ test('every point a wire leaves a card by is marked', () => {
 })
 
 
+/** Two phases whose agents are named at more than a card's own width. */
+function longNamed(): RunState {
+  return runOf('haiku', ['Gather', 'Draft'], [
+    agentOf('g0', 'gather:the rivers and the reefs and the dunes', 'Gather', 0, 4_000),
+    agentOf('g1', 'gather:the deltas and the plains and the ridges', 'Gather', 0, 4_000),
+    agentOf('d0', 'draft:the rivers and the reefs and the dunes', 'Draft', 5_000, 4_000),
+    agentOf('d1', 'draft:the deltas and the plains and the ridges', 'Draft', 5_000, 4_000),
+  ])
+}
+
 test('a name too long for its card stops before the point the wire leaves by', () => {
-  const { rows, view } = drawn(fannedOut(), 26, 12, 'horizontal')
+  // The name, not the pane: a card is the same width whatever the pane is, so
+  // what cuts a name is the name's own length.
+  const { rows, view } = drawn(longNamed(), 96, 16, 'horizontal')
   const from = view.lanes[0]
 
   expect(from?.nodes.length).toBeGreaterThan(0)
 
-  // A row this narrow cuts every name, and the mark that says a name was cut
-  // used to be written past the width it was cut to — over the one cell that
-  // says which card the wire belongs to.
+  // A name this long is cut on every card, and the mark that says a name was
+  // cut used to be written past the width it was cut to — over the one cell
+  // that says which card the wire belongs to.
   for (const node of from?.nodes ?? []) {
-    const row = rows[node.y] as string
+    const name = rows[node.y] as string
 
-    expect(row[node.x + node.w]).toBe(PORT)
+    // The name is cut, and the mark that says so stands inside the frame.
+    expect(name.slice(node.x, node.x + node.w)).toContain('\u2026')
+    expect(name[node.x + node.w - 1]).toBe('\u256e')
+
+    // And the cell the wire leaves by, a row under it, is still the point.
+    expect((rows[node.y + 1] as string)[node.x + node.w]).toBe(PORT)
   }
 })
 
@@ -837,8 +868,8 @@ test('every theme draws a card frame a reader can tell from a plain border', () 
   useTheme(DEFAULT_THEME)
 })
 
-/** Two phases of eight, which is more than a hundred and ten columns can name. */
-function wrapped(): RunState {
+/** Two phases of eight, which is a band wider than most panes are. */
+function eightEach(): RunState {
   const names = ['rivers', 'reefs', 'dunes', 'forests', 'ridges', 'marshes', 'deltas', 'plains']
 
   return runOf('haiku', ['Gather', 'Draft'], [
@@ -847,44 +878,49 @@ function wrapped(): RunState {
   ])
 }
 
-test('a band that wrapped is left from its last row and entered on its first', () => {
-  const { rows, view } = drawn(wrapped(), 110, 40, 'vertical')
+test('a band of eight stands on one row, and hands straight on to the band under it', () => {
+  // A band used to wrap into as many rows as its nodes needed at a width they
+  // could be named at, and only its outer row faced anything outside it: a wire
+  // out of the row above would have been drawn down through the cards on the
+  // row below, and a line through a card is a line through a word. A band
+  // stands whole now and the pane scrolls to what it cannot hold, so every card
+  // of it faces the band beyond it and the carries are drawn one to a card.
+  const { rows, view } = drawn(eightEach(), 280, 40, 'vertical')
   const gather = view.lanes.find(lane => lane.phase === 'Gather')
   const draft = view.lanes.find(lane => lane.phase === 'Draft')
 
-  expect(gather?.rows).toBe(2)
-  expect(draft?.rows).toBe(2)
+  expect(gather?.nodes.length).toBe(8)
+  expect(draft?.nodes.length).toBe(8)
+  expect(new Set((gather?.nodes ?? []).map(node => node.y)).size).toBe(1)
+  expect(new Set((draft?.nodes ?? []).map(node => node.y)).size).toBe(1)
 
+  // Left by a point under every card of the band above, entered by an arrowhead
+  // over every card of the band below.
+  for (const node of gather?.nodes ?? []) {
+    const under = columnsOf(rows[node.y + node.h] as string, [PORT])
+
+    expect(under.filter(x => x >= node.x && x < node.x + node.w).length).toBe(1)
+  }
+
+  for (const node of draft?.nodes ?? []) {
+    const over = columnsOf(rows[node.y - 1] as string, [ARROW_DOWN])
+
+    expect(over.filter(x => x >= node.x && x < node.x + node.w).length).toBe(1)
+  }
+
+  // And nothing between them is two wires in one cell.
   const last = Math.max(...(gather?.nodes ?? []).map(node => node.y + node.h))
   const first = Math.min(...(draft?.nodes ?? []).map(node => node.y))
 
-  // The columns a card's own frame stands in, which carry the same stroke a
-  // wire does and are not one.
-  const frames = new Set((gather?.nodes ?? []).flatMap(node => [node.x, node.x + node.w - 1]))
-
-  // Only the outer row of a wrapped band faces the band beyond it. A wire out
-  // of the row above it would be drawn down through the cards on the row below,
-  // and a line through a card is a line through a word.
-  for (let y = gather?.y ?? 0; y < last; y++) {
-    const wires = columnsOf(rows[y] as string, [LINE_V, DASH_V, ARROW_DOWN]).filter(x => !frames.has(x))
-
-    expect(`row ${y}: ${wires.join(',') || 'clear'}`).toBe(`row ${y}: clear`)
+  for (const row of rows.slice(last, first)) {
+    expect(columnsOf(row, [CROSS]).length).toBe(0)
   }
-
-  // And the two bands are still tied together: what crosses between them is
-  // bundled onto the rows that do face each other, rather than dropped for
-  // being unreachable — two bands with nothing drawn between them say they had
-  // nothing to do with each other.
-  const between = rows.slice(last, first).join('\n')
-
-  expect(between).toContain(ARROW_DOWN)
-  expect(between).toMatch(/[│┆]/)
 })
 
-/** Eight names, which is more than a hundred and ten columns can stand in a row. */
+/** Eight names, which is a band wider than most panes are. */
 const EIGHT = ['rivers', 'reefs', 'dunes', 'forests', 'ridges', 'marshes', 'deltas', 'plains']
 
-/** A band of eight taken one at a time, so the band is a chain that wrapped. */
+/** A band of eight taken one at a time, so the band is a chain. */
 function walked(): RunState {
   return runOf('audit', ['Gather', 'Report'], [
     ...EIGHT.map((name, i) => agentOf(`g${i}`, `gather:${name}`, 'Gather', i * 1_000, 800)),
@@ -892,30 +928,30 @@ function walked(): RunState {
   ])
 }
 
-test('a chain that wrapped hands on along each row and not over the turn', () => {
-  const { rows, view } = drawn(walked(), 110, 40, 'vertical')
+test('a chain of eight hands on along the one row it stands on', () => {
+  // The chain used to wrap, and the turn was the hard part: the fourth agent
+  // handed on to the fifth, which stood at the left of the row below, so the
+  // line between them ran back across the row it came from and over every card
+  // on it. A band stands whole now, so the chain is a chain: seven hops between
+  // eight cards, all of them along the one row.
+  const { rows, view } = drawn(walked(), 280, 40, 'vertical')
   const gather = view.lanes.find(lane => lane.phase === 'Gather')
-  const first = (gather?.nodes ?? []).filter(node => node.row === 0)
-  const second = (gather?.nodes ?? []).filter(node => node.row === 1)
+  const nodes = gather?.nodes ?? []
 
-  expect(gather?.rows).toBe(2)
-  expect(first.length).toBe(4)
-  expect(second.length).toBe(4)
+  expect(nodes.length).toBe(8)
+  expect(new Set(nodes.map(node => node.y)).size).toBe(1)
 
-  // Three hops along each row, between the four cards standing on it.
-  expect(columnsOf(rows[first[0].y + 1] as string, [ARROW_RIGHT]).length).toBe(3)
-  expect(columnsOf(rows[second[0].y + 1] as string, [ARROW_RIGHT]).length).toBe(3)
+  const along = rows[nodes[0].y + 1] as string
 
-  // And nothing over the turn. The fourth agent handed on to the fifth, but the
-  // fifth stands at the left of the row below: a line between them runs back
-  // across the row it came from, over every card on it, and a line through a
-  // card is a line through a word. The band's own rule is what says the two
-  // rows are one phase.
-  const tail = first[first.length - 1]
-  const head = second[0]
+  expect(columnsOf(along, [ARROW_RIGHT]).length).toBe(7)
 
-  expect((rows[tail.y + 1] as string)[tail.x + tail.w]).toBe(' ')
-  expect((rows[head.y + 1] as string)[head.x - 1]).toBe(' ')
+  // And the chain ends where the band does: nothing runs out of the last card
+  // into the air beside it, or into the first one from it.
+  const head = nodes[0]
+  const tail = nodes[nodes.length - 1]
+
+  expect(along[head.x - 1]).toBe(' ')
+  expect(along[tail.x + tail.w]).toBe(' ')
 })
 
 /** What one phase found, long enough for the next prompt to be proved to quote it. */
@@ -956,9 +992,7 @@ test('a card fed from a band further down is not drawn as a line back up the pan
   expect(columnsOf(rows[(node?.y ?? 1) - 1] as string, [ARROW_DOWN, LINE_V, DASH_V])).not.toContain(head)
 })
 
-/**
- * A band of eight that wrapped, whose only carries out leave from its first row.
- */
+/** A band of eight whose work fed a band of two. */
 function frontFed(): RunState {
   return runOf('haiku', ['Gather', 'Draft'], [
     ...EIGHT.map((name, i) => agentOf(`g${i}`, `gather:${name}`, 'Gather', 0, 4_000)),
@@ -967,26 +1001,33 @@ function frontFed(): RunState {
   ])
 }
 
-test('a wrapped band whose sources all stand inside it is still left from its last row', () => {
-  const { rows, view } = drawn(frontFed(), 110, 40, 'vertical')
+test('a band of eight into a band of two converges without a crossing', () => {
+  const { rows, view } = drawn(frontFed(), 280, 40, 'vertical')
   const gather = view.lanes.find(lane => lane.phase === 'Gather')
-  const second = (gather?.nodes ?? []).filter(node => node.row === 1)
+  const draft = view.lanes.find(lane => lane.phase === 'Draft')
+  const nodes = gather?.nodes ?? []
 
-  expect(gather?.rows).toBe(2)
+  expect(nodes.length).toBe(8)
+  expect(draft?.nodes.length).toBe(2)
 
-  // Both carries leave cards on the first row, and the first row of a wrapped
-  // band faces nothing below it. Kept to the cards the carries actually name,
-  // the band would be left from a row with two rows of cards under it; kept to
-  // nothing at all, the two bands would have nothing drawn between them, which
-  // says they had nothing to do with each other. So the band is left from the
-  // row that does face the band below, whichever cards the carries named.
-  const below = rows[second[0].y + second[0].h] as string
-  const marks = columnsOf(below, [PORT, LINE_V, DASH_V, ARROW_DOWN])
+  // Every card of the wider band is left by a point of its own, and the points
+  // stand under the cards they belong to rather than wherever the bundle went.
+  const below = rows[nodes[0].y + nodes[0].h] as string
+  const marks = columnsOf(below, [PORT])
 
-  expect(marks.length).toBeGreaterThan(0)
+  expect(marks.length).toBe(8)
 
   for (const x of marks) {
-    expect(second.some(node => x >= node.x && x < node.x + node.w)).toBe(true)
+    expect(nodes.some(node => x >= node.x && x < node.x + node.w)).toBe(true)
+  }
+
+  // And each of the two is entered once. Eight lines into two cards is a funnel
+  // and the funnel's own row joins them; what a reader has to be able to do is
+  // count the ends, and an end drawn twice is a card that was fed twice.
+  for (const node of draft?.nodes ?? []) {
+    const over = columnsOf(rows[node.y - 1] as string, [ARROW_DOWN])
+
+    expect(over.filter(x => x >= node.x && x < node.x + node.w).length).toBe(1)
   }
 })
 
@@ -1008,14 +1049,14 @@ function paced(spare: boolean): RunState {
 
 /** Where a hop between two rows of one lane would be drawn, and what is there. */
 function hopOf(spare: boolean) {
-  const { rows, view } = drawn(paced(spare), 90, 11, 'horizontal')
+  const { rows, view } = drawn(paced(spare), 90, 18, 'horizontal')
   const develop = view.lanes.find(lane => lane.phase === 'Develop')
   const from = (develop?.nodes ?? [])[0]
   const to = (develop?.nodes ?? [])[(develop?.nodes ?? []).length - 1]
   const at = from.x + Math.floor(from.w / 2)
 
   return {
-    port: (rows[from.y + 1] as string)[at],
+    port: (rows[from.y + from.h] as string)[at],
     head: (rows[to.y - 1] as string)[at],
   }
 }

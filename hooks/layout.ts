@@ -19,9 +19,16 @@ import { orderedLanes, type Fold, type FoldedLane, type FoldPass } from './shape
 /**
  * Which way the phases run. `auto` picks from the pane's proportions; `time`
  * is not a direction for the graph but the timeline in its place, one row per
- * agent along a clock, which `paint` draws without this layout.
+ * agent along a clock, which `paint` draws without this layout; `list` is the
+ * flat list, which runs down the pane like `vertical` and draws a row per agent
+ * in place of the bands.
+ *
+ * The list used to be reached only by making the pane small enough that a band
+ * could not be drawn as cards. It is a reader's choice now, for the reason
+ * every other size-driven device was given up: the pane's size decides what a
+ * reader can see at once, not which drawing they are looking at.
  */
-export type Orientation = 'auto' | 'horizontal' | 'vertical' | 'timeline'
+export type Orientation = 'auto' | 'horizontal' | 'vertical' | 'timeline' | 'list'
 
 export type NodeBox = {
   /**
@@ -54,16 +61,6 @@ export type NodeBox = {
    * its own way back out can go.
    */
   inside?: { agents: number; phase: string; alone?: boolean }
-  /**
-   * Which row of its band this node stands on, where the band wrapped.
-   *
-   * Absent for a band that stands on one row, which is most of them. A band
-   * with more nodes than the pane can stand side by side takes as many rows as
-   * it needs, and the wires either side of it go to the row facing them: a
-   * wire into the third row of a band would cross the two rows of cards above
-   * it, and a line through a card is a line through a word.
-   */
-  row?: number
   x: number
   y: number
   w: number
@@ -89,8 +86,6 @@ export type LaneBox = {
   /** Where the barrier's spine stands, in the gutter before this lane. */
   busAt: number
   nodes: NodeBox[]
-  /** How many rows this band's nodes wrapped on to, where it took more than one. */
-  rows?: number
   /**
    * True for a nested run a reader has opened: its rows are a run of their own
    * and are drawn one step in, behind a gutter of their own, with the row at
@@ -197,48 +192,6 @@ export function barRowsOf(rows: number, columns: number): number {
 const GUTTER = 7
 const MIN_COL = 12
 /**
- * The narrowest a card can be drawn and still close its own frame.
- *
- * `╭─ ✔ n ─╮` is eight cells: two corners, the dash either side of the name and
- * the mark, the space either side of them, and one cell of name. Narrower than
- * that the name is set into the edge over the corner it is supposed to stop
- * before, and the card is drawn without a right-hand side.
- */
-const CARD_W = 8
-/**
- * How many cards the body has to hold before cards are worth drawing at all.
- *
- * The height's answer to `two` in the across layout: the pane keeps the device
- * while it has enough room for the reader to move between two of them, and
- * gives it up below that rather than draw one card and a sliver.
- */
-const CARDS_MIN = 2
-/**
- * What a node spends on itself before a letter of its name is drawn.
- *
- * A card is a row inside a frame: `╭─ ✔ name ─╯` spends eight cells — two
- * corners, the dash either side of the name and the mark, and the space either
- * side of them — where `▌✔ name ` spends five: the state rule, the mark, and
- * the air that keeps those two apart and the name off the figures.
- *
- * MIN_COL is a floor on the *column*, not on the name, so a twelve-cell column
- * of cards left four cells of name and a phase called `Base Branch Health`
- * came out `Bas…` on every card in it. The floor was being paid to the frame.
- */
-const NODE_COST = { card: CARD_W, row: 5 } as const
-/**
- * The fewest cells of name a node may have before the pane stops dividing
- * itself between its sections.
- *
- * Eight is where the run this was built for stops colliding with itself:
- * `Preflig…`, `Pre-comm…` and `security` are three phases a reader can tell
- * apart at eight cells and cannot at six. Above it the division stands, even
- * where a wider column would read better — nineteen cells is a card with
- * eleven of name, and calling that too narrow would spend a scroll to buy
- * cells nobody asked for.
- */
-const NAME_MIN = 8
-/**
  * Columns take the width the pane gives them; the cap is the point past which
  * a wider node stops carrying more label and starts carrying air. A card holds
  * a label, a clock with a token count, and a model name — the longest of those
@@ -246,6 +199,25 @@ const NAME_MIN = 8
  * not.
  */
 const MAX_COL = 32
+/**
+ * The width every node is drawn at, in every layout, at every size of pane.
+ *
+ * A node used to be measured against the room there was for it: across, the
+ * phases divided the pane between them and a column took a share; down, a band
+ * wrapped so that its nodes could keep a width they were legible at; and past a
+ * certain height every node in the drawing flattened from a card to a row. Three
+ * devices, all of them answering the same question with the node's own size —
+ * so the same run on the same machine was a different picture in a narrow
+ * window than in a wide one, and a reader who dragged the pane's edge watched
+ * the drawing redraw itself rather than move.
+ *
+ * A node is the same size whatever the pane is now. What the pane cannot hold
+ * it scrolls to: the drawing runs past the edge and the rails say which way.
+ * `MAX_COL` is the width to fix it at because that is the width the columns
+ * already grew to wherever there was room — the point past which a wider node
+ * carries no more label, only air.
+ */
+const NODE_W = MAX_COL
 
 /**
  * Picks the axis from the pane's proportions: a seat wide enough to give every
@@ -260,6 +232,13 @@ export function resolveOrientation(
 ): 'horizontal' | 'vertical' {
   if (setting === 'horizontal' || setting === 'vertical') {
     return setting
+  }
+
+  // The list runs down the pane, so it reads on the vertical axis and takes the
+  // header that axis takes. What makes it a list is which layout is called, not
+  // which way it is read.
+  if (setting === 'list') {
+    return 'vertical'
   }
 
   // One phase has no direction to read in; keep the familiar one.
@@ -301,21 +280,25 @@ export function layout(
   // A phase left out is named rather than dropped, and the naming costs the
   // drawing something: across, a strip at the end of the phases, where the run
   // would have reached it; down, a row under the drawing. What is left over is
-  // laid out again, so the sections divide what the naming leaves rather than
-  // what it took.
-  const whole = fitting(numbered, orientation, columns, body)
-  const left = numbered.filter(lane => !whole.includes(lane))
-  const probeStrip = orientation === 'horizontal' ? aheadWidth(left.map(lane => lane.phase), columns) : 0
-  const room = Math.max(1, body - (probeStrip > 0 ? 0 : aheadDepth(left.length, body)))
-  const shown = fitting(numbered, orientation, columns - probeStrip, room)
+  // what the sections are laid out in.
+  //
+  // This used to be measured twice — what fits, what the naming leaves, what
+  // fits in that — because how many phases the pane could hold depended on how
+  // wide the pane was. It does not any more: a phase is left out only for
+  // being ahead of the run, which no amount of dragging the pane's edge
+  // changes.
+  const shown = fitting(numbered)
   const pending = numbered.filter(lane => !shown.includes(lane)).map(lane => lane.phase)
   const strip = orientation === 'horizontal' ? aheadWidth(pending, columns) : 0
   const depth = strip > 0 ? 0 : aheadDepth(pending.length, body)
+  const room = Math.max(1, body - depth)
 
   const view =
-    orientation === 'horizontal'
-      ? flowLayout(shown, columns, room, headerRows, widest, strip)
-      : stackLayout(shown, columns, room, headerRows, widest)
+    setting === 'list'
+      ? listLayout(shown, columns, room, headerRows)
+      : orientation === 'horizontal'
+        ? flowLayout(shown, columns, room, headerRows, widest, strip)
+        : stackLayout(shown, columns, room, headerRows)
 
   // The strip names what the run has not reached, so it belongs after what the
   // run has. It stands at the pane's own right edge, where the drawing ends
@@ -400,34 +383,24 @@ function aheadWidth(phases: string[], columns: number): number {
 }
 
 /**
- * The phases the pane has room to draw properly.
+ * The phases the drawing holds, which is every phase the run has reached.
  *
- * Every phase gets a section of the same size, so each one costs the same
- * whether ten agents ran in it or none ever will. A phase nothing has entered
- * is an outline and a name, and it is the first thing to do without: under
- * pressure the sections fall to the height of their own cards, which puts the
- * wires leaving one through the rule opening the next.
+ * The pane's size used to decide this as well: a section wanted a column wide
+ * enough for a label or a band deep enough for its card, and where there were
+ * more phases than the pane could give that to, the empty ones gave their
+ * sections up from the end of the run backward. It made the number of phases a
+ * reader could see a function of how wide their window was, and a phase that
+ * vanished when the pane narrowed looked like a phase the run had lost.
  *
- * Empty phases give their section up from the end of the run backward, since a
- * run reaches its last phase last. What survives is drawn at a size worth
- * reading; a phase dropped here appears the moment an agent starts in it.
+ * Size is answered by scrolling now, so what is left here is the one reason to
+ * leave a phase out that has nothing to do with the pane: the run has not
+ * reached it. A phase with no agents in it is a rule with blank rows under it,
+ * which reads as a band that failed to draw, and the phases at the end of a run
+ * are all like that at once. Named together in the strip beside the drawing or
+ * the band at its foot, they read as what they are — the rest of the run, in
+ * order — and each reappears the moment an agent starts in it.
  */
-function fitting(
-  lanes: Lane[],
-  orientation: 'horizontal' | 'vertical',
-  columns: number,
-  body: number,
-): Lane[] {
-  // Across, a section is a column and wants a card wide enough to carry a
-  // label rather than the truncation of one — twice the floor; downward it is a band, and wants its card, the
-  // rule that opens the band below, the bundle's row, the arrowheads' row, and
-  // the row the wires leaving the card turn in.
-  const roomy = (count: number) =>
-    orientation === 'horizontal'
-      ? Math.floor((columns - GUTTER * Math.max(0, count - 1) - 1) / Math.max(1, count)) >=
-        MIN_COL * 2
-      : Math.floor(body / Math.max(1, count)) >= CARD_H + 4
-
+function fitting(lanes: Lane[]): Lane[] {
   const shown = [...lanes]
 
   // The phases the run has not reached give up their sections however much room
@@ -438,22 +411,6 @@ function fitting(
   // foot, they read as what they are: the rest of the run, in order.
   while (shown.length > 1 && shown[shown.length - 1].folds.length === 0) {
     shown.pop()
-  }
-
-  if (roomy(shown.length)) {
-    return shown
-  }
-
-  // Still short: a phase in the middle that nothing entered gives its section
-  // up too, from the end of the run backward.
-  while (shown.length > 1 && !roomy(shown.length)) {
-    const spare = [...shown].reverse().find(lane => lane.folds.length === 0)
-
-    if (!spare) {
-      break
-    }
-
-    shown.splice(shown.indexOf(spare), 1)
   }
 
   return shown
@@ -481,36 +438,6 @@ function plannedBox(columns: number, colW: number, y: number): { x: number; y: n
   return { x: Math.max(1, Math.floor((columns - w) / 2)), y, w, h: 1 }
 }
 
-/**
- * A card, or a row each.
- *
- * A card is three rows: a border with the agent's name in it, what the agent
- * cost, and the border's other side. The frame is what says where one node ends
- * and the next begins on every side of it — a fill said so too, but only in the
- * rows a Raster draws, and a node's name row is drawn as elements, so the fill
- * broke across it.
- *
- * A card plus the row between it and the next is four, which is what a lane
- * needs per agent before boxes beat a list.
- *
- * The test is whether the body can stand two whole cards, not whether it can
- * stand every node of the tallest lane. It used to be the second: one nested
- * run opened to thirteen agents turned every card in the drawing into a row,
- * so a reader who asked to see inside one phase paid for it with the frames,
- * the models and the clocks on all sixteen of the others. That is the trade the
- * width already refuses — past the point where a column can carry a name the
- * columns take the width they need and the body scrolls sideways to the rest —
- * and the height now refuses it the same way: the nodes keep their height, the
- * drawing runs past the pane's foot, and the body scrolls down to the rest.
- *
- * Two, because two is what it takes to have anything to scroll between. A body
- * with room for one card and a sliver of the next is a pane that shows a node
- * at a time, and there a list of rows says more.
- */
-function densityOf(widest: number, room: number): Layout['density'] {
-  return Math.min(widest, CARDS_MIN) * 4 <= room ? 'card' : 'row'
-}
-
 /** Phases as columns, agents stacked inside them, the run reading rightward. */
 function flowLayout(
   lanes: Lane[],
@@ -525,59 +452,17 @@ function flowLayout(
 
   const width = Math.max(1, columns - ahead)
   const gutters = GUTTER * Math.max(0, lanes.length - 1)
-  const spare = Math.max(0, width - gutters - 1)
-  const wanted = Math.floor(spare / Math.max(1, lanes.length))
-  // MIN_COL is a floor on legibility, not on fit: a body too narrow for every
-  // lane at that width loses the lanes past its edge, which is better than a
-  // column of two characters.
-  const packed = Math.max(4, Math.min(MAX_COL, Math.max(MIN_COL, wanted), spare))
-  const cost = NODE_COST[densityOf(tallest, body)]
-  /** What a column gets if every phase keeps a share of the pane. */
-  const shared = Math.min(MAX_COL, Math.floor((width - gutters) / lanes.length))
   /**
-   * Whether the pane has stopped dividing itself between its phases.
+   * Every column is the same width, and it is the width a node is drawn at.
    *
-   * Seventeen phases divided into a hundred and ten columns is seventeen
-   * ellipses, each of which has to be opened to find out what it is — and the
-   * drawing overran the pane at that width anyway, since seventeen columns of
-   * twelve cells and their gutters is three hundred and twenty-three. The
-   * squeeze bought nothing it did not also scroll for.
-   *
-   * So past the point where a column can carry a name the phases take the
-   * width they need, the drawing runs past the pane's edge, and the body
-   * scrolls to the rest. Four phases a reader can read and thirteen they can
-   * scroll to is the same pane saying more — and a live run's window is
-   * already centred on the phase at work, so the reader arrives where the run
-   * is rather than at the start of an hour-old one.
+   * The pane used to divide itself between the phases and give each one a
+   * share, falling back to a floor once the share stopped carrying a name and
+   * letting the drawing overrun from there. Two devices, and the reader met
+   * both of them by dragging one edge: the cards narrowed, the labels turned to
+   * ellipses, and at some width the whole drawing changed shape. Past that
+   * width it scrolled instead — which is what it does at every width now.
    */
-  const squeezed = shared < cost + NAME_MIN
-  /**
-   * What a column that survives the cut is given: the cells MIN_COL promised,
-   * with what the node spends on itself paid on top. A drawing that is going
-   * to be scrolled anyway should scroll to something worth reading.
-   */
-  const floorW = cost + MIN_COL
-  /**
-   * The width the columns divide between them.
-   *
-   * The strip naming what the run has not reached costs the drawing width only
-   * while the drawing ends inside the pane. Where the columns run past that
-   * edge the strip goes after the last of them instead — which is what
-   * `stripAt` does with it — so the columns divide the pane itself, and a pane
-   * a hundred and ten wide is not budgeted as eighty-nine.
-   */
-  const budget = squeezed ? columns : width
-  /**
-   * Whether the pane can show two whole columns, which is what it takes to
-   * have anything to scroll between: half a card and a wire leaving the edge
-   * is worse than a narrow card whole, and one lane has nothing to divide
-   * with at all.
-   */
-  const two = lanes.length > 1 && columns >= (MIN_COL + GUTTER) * 2
-  /** How many columns the pane holds at that width, gutters and all. */
-  const held = squeezed
-    ? Math.max(two ? 2 : 1, Math.floor((budget + GUTTER) / (floorW + GUTTER)))
-    : lanes.length
+  const colW = NODE_W
   /**
    * Each phase owns an equal slice of the width and stands its cards in the
    * middle of it.
@@ -591,43 +476,21 @@ function flowLayout(
    * between two phases halfway between their cards.
    */
   const slice = width / lanes.length
-  // Divided only while every phase can have a legible slice of it. Past that
-  // the slices are the wrong device: they would set a twenty-cell card in a
-  // thirteen-cell section, and what pays is the gutter the wires run down.
-  const tiled = !squeezed && Math.floor(slice) - GUTTER >= MIN_COL
-  // The pane's own edge and the strip's are not the same edge. A column wider
-  // than the pane loses its tail to the frame, which is what the floor on
-  // legibility is for; a column wider than what the strip leaves is drawn over
-  // the phases the strip is there to name, and the two run into each other with
-  // no gap between them. Where the strip is there the columns take what is left
-  // and no more.
-  const ceiling = ahead > 0 ? Math.max(4, Math.floor(spare / Math.max(1, lanes.length))) : MAX_COL
-  // The width at which `held` columns fill the pane exactly, so the drawing is
-  // cut between two columns rather than through one: a fifth column showing
-  // three cells of its frame at the edge is a card a reader can neither read
-  // nor tell is there.
-  const evenly = Math.min(MAX_COL, Math.max(MIN_COL, Math.floor((budget - GUTTER * (held - 1)) / held)))
-  const legible = two ? (squeezed ? evenly : MIN_COL) : 4
-  const colW = Math.max(
-    legible,
-    Math.min(ceiling, tiled ? Math.max(MIN_COL, Math.min(MAX_COL, Math.floor(slice) - GUTTER)) : packed),
-  )
+  // Divided only while a slice can hold a whole node and the gutter its wires
+  // run down. Past that the slices are the wrong device — they would set a
+  // thirty-two-cell card in a thirteen-cell section — so the columns stand at
+  // the gutter they need, the drawing runs past the pane's edge, and the body
+  // scrolls to the rest.
+  const tiled = Math.floor(slice) - GUTTER >= colW
 
-  // A card is a frame with a name set into its top edge, and under CARD_W the
-  // name takes the frame's own corner: at six cells the card came back as
-  // `╭ ✔ r` with nothing closing it, which is a box the reader has to finish
-  // themselves. A row that narrow still carries the state, the mark and the
-  // first letters of the name, so the question the density asks about height is
-  // asked about width as well.
-  const density = densityOf(tallest, body) === 'card' && colW >= CARD_W ? 'card' : 'row'
-  const nodeH = density === 'card' ? CARD_H : 1
+  const density: Layout['density'] = 'card'
+  const nodeH = CARD_H
   // Room the tallest lane leaves over goes between its nodes rather than into
   // margins at the two ends: a lane of three boxes in thirty rows read as a
   // clump with half the pane blank around it. Capped, so a lane of two does not
   // put its nodes at opposite corners.
-  const tightGap = density === 'row' ? 0 : 1
   const slack = tallest > 1 ? Math.floor((body - tallest * nodeH) / (tallest - 1)) : 0
-  const nodeGap = Math.max(tightGap, Math.min(density === 'row' ? 2 : 3, slack))
+  const nodeGap = Math.max(1, Math.min(3, slack))
 
   const boxes: LaneBox[] = []
   const graphW = colW * lanes.length + gutters
@@ -701,32 +564,19 @@ function flowLayout(
  * spent on six words: on a pane docked beside a transcript those columns are
  * the difference between boxes and a list.
  */
-function stackLayout(
-  lanes: Lane[],
-  columns: number,
-  body: number,
-  headerRows: number,
-  widest: number,
-): Layout {
+function stackLayout(lanes: Lane[], columns: number, body: number, headerRows: number): Layout {
   // One column between neighbours reads them apart on its own — each node opens
   // with a rule in its own state's colour, a harder edge than any amount of
   // blank. Two is better where the width allows it: an edge that has to pass a
   // band needs a clear column to run down, and with a single one there is none,
   // so it falls out to the margin and draws three sides of a rectangle round
   // the band instead.
-  const usable = Math.max(8, columns - 2)
-  const widthAt = (gap: number) => {
-    const spare = Math.max(0, usable - gap * Math.max(0, widest - 1))
-
-    return Math.min(MAX_COL, Math.floor(spare / Math.max(1, widest)))
-  }
-
-  const gaps = [2, 1]
-  // The gap the widest band can be stood whole at, or — where no gap stands it
-  // whole and the band is going to wrap — the wider of the two: a band cut to
-  // the nodes a row holds has the width for air between them.
-  const nodeGap = gaps.find(g => widthAt(g) >= MIN_COL) ?? 2
-  const wide = widthAt(nodeGap)
+  // Two, always. It used to fall back to one where the wider gap left the band
+  // too narrow to name its nodes, which was the gap paying for a width the
+  // nodes no longer give up: a node is the same size at every pane size now, so
+  // the only thing a narrower gap buys is a tighter band, and a band that does
+  // not fit is scrolled to rather than squeezed.
+  const nodeGap = 2
 
   // Every phase gets a band of the same depth, and a band carries its node, the
   // rule that opens the band under it, and the two rows the wires arriving need:
@@ -735,14 +585,6 @@ function stackLayout(
   // the phase below, and every wire leaving them crossed that rule in the row it
   // left in.
   const bands = Math.max(1, lanes.length)
-  /**
-   * The least a band can be: its node, the rule opening the band under it, and
-   * the two rows the wires arriving need — one to gather on and one for the
-   * arrowheads.
-   *
-   * This is the floor the pane is tested against, not the depth a band is given.
-   */
-  const deepAs = (nodeH: number) => nodeH + 3
   /**
    * The depth a band is actually given: the floor, plus the two rows under the
    * node that make it centred — the row a card's exit point stands on and one
@@ -769,126 +611,42 @@ function stackLayout(
    */
   const airyAs = (nodeH: number) => nodeH + 6
   /**
-   * How a band would be laid out at one density: how many nodes stand on a row
-   * of it, how wide each of them is, and how many rows a band of n takes.
+   * The bands stand cards, at every size of pane.
    *
-   * Asked twice. Everything here turns on what a node spends on itself before a
-   * letter of its name is drawn — a card pays for its frame, a row does not —
-   * so the density has to be settled before the widths are, and the depth a
-   * band of cards actually takes is what settles it.
+   * This was a plan the layout drew up twice, once per density, because what a
+   * node spends on itself before a letter of its name is drawn depends on which
+   * one it is — a card pays for its frame, a row does not — and the body's depth
+   * chose between them: a run of seventeen phases in a body of thirty flattened
+   * every node in the drawing to a row. The height has stopped bargaining. A
+   * node is a card whatever the pane is, the bands keep the depth they need, the
+   * drawing runs past the foot of the pane, and the body scrolls to the rest.
    */
-  const planFor = (density: Layout['density']) => {
-    const nodeH = density === 'card' ? CARD_H : 1
-    /**
-     * What a node spends on itself before a letter of its name is drawn.
-     *
-     * MIN_COL is a floor on the node's whole width, and a card spends CARD_W of
-     * it on its own frame and its state mark — so a band of eight agents across
-     * a hundred and ten columns gave each card twelve cells, four of which were
-     * the name, and every one of them came back `Bas…`. A row pays no frame and
-     * keeps the floor it always had.
-     */
-    const cost = NODE_COST[density]
-    /**
-     * How many nodes of a legible width the pane stands side by side.
-     *
-     * The ceiling on a band's row. Past it a band does not divide the pane any
-     * further — it wraps, taking as many rows of that width as its nodes need —
-     * because a column narrower than this carries a truncation where its name
-     * should be, and twelve truncations is a drawing of a phase nobody can read.
-     */
-    const held = Math.floor((usable + nodeGap) / (cost + MIN_COL + nodeGap))
-    /**
-     * Whether the widest band stands whole on one row.
-     *
-     * Two ways it does not: the share of the pane every node would get is below
-     * the floor a node is legible at, or it is above that floor and still below
-     * what a name needs once the frame has taken its cells. Either way the band
-     * wraps rather than shrinking — a card is drawn at the width it is read at,
-     * and the nodes past the end of a row go on the row under it.
-     */
-    const whole = wide >= MIN_COL && (wide >= cost + NAME_MIN || widest <= held)
-    /** The most nodes a row of any band may hold. */
-    const perRow = whole ? Math.max(1, widest) : Math.max(1, held)
-    /** How many rows a band of this many nodes takes. */
-    const rowsFor = (nodes: number) => Math.max(1, Math.ceil(Math.max(1, nodes) / perRow))
-    /**
-     * How many nodes a band of this many stands on each of its rows.
-     *
-     * Shared out rather than filled to the brim: nine nodes into rows of seven
-     * is a row of seven and a row of one, which reads as a fan with an
-     * afterthought under it. Five and four is a block, and a block is what the
-     * band is.
-     */
-    const acrossFor = (nodes: number) => Math.ceil(Math.max(1, nodes) / rowsFor(nodes))
-    /** The widest row in the drawing, which is what the columns divide. */
-    const spread = Math.max(1, ...lanes.map(lane => acrossFor(lane.folds.length)))
-    const colW = whole
-      ? wide
-      : Math.max(MIN_COL, Math.min(MAX_COL, Math.floor((usable - nodeGap * (spread - 1)) / spread)))
-    /** The air between one wrapped row of a band and the next. */
-    const rowGap = density === 'card' ? 1 : 0
-    /** What a band of that many rows stands in, its air between rows included. */
-    const blockFor = (rows: number) => rows * nodeH + Math.max(0, rows - 1) * rowGap
+  const density: Layout['density'] = 'card'
+  const nodeH = CARD_H
+  const colW = NODE_W
 
-    return {
-      density,
-      nodeH,
-      held,
-      whole,
-      rowsFor,
-      acrossFor,
-      colW,
-      rowGap,
-      blockFor,
-      /** What the deepest band in the drawing stands in, wrapped rows and all. */
-      deepest: Math.max(...lanes.map(lane => blockFor(rowsFor(lane.folds.length)))),
-    }
-  }
-
-  /**
-   * Whether the bands stand cards, which is the height's half of the bargain
-   * the width already keeps.
-   *
-   * It used to be whether the body divided by the number of phases left room
-   * for a card — so a run of seventeen phases in a body of thirty flattened
-   * every node in the drawing to a row, and the same run laid out across kept
-   * its cards and scrolled sideways to the rest. The same run on the same seat
-   * was a graph under one setting and a list under the other.
-   *
-   * The test is whether the body can stand two whole bands — at the depth the
-   * bands of this drawing actually take, which for a band that wrapped is
-   * several rows of cards rather than one. Past that the pane spends its rows
-   * on twice as many nodes by drawing each as a row. Past that again the bands
-   * keep the depth they need, the drawing runs past the foot of the pane, and
-   * the body scrolls down to the rest.
-   */
-  const carded = planFor('card')
-  const plan = Math.min(bands, CARDS_MIN) * deepAs(carded.deepest) <= body ? carded : planFor('row')
-  const { density, nodeH, rowsFor, acrossFor, colW, rowGap, blockFor } = plan
-
-  // Below even one band, a band is a rule with its node against it and every
-  // wire into it drawn through one, so the pane reads better as a list.
-  if (body < deepAs(nodeH)) {
-    return listLayout(lanes, columns, body, headerRows)
-  }
-
-  // A pane that cannot stand two legible nodes side by side has nothing to wrap
-  // into: one node a row is a column of nodes with the pane's whole width
-  // beside it, which is the list with a frame drawn round each row. The list is
-  // the honest drawing of that pane.
-  if (!plan.whole && plan.held < 2) {
+  // A body with no room for one card is the one pane a card cannot be drawn on
+  // at all, and there the list is the honest drawing: a row per agent, in the
+  // run's own order. Every deeper body keeps its cards and scrolls to what is
+  // past the foot.
+  //
+  // This used to catch far more than that — a band too narrow to stand two
+  // legible nodes side by side fell back to the list as well — because the
+  // nodes were sized to the pane and a narrow pane made them illegible. They
+  // are not sized to it any more, so a narrow pane is a drawing that runs off
+  // the edge, not a drawing that has to become something else.
+  if (body < CARD_H) {
     return listLayout(lanes, columns, body, headerRows)
   }
   /**
-   * What a band is given down the pane: its own block with the air a band keeps
+   * What a band is given down the pane: its own node with the air a band keeps
    * around it, and never less than an even share of the body.
    *
    * Equal shares are what give the stack its rhythm — every phase the same
-   * depth, every card in the middle of its own band. A band that wrapped takes
-   * the rows its own rows need, and the bands around it keep theirs.
+   * depth, every card in the middle of its own band. A band is one node deep
+   * whatever it holds, so every band asks the same of the body.
    */
-  const depthOf = (lane: Lane) => Math.max(airyAs(blockFor(rowsFor(lane.folds.length))), Math.floor(body / bands))
+  const depthOf = (_lane: Lane) => Math.max(airyAs(nodeH), Math.floor(body / bands))
   /** Where each band opens, which is where the one before it ended. */
   const tops: number[] = []
   let at = headerRows
@@ -903,9 +661,7 @@ function stackLayout(
   lanes.forEach((lane, place) => {
     const top = tops[place] as number
     const bandH = depthOf(lane)
-    const rows = rowsFor(lane.folds.length)
-    const across = acrossFor(lane.folds.length)
-    const blockH = blockFor(rows)
+    const blockH = nodeH
     // A band's last row carries the next band's name rule, so the card centres
     // in what is left over. The last band has no rule under it and centres in
     // the whole of its own.
@@ -927,18 +683,13 @@ function stackLayout(
     // stands in the middle of it.
     const lift = slack === 0 ? 0 : Math.max(Math.min(slack, 3), Math.floor(slack / 2))
     const y = top + lift
-    const shown = Math.min(lane.folds.length, across)
+    const shown = Math.max(1, lane.folds.length)
     const width = shown * colW + Math.max(0, shown - 1) * nodeGap
     // Centred, which is what makes a fan read as a fan — and what a band of one
     // needs, since a lone card pinned to the left edge of a pane it has all of
-    // is a drawing that ran out rather than one placed. A band never reaches
-    // past the pane now: the nodes a row cannot hold are on the row below, so
-    // there is no drawing off the edge for a left margin to keep in view.
-    //
-    // The rows of a wrapped band share one left edge, so its columns line up
-    // and the block reads as a block. The last row is short and stands where it
-    // falls, which is what says it is the end of the band rather than the start
-    // of another.
+    // is a drawing that ran out rather than one placed. A band wider than the
+    // pane has nothing to centre in, so it opens at the left like the run does
+    // and runs off the right edge; the body scrolls to the rest of it.
     const left = Math.max(1, Math.floor((columns - width) / 2))
 
     boxes.push({
@@ -948,7 +699,6 @@ function stackLayout(
       y,
       w: columns,
       h: blockH,
-      ...(rows > 1 ? { rows } : {}),
       // The band's name rule is the line between it and the band before it: the
       // last row of that band, and for the first the row the header keeps back.
       edgeAt: -1,
@@ -961,11 +711,10 @@ function stackLayout(
       busAt: lift > 1 ? top : Math.max(0, top - 1),
       nodes: lane.folds.map((fold, i) => ({
         ...boxOf(fold),
-        x: left + (i % across) * (colW + nodeGap),
-        y: y + Math.floor(i / across) * (nodeH + rowGap),
+        x: left + i * (colW + nodeGap),
+        y,
         w: colW,
         h: nodeH,
-        ...(rows > 1 ? { row: Math.floor(i / across) } : {}),
       })),
       // On the row a card in this band would have its middle on, not the row a
       // card would start at: one row set against the top of a three-row block

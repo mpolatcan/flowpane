@@ -225,7 +225,7 @@ test('the help lists every form of the command, and no more', async ($, on) => {
       COMMAND,
       `${COMMAND} runs`,
       `${COMMAND} <n>`,
-      `${COMMAND} horizontal|vertical|timeline|fits`,
+      `${COMMAND} horizontal|vertical|timeline|list|fits`,
       `${COMMAND} detail <n>`,
       `${COMMAND} theme [name]`,
       `${COMMAND} about`,
@@ -256,7 +256,7 @@ test('the widest form of the command is three spaces clear of what it does', asy
   // Three is the gap that reads as a column rather than a wrapped sentence, and
   // it is measured off the visible text of the longest line: one space here and
   // the widest row's two halves run together into one phrase.
-  expect(`${widest.form} ::${widest.gutter}::`).toBe(`${COMMAND} horizontal|vertical|timeline|fits ::   ::`)
+  expect(`${widest.form} ::${widest.gutter}::`).toBe(`${COMMAND} horizontal|vertical|timeline|list|fits ::   ::`)
 })
 
 /**
@@ -293,6 +293,19 @@ test('an unlisted layout word is answered with the layout, not with a refusal', 
   // command takes no such word — which is the reply a reader who learned it
   // would get, and the whole of what this pins.
   expect(await reply($, 'across')).not.toContain('takes no')
+})
+
+test('the flat list is a layout the command sets by name', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  stubEngine(on)
+
+  // The list used to be reached only by making the pane small enough that a
+  // band could not be drawn as cards, which made it a shape a reader arrived
+  // at rather than one they chose. It is a word now, beside the other four.
+  const said = await reply($, 'list')
+
+  expect(said).not.toContain('takes no')
+  expect(said).toContain('list')
 })
 
 test('the one constant the command is spelled from is the word it answers to', async ($, on) => {

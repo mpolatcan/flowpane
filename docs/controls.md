@@ -8,10 +8,10 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | --- | --- |
 | A node's label | opens that agent's detail dialog; click again to close |
 | ⚙ Settings | opens the settings dialog over the drawing |
-| `flowpane 0.8.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
+| `flowpane 0.9.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
 | A setting's value | unrolls that setting's list where it stands; press it again to roll the list up |
 | The graph, with any dialog open | takes no presses — it is pushed back behind the dialog until the dialog shuts |
-| Layout | horizontal, vertical, timeline, or fits the shape — picked by name |
+| Layout | horizontal, vertical, timeline, list, or fits the shape — picked by name |
 | Detail height `−` `+` | rows the detail dialog takes, 5 to 32; grey at either end of the range |
 | Theme | twelve palettes, nine dark and three light — each listed beside three cells of its own |
 | ✕ (in a dialog) | closes it, from the dialog's own top corner |
@@ -25,7 +25,7 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | ▴ / ▾ (in a dialog) | scrolls the open pane three lines. Grey at either end |
 | ▴ / ▾ (at the pane's right edge) | scrolls the drawing three rows, where the drawing is taller than the body. While a run is live this is a peek: the window goes back to the phase at work when the run enters a new one. The timeline scrolls its bands the same way, under the fixed run line and ruler |
 | The wheel, over the pane | moves the drawing by the rows the wheel asks for; moves the open dialog instead while one is open |
-| The wheel, over the rail along the foot | moves the drawing eight cells sideways a tick. A drawing that can only go sideways — horizontal, where the phases run in a row — takes the wheel this way wherever it is turned |
+| The wheel, over the rail along the foot | moves the drawing eight cells sideways a tick. A drawing that can only go sideways — one that overruns the pane's width and not its height, which is what the phases in a row usually come to — takes the wheel this way wherever it is turned |
 | The `▾ 6 agents` on a step of an opened nested run | folds the rows that ran at once in that step into one row saying how many; press it again to stand them out. Only a step holding more than one row carries it, and only inside a nested run: a phase of the calling run that fanned out to six agents is six cards either way. Folding the run itself back forgets every fold made inside it |
 | A row of the Tool Calls list | opens that call in a dialog of its own, over the agent's: what it was passed and what came back, each in a compartment of the box with its own shelf, its own bar and its own place kept, and the middle of a long value left out and counted. The wheel moves whichever compartment the pointer is over. `◂ Back` in the top corner returns to the list at the row it was left on; `✕` shuts the reading altogether |
 | ◂ / ▸ (on the pane's last row) | scrolls the drawing eight cells sideways, where it is wider than the body. On the timeline this moves the time axis, which has a scale of its own and is usually wider than the pane; the labels and the figures stay put |
@@ -151,8 +151,17 @@ Across, this is what makes the layout readable at all on a long run. The columns
 used to divide the pane however many phases there were, so seventeen phases in a
 hundred and twelve cells came out as seventeen columns of `P 1…` — every phase
 present and none of them named. They take the width a card needs instead, and
-the body scrolls to the ones past the edge. A pane too narrow to show two whole
-columns has nothing to scroll between, and packs as tightly as it always did.
+the body scrolls to the ones past the edge. A pane with no room to give every
+phase a section of its own stands the columns at the gutter their wires need and
+scrolls between them.
+
+Down the pane it is what makes a wide band readable. A band of eight cards is
+two hundred and seventy-one cells and no pane here is that wide, so the band
+stands whole, runs off the right edge and takes the same foot rail. It used to
+wrap into a second row instead, at a card width taken from the widest band in
+the drawing — so one wide band set the width of every card in the run, and
+dragging the pane's edge re-formed the whole picture rather than moving it. See
+[header.md](header.md).
 
 The timeline scrolls on the same rail, for the same reason. It used to end at
 `… 48 more` on its last row — a number a reader could read and not act on — on
@@ -168,7 +177,7 @@ them.
 
 ```
 ────────────────────────────────────────────────────────────────────────────────────────
-⚙ Settings │ Layout: fits │ Theme: tokyo-night │ Detail height: 24 rows   flowpane 0.8.0
+⚙ Settings │ Layout: fits │ Theme: tokyo-night │ Detail height: 24 rows   flowpane 0.9.0
 ```
 
 A line divides it from the drawing. Everything above the line is one canvas and
@@ -192,7 +201,7 @@ and still could not show them what they were choosing.
 What replaced it is the part worth having on screen the whole time: what the
 pane is currently set to, in the same words the dialog offers and in the order
 the dialog lists them. A footer reading `Layout: vertical` beside a dialog offering
-`horizontal vertical timeline fits` would be two names for one setting, and a
+`horizontal vertical timeline list fits` would be two names for one setting, and a
 footer reading them back in a different order would be two lists.
 
 Each fact is named, in the dialog's own word for it. `tokyo-night` on its own is
@@ -217,10 +226,10 @@ which is the one a reader changes most.
 The same pane at 88, 72, 44, 30 and 22 columns:
 
 ```
-⚙ Settings │ Layout: fits │ Theme: tokyo-night │ Detail height: 24 rows   flowpane 0.8.0
-⚙ Settings │ Layout: fits │ Theme: tokyo-night            flowpane 0.8.0
-⚙ Settings │ Layout: fits     flowpane 0.8.0
-⚙ Settings      flowpane 0.8.0
+⚙ Settings │ Layout: fits │ Theme: tokyo-night │ Detail height: 24 rows   flowpane 0.9.0
+⚙ Settings │ Layout: fits │ Theme: tokyo-night            flowpane 0.9.0
+⚙ Settings │ Layout: fits     flowpane 0.9.0
+⚙ Settings      flowpane 0.9.0
 ⚙ Settings            
 ```
 
@@ -246,7 +255,7 @@ reader presses to find out what this is, is what it is called.
 ## What the pane is
 
 ```
-╭─────────────────── flowpane 0.8.0 ───────────────────── ✕ ─╮
+╭─────────────────── flowpane 0.9.0 ───────────────────── ✕ ─╮
 │                                                            │
 │ A live picture of the agents a workflow runs: what each    │
 │ one is doing, what it has spent, and what it answered.     │

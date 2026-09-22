@@ -38,9 +38,11 @@ plugin API from [anthropics/claude-code#91870](https://github.com/anthropics/cla
   workflow this one called is drawn in the dashed register every layout uses for
   work that is not this run's, folded to one node with a mark per trip. Press its
   ▸ and every agent inside stands separately, each with its own detail.
-- **Three layouts** — **across**, **down**, or **timeline**: phases laid across
-  the pane, stacked down it, or drawn as bars against the clock — and **twelve
-  palettes**, nine dark and three light.
+- **Four layouts** — **across**, **down**, **timeline** or **list**: phases laid
+  across the pane, stacked down it, drawn as bars against the clock, or given a
+  row per agent — and **twelve palettes**, nine dark and three light. A node is
+  the same size in all of them at every size of pane; what the pane cannot hold
+  it scrolls to.
 
 ## Install
 
@@ -77,10 +79,10 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | --- | --- |
 | A node's label | opens that agent's detail dialog; click again to close |
 | ⚙ Settings | opens the settings dialog over the drawing |
-| `flowpane 0.8.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
+| `flowpane 0.9.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
 | A setting's value | unrolls that setting's list where it stands; press it again to roll the list up |
 | The graph, with any dialog open | takes no presses — it is pushed back behind the dialog until the dialog shuts |
-| Layout | **across**, **down**, **timeline**, or **fits** the shape — picked by name |
+| Layout | **across**, **down**, **timeline**, **list**, or **fits** the shape — picked by name |
 | Detail height `−` `+` | rows the detail dialog takes, 5 to 32; grey at either end of the range |
 | Theme | twelve palettes, nine dark and three light — each listed beside three cells of its own |
 | ✕ (in a dialog) | closes it, from the dialog's own top corner |
@@ -101,7 +103,7 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 
 | Field | Values | What it does |
 | --- | --- | --- |
-| `orientation` | `horizontal`, `vertical`, `timeline`, or `auto` (default) — the last spelled `fits` in `/flowpane` and in the settings | `horizontal` runs the phases across the pane, `vertical` runs them down it, `auto` follows the pane's proportions. Both keep the same bargain in both directions: while a section can carry a name and stand two of its cards, the pane divides itself between the phases; past that the sections take the room they need, the drawing runs past the pane's edge and the body scrolls to the rest. Below the width a band needs for legible boxes at all, `vertical` becomes a flat list: one agent per row under each phase, no edges drawn. `timeline` swaps the graph for a trace view: a ruled time axis, one bar per agent on it, grouped by phase and indented under the nested runs they belong to, with a marker where now is. |
+| `orientation` | `horizontal`, `vertical`, `timeline`, `list`, or `auto` (default) — the last spelled `fits` in `/flowpane` and in the settings | `horizontal` runs the phases across the pane, `vertical` runs them down it, `auto` follows the pane's proportions. A node is the same size in every one of them at every size of pane: the drawing is laid out whole and the pane is a window on it, so what it cannot hold it scrolls to and the rails say which way. `list` draws a row per agent under each phase with no edges between them, which is the compact reading of a long run. `timeline` swaps the graph for a trace view: a ruled time axis, one bar per agent on it, grouped by phase and indented under the nested runs they belong to, with a marker where now is. |
 | `detailRows` | 5–32 (default 24) | Rows the detail dialog takes when a node is selected, capped at what the pane can inset. |
 | `paneRows` | 6–80 (0 = let the surface decide) | Rows the pane asks for. A dock beside the transcript usually picks its own height. |
 | `theme` | `tokyo-night` (default), `catppuccin`, `gruvbox`, `nord`, `dracula`, `solarized`, `monokai`, `vscode-dark`, `insider-one`, `github-light`, `solarized-light`, `insider-one-light` | The palette everything is drawn in, its ground included. The pane always paints on that ground, footer and all, so the drawing reads the same in every terminal rather than against whatever the terminal happens to be; the ground stops at the drawing's own right edge — see the note under the tree below. |
@@ -159,7 +161,7 @@ it changed:
 ## Status
 
 Loads and runs on **Claude Code 2.1.272**: hooks register, `/flowpane` lists, the launch
-hook fires and reads the journal. 353 tests run over the engine with `claude
+hook fires and reads the journal. 355 tests run over the engine with `claude
 plugin test .`; `dev/lines.ts` checks every line of every run on disk at twelve
 widths and ten heights. Nothing the pane reads leaves the machine.
 
