@@ -259,10 +259,16 @@ or a path this plugin cannot see, and nothing else on screen tells those apart.
 
 `/flowpane about` prints the same lines. They are written once, in `hooks/about.ts`,
 because two copies drift: the dialog gains a line the command never learned, and
-the reader with the fewest ways to find out is told the least. The version comes
-from there too, and `bun dev/checkmeta.ts` fails if it has drifted from
-`.claude-plugin/plugin.json` — a pane claiming 0.3.0 while the marketplace
-serves 0.5.0 is worse than a pane that names no version at all.
+the reader with the fewest ways to find out is told the least.
+
+The version is the one fact there that is read rather than written down. The
+session opens `.claude-plugin/plugin.json` under the plugin's own root when it
+starts and the pane names what it found, because a pane claiming 0.3.0 while the
+marketplace serves 0.5.0 is worse than a pane that names no version at all — and
+for three releases the constant in `hooks/about.ts` was exactly that, since
+nothing in the suite could hold it to the manifest. A read that failed, or a
+manifest naming no version, leaves the pane on the constant, and
+`bun dev/checkmeta.ts` is what keeps the constant honest for that case.
 
 Short of the room for all of it, the end goes first: what the pane is and what
 presses it are what the dialog was opened for, and the path it reads from is the

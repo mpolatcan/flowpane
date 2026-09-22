@@ -11,7 +11,7 @@ workflow writes, and everything it says has to fit in cells.
 ## Commands
 
 ```bash
-claude plugin test .          # the test suite — 304 tests across 21 files
+claude plugin test .          # the test suite — 307 tests across 21 files
 bunx tsc --noEmit             # typecheck (hooks/ and types/ only; see tsconfig.json)
 ```
 
@@ -32,7 +32,7 @@ bun dev/contrast.ts                                # every theme's roles against
 bun dev/edges.ts <dir>                             # the graph derived for a run, and how it was derived
 bun dev/recover.ts <sessionId> [home]              # what a session's runs rebuild to
 bun dev/dryrun.ts <workflow>                       # a workflow's control flow, stubbed, no agents spent
-bun dev/checkmeta.ts                               # the version the pane shows is the one the manifest ships
+bun dev/checkmeta.ts                               # the version the pane falls back to is the one the manifest ships
 bun dev/checktokens.ts [--all]                     # the live token figure lands on the one the summary reports
 sh  dev/reload.sh                                 # install this tree as flowpane-dev, beside the released build
 ```

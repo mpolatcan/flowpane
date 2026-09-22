@@ -39,7 +39,7 @@ import {
   runOfScriptName,
   type RunState,
 } from './journal'
-import { aboutText, NAME, VERSION } from './about'
+import { aboutText, NAME, noteShipped, shippedVersion } from './about'
 import type { Orientation } from './layout'
 import {
   ABOUT,
@@ -1077,6 +1077,33 @@ function readOptions(options: PluginOptions): void {
   useTheme(state.theme)
 }
 
+/**
+ * The version this install ships, read off the manifest the engine loaded it by.
+ *
+ * The pane used to name a constant in `hooks/about.ts` and nothing held the two
+ * together: the suite runs without an `fs` noun, so no test can open the
+ * manifest, and the check lived in `dev/checkmeta.ts` for somebody to remember.
+ * Read here, the drawn version is the installed one whatever the constant says.
+ *
+ * Every way this can fail ends in the same place — the pane keeps the constant.
+ * `$.plugin` is absent in a test and the read is refused or missing on an
+ * install the engine placed somewhere this cannot reach.
+ */
+async function readManifest($: EngineInterface): Promise<void> {
+  try {
+    // Spelled out rather than reached for through `?.`: the host scans this
+    // file before it loads it and refuses `$.plugin` written any way but
+    // `$.plugin.name` or `$.plugin.root`, so the absence is caught here
+    // instead. It is absent under the test runner, whose `$` carries the events
+    // a plugin fires and not the nouns the engine fills in around them.
+    const root = $.plugin.root
+
+    noteShipped(await $.fs.read(`${root}/.claude-plugin/plugin.json`).catch(() => undefined))
+  } catch {
+    noteShipped(undefined)
+  }
+}
+
 /** The choices a person made with the buttons, kept across sessions. */
 async function readStore($: EngineInterface): Promise<void> {
   const orientation = orientationOf(await $.store.get('orientation'))
@@ -1364,6 +1391,7 @@ export function register(on: On, options: PluginOptions) {
   })
 
   on('session.start', async ($, e, next) => {
+    await readManifest($)
     await readStore($)
     await recoverRuns($)
 
@@ -1525,7 +1553,7 @@ const RULE_ACROSS = '\u2500'
  * reader presses to find out what this is, is what it is called.
  */
 function footerRow(Box: Element, Text: Element, Button: Element | undefined): unknown {
-  const stamp = `${NAME} ${VERSION}`
+  const stamp = `${NAME} ${shippedVersion()}`
 
   if (!Button) {
     return Box({

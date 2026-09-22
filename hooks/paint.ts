@@ -26,7 +26,7 @@ import {
   spinnerAt,
   type Rgb,
 } from './canvas'
-import { aboutRows, NAME, TAGLINE, VERSION, type AboutRow } from './about'
+import { aboutRows, NAME, shippedVersion, TAGLINE, type AboutRow } from './about'
 import type { AgentRow, RunState, RunStatus, Step, ToolCall } from './journal'
 import { DEFAULT_THEME, paletteOf, themeOf, THEMES, type Palette, type Theme } from './theme'
 import {
@@ -5391,7 +5391,7 @@ function paintAbout(c: Canvas, options: PaintOptions, hotspots: Hotspot[]): Rect
     x,
     y,
     right,
-    [{ text: truncate(`${NAME} ${VERSION}`, Math.max(1, closeX - x - 4)), color: COLORS.text }],
+    [{ text: truncate(`${NAME} ${shippedVersion()}`, Math.max(1, closeX - x - 4)), color: COLORS.text }],
     rule,
   )
 

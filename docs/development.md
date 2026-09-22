@@ -21,7 +21,7 @@ bun dev/audit.ts                      # every run, every layout, at every size t
 bun dev/contrast.ts                   # every theme's roles against its own ground, and its edges against its states
 bun dev/edges.ts <dir>                # the graph derived for a run, and how it was derived
 bun dev/dryrun.ts <workflow>          # a workflow's control flow, stubbed, no agents spent
-bun dev/checkmeta.ts                  # the version the pane shows is the one the manifest ships
+bun dev/checkmeta.ts                  # the version the pane falls back to is the one the manifest ships
 bun dev/checktokens.ts [--all]        # the live token figure lands on the one the summary reports
 claude plugin test .                  # the test suite
 bunx tsc --noEmit                     # typecheck against types/claude-code.d.ts
@@ -362,9 +362,15 @@ always forward in time, so no fixture built out of a run can hand the lane sort 
 guessed edge arriving before a proven one, an agent that feeds itself, or a
 cycle. The guards exist because the argument is a list of edges rather than a
 run; holding them to their word means handing them such a list directly. The same
-question decided the other way for the manifest's version — no test can read
-`plugin.json`, because the plugin test runner refuses `node:fs`, so `dev/checkmeta.ts`
-owns that check instead.
+question decided the other way for the manifest's version. No test can read
+`plugin.json` — the runner refuses `node:fs`, will not load a file not named like
+code, and hands a test a `$` carrying the events a plugin fires rather than the
+nouns the engine fills in around them, so there is no `$.fs` and no `$.plugin`
+either. What is testable is the reading: the session hands the manifest's text to
+`noteShipped` and the pane names what came back, so a test drives that function
+with a manifest and reads the answer off the printed lines.
+`dev/checkmeta.ts` still owns the other half — that the constant the pane falls
+back to, when the read failed, is the version the manifest ships.
 
 `dev/preview.ts`, `dev/stress.ts`, `dev/checkpic.ts`,
 `dev/edges.ts`, `dev/shot.ts` and `dev/recover.ts` exercise the drawing, the

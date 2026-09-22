@@ -36,12 +36,67 @@ export const MAINTAINER = 'Mutlu Polatcan'
 export const RELEASED = '22-09-2026'
 
 /**
- * The version, kept in step with `.claude-plugin/plugin.json` by a test rather
- * than by memory: the manifest is what the engine installs by and this is what
- * the reader is told, and a pane claiming 0.3.0 while the marketplace serves
- * 0.5.0 is worse than a pane that names no version at all.
+ * The version this build was written with, and what the pane falls back to.
+ *
+ * It used to be the only answer, kept in step with `.claude-plugin/plugin.json`
+ * by hand: the manifest is what the engine installs by and this is what the
+ * reader was told, and a pane claiming 0.3.0 while the marketplace serves 0.5.0
+ * is worse than a pane that names no version at all. Nothing inside the suite
+ * could hold the two together — a test runs with no `fs` noun and no `plugin`
+ * noun on `$`, so the manifest is not a file a test can open — and the check
+ * lived in `dev/checkmeta.ts`, which is a check somebody has to remember.
+ *
+ * So the session reads the manifest instead and the pane says what it found;
+ * see {@link noteShipped}. This constant is what is left when that read failed,
+ * which is the only case where the two can still disagree, and
+ * `dev/checkmeta.ts` keeps it honest for that case.
  */
 export const VERSION = '0.6.0'
+
+/** What the manifest said, once a session has read it. */
+let shipped: string | undefined
+
+/**
+ * The version the pane names, which is the manifest's where there is one.
+ *
+ * Read rather than remembered: what the engine installed by is the fact a
+ * reader checking a build against the marketplace is after, and the constant
+ * above is one edit away from being last release's answer at any time.
+ */
+export function shippedVersion(): string {
+  return shipped ?? VERSION
+}
+
+/**
+ * Hand the session's own `.claude-plugin/plugin.json` to the pane.
+ *
+ * Takes the file as text rather than a version already picked out of it, so
+ * the reading is here with the fallback it belongs to rather than in the hook
+ * that did the loading: anything that is not JSON naming a version — a file
+ * that was not there, a read that was refused, a manifest from a build that
+ * states none — leaves the pane on {@link VERSION}. Called with nothing, it
+ * forgets what it was told, which is what a session ending amounts to.
+ */
+export function noteShipped(manifest: string | undefined): void {
+  shipped = undefined
+
+  if (manifest === undefined) {
+    return
+  }
+
+  try {
+    const version: unknown = (JSON.parse(manifest) as { version?: unknown }).version
+
+    if (typeof version === 'string' && version.trim() !== '') {
+      shipped = version.trim()
+    }
+  } catch {
+    // A manifest that does not parse is a manifest the pane has not read, and
+    // the fallback already covers that. Nothing is logged: this runs at session
+    // start, where a line about the plugin's own packaging is a line in front of
+    // a reader who asked for none.
+  }
+}
 
 /** One line of the About dialog: a pair, a sentence, or the air between them. */
 export type AboutRow =
@@ -85,7 +140,7 @@ export function aboutText(): string {
   const pad = rows.reduce((w, r) => (r.kind === 'field' ? Math.max(w, r.left.length) : w), 0)
 
   return [
-    `${NAME} ${VERSION} — ${TAGLINE}`,
+    `${NAME} ${shippedVersion()} — ${TAGLINE}`,
     ...rows.map(row =>
       row.kind === 'gap'
         ? ''

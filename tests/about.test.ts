@@ -9,7 +9,7 @@
 
 import { expect, test } from 'claude-code/testing'
 
-import { aboutRows, aboutText, NAME, RELEASED, VERSION } from '../hooks/about'
+import { aboutRows, aboutText, NAME, noteShipped, RELEASED, shippedVersion, VERSION } from '../hooks/about'
 
 /**
  * What the release before this one said about itself, and the pair to update
@@ -79,4 +79,42 @@ test('every fact the dialog draws is a fact the printed lines say', () => {
       expect(`${said} :: ${text.includes(said)}`).toBe(`${said} :: true`)
     }
   }
+})
+
+test('the pane names the version the manifest it was installed by states', () => {
+  // The constant in the module is what this build was written with, and the
+  // manifest is what the engine installed. They drifted by hand for three
+  // releases, and no test could hold them together: a test runs with no `fs`
+  // noun and no `plugin` noun on `$`, so the manifest is not a file it can
+  // open. The session reads it and hands it over instead, and what the pane
+  // says is what it was handed.
+  noteShipped('{"name":"flowpane","version":"9.9.9"}')
+
+  expect(shippedVersion()).toBe('9.9.9')
+  expect(aboutText()).toContain(`${NAME} 9.9.9`)
+
+  noteShipped(undefined)
+})
+
+test('a manifest the session could not read leaves the version the build was written with', () => {
+  // Four ways to end up with nothing, one answer. A read that was refused or
+  // found no file hands over nothing at all; a manifest from some other build
+  // states no version; and a file that is not JSON is a file that was not read
+  // whatever it holds. A pane that answered an empty string to any of them
+  // would draw `FlowPane ` with the name of the version rubbed out.
+  for (const manifest of [undefined, '{}', '{"version":"  "}', 'not json at all']) {
+    noteShipped(manifest)
+
+    expect(`${manifest}: ${shippedVersion()}`).toBe(`${manifest}: ${VERSION}`)
+  }
+})
+
+test('the version a session read is forgotten when the next one reads nothing', () => {
+  noteShipped('{"version":"9.9.9"}')
+  noteShipped(undefined)
+
+  // The module holds what it was told for as long as the session lasts, so a
+  // reading that failed has to clear the one before it rather than leave the
+  // pane naming a version this install is not.
+  expect(shippedVersion()).toBe(VERSION)
 })
