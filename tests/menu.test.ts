@@ -362,3 +362,58 @@ test('a menu opened on a run deep in the list seats that run in the middle of th
   // list was opened to reach.
   expect(lines.findIndex(line => line.includes(SHOWN))).toBe(Math.floor((visible - 1) / 2))
 })
+
+/** A stopped run per row: more list than the pane below is given room for. */
+function pile(count: number): RunEntry[] {
+  return Array.from({ length: count }, (_, i) => entry(`wf_${i}`, 'stopped', NOW - (i + 1) * HOUR, 'audit'))
+}
+
+/** Every arrow the pane drew, in the order the rows go. */
+function arrowsOf(lines: string[]): string {
+  return lines.join('\n').replace(/[^▴▾]/g, '')
+}
+
+test('a bar one row tall carries the one arrow that has somewhere to go', () => {
+  const runs = pile(9)
+  const head = idleOf(runs, 60, 5)
+
+  // One cell cannot hold two arrows with a track between them, and drawn as a
+  // pair the second lands on the first. At the top of the list the one cell
+  // says there is more below it.
+  expect(head.runList?.visible).toBe(1)
+  expect(arrowsOf(head.lines)).toBe('▾')
+  expect(head.pressable).toContain('runs-down')
+  expect(head.pressable).not.toContain('runs-up')
+
+  const foot = idleOf(runs, 60, 5, 99)
+
+  // And at the end it turns round, rather than saying nothing while both
+  // hotspots still claim the cell.
+  expect(foot.runList?.scroll).toBe(8)
+  expect(arrowsOf(foot.lines)).toBe('▴')
+  expect(foot.pressable).toContain('runs-up')
+  expect(foot.pressable).not.toContain('runs-down')
+})
+
+test('the thumb stands mid-track on a list scrolled to its middle', () => {
+  const { lines, runList } = idleOf(pile(40), 60, 20, 14)
+
+  // Thirteen rows of forty, fourteen of them behind: the thumb is four cells
+  // of an eleven-cell track, four cells down it. Rounded the other way it
+  // would stand a cell short of where the reader is, and a bar that is only
+  // ever read as a position cannot afford the cell.
+  expect(runList?.total).toBe(40)
+  expect(runList?.visible).toBe(13)
+  expect(runList?.scroll).toBe(14)
+  expect(trackOf(lines)).toBe('││││████│││')
+})
+
+test('a list far longer than its window still shows a thumb', () => {
+  const { lines, runList } = idleOf(pile(400), 60, 20)
+
+  // Thirteen rows of four hundred is a third of a cell, and a thumb rounded to
+  // nothing is a track with nothing in it: the bar keeps one cell, so the
+  // reader is still somewhere.
+  expect(runList?.visible).toBe(13)
+  expect(trackOf(lines)).toBe('█││││││││││')
+})
