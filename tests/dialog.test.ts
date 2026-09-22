@@ -14,7 +14,7 @@ import { expect, test } from 'claude-code/testing'
 import { Canvas, DEFAULT_COLOR } from '../hooks/canvas'
 import type { AgentRow, RunState, ToolCall } from '../hooks/journal'
 import { barRowsOf } from '../hooks/layout'
-import { NAME, VERSION } from '../hooks/about'
+import { NAME, noteShipped, VERSION } from '../hooks/about'
 import { paint, paintIdle, useTheme, type PaintOptions, type RunEntry } from '../hooks/paint'
 import { themeOf } from '../hooks/theme'
 
@@ -1433,4 +1433,35 @@ test('a command that begins with a slash is cut at its end, and a path at its fr
   expect(row).toContain('/usr/local/bin/gh pr list')
   expect(row).not.toContain('…/')
   expect(row).toContain('…')
+})
+
+test('the dialog is titled with the version the manifest this install came by states', () => {
+  useTheme('tokyo-night')
+
+  // The title named a constant in `hooks/about.ts` — what this build was
+  // written with rather than what the engine installed — and the two drifted by
+  // hand for three releases. The session reads the manifest and hands it over;
+  // the title says what it was handed. Painted with nothing handed over, the
+  // dialog draws the constant either way, so this is the seat where the binding
+  // shows.
+  noteShipped('{"name":"flowpane","version":"9.9.9"}')
+
+  const canvas = new Canvas(110, 32)
+
+  paint(canvas, runOf(), {
+    nowMs: STARTED + 20_000,
+    tick: 0,
+    orientation: 'vertical',
+    detailRows: 14,
+    about: true,
+  })
+
+  const text = rowsOf(canvas).join('\n')
+
+  // Cleared before the checks rather than after them: a failed assertion that
+  // leaves a version noted is every other test in the suite reading it.
+  noteShipped(undefined)
+
+  expect(text).toContain(`${NAME} 9.9.9`)
+  expect(text).not.toContain(`${NAME} ${VERSION}`)
 })

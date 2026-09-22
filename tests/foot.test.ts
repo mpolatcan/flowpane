@@ -270,3 +270,47 @@ test('the row says the layout a session picked up from the store', async ($, on)
 
   expect(state).toContain('Layout: vertical')
 })
+
+test('the name at the far right is stamped with the version the manifest states', async ($, on) => {
+  mock.clock(on, { now: 1_000 })
+  on('session.start', ($$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
+  stubEngine(on)
+
+  // The stamp named the constant in `hooks/about.ts` — the version this build
+  // was written with rather than the one the engine installed by — and with no
+  // manifest read the row draws the same word whichever of the two it reads.
+  // So the session is started over a manifest first, and the row is read after.
+  on('fs.read', ($$: unknown, e: { path: string }) => ({
+    value: e.path.endsWith('/.claude-plugin/plugin.json')
+      ? '{"name":"flowpane","version":"9.9.9"}'
+      : '',
+  }))
+
+  await $.session.start({ cwd: HOME, surface: 'terminal', isInteractive: true })
+
+  const { buttons } = footOf(flatten(await renderPane($)))
+  const label = String(buttons[1]?.props?.label ?? '')
+
+  expect(label).toBe(`${NAME} 9.9.9`)
+  expect(label).not.toBe(`${NAME} ${VERSION}`)
+})
+
+test('the row falls back to the version the build was written with', async ($, on) => {
+  mock.clock(on, { now: 1_000 })
+  on('session.start', ($$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
+  stubEngine(on)
+
+  // The session before this one read a version, and this one cannot read at
+  // all. The row is one of the three seats that name it, so it is one of the
+  // three that would go on naming a version this install is not — and it leaves
+  // the suite as it found it, which the test above cannot do on its own.
+  on('fs.read', () => {
+    throw new Error('a network location is not reached from here (host check)')
+  })
+
+  await $.session.start({ cwd: HOME, surface: 'terminal', isInteractive: true })
+
+  const { buttons } = footOf(flatten(await renderPane($)))
+
+  expect(String(buttons[1]?.props?.label ?? '')).toBe(`${NAME} ${VERSION}`)
+})

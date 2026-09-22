@@ -311,7 +311,14 @@ row of a layout that has no rail there, and over a pane with no run on it, where
 it moves nothing and costs no repaint. `tests/about.test.ts` reads what the pane
 says about itself where there is no pane, and holds the release date to the day
 the release before it went out, since a version bumped with the date left behind
-is a row that reads as true.
+is a row that reads as true. `tests/manifest.test.ts` is the other half of that:
+it starts a session over a stubbed manifest and reads the version back out of
+what the plugin prints, since the module the hook writes to is the plugin's own
+copy rather than the one a test imports. It checks the file the session asks for
+is the manifest beside the plugin rather than a path built from an absent root,
+that the pane names what was read rather than the constant, and that a read the
+engine refuses drops what the session before it found instead of leaving the pane
+naming a version this install is not.
 
 `tests/shape.test.ts` is the sixth, and it exists because every other test
 reaches these rules through a canvas: a run is painted and the cells are asked
@@ -361,16 +368,22 @@ them. The edges `edgesOf` derives are proven-first, never self-referential and
 always forward in time, so no fixture built out of a run can hand the lane sort a
 guessed edge arriving before a proven one, an agent that feeds itself, or a
 cycle. The guards exist because the argument is a list of edges rather than a
-run; holding them to their word means handing them such a list directly. The same
-question decided the other way for the manifest's version. No test can read
-`plugin.json` — the runner refuses `node:fs`, will not load a file not named like
-code, and hands a test a `$` carrying the events a plugin fires rather than the
-nouns the engine fills in around them, so there is no `$.fs` and no `$.plugin`
-either. What is testable is the reading: the session hands the manifest's text to
-`noteShipped` and the pane names what came back, so a test drives that function
-with a manifest and reads the answer off the printed lines.
-`dev/checkmeta.ts` still owns the other half — that the constant the pane falls
-back to, when the read failed, is the version the manifest ships.
+run; holding them to their word means handing them such a list directly. The
+manifest's version answers the same question a third way. No test opens
+`plugin.json` itself — the runner refuses `node:fs`, will not load a file not
+named like code, and the `$` a test body is handed carries the events a plugin
+fires rather than the nouns the engine fills in around them, so there is no
+`$.fs` and no `$.plugin` to reach for from a test. What the runner does supply is
+those nouns to the *plugin*, when the hook it registered runs. So the manifest is
+answered rather than opened: a test stubs `fs.read`, starts a session, and reads
+the version back out of what the plugin prints. It has to be read back that way
+and not asserted on the module, because the engine loads the plugin's own folder
+— the `hooks/about.ts` the hook writes to is a different copy from the one the
+test imports, and only what the plugin prints is evidence about what the plugin
+read. The reading itself is a function of the file's text, so
+`tests/about.test.ts` drives `noteShipped` directly for the cases a stub would
+only repeat. `dev/checkmeta.ts` owns the last half — that the constant the pane
+falls back to, when the read failed, is the version the manifest ships.
 
 `dev/preview.ts`, `dev/stress.ts`, `dev/checkpic.ts`,
 `dev/edges.ts`, `dev/shot.ts` and `dev/recover.ts` exercise the drawing, the

@@ -42,13 +42,14 @@ export const RELEASED = '22-09-2026'
  * by hand: the manifest is what the engine installs by and this is what the
  * reader was told, and a pane claiming 0.3.0 while the marketplace serves 0.5.0
  * is worse than a pane that names no version at all. Nothing inside the suite
- * could hold the two together — a test runs with no `fs` noun and no `plugin`
- * noun on `$`, so the manifest is not a file a test can open — and the check
- * lived in `dev/checkmeta.ts`, which is a check somebody has to remember.
+ * could hold the two together — the manifest is not a file a test can open, so
+ * the constant was checked against it by `dev/checkmeta.ts`, which is a check
+ * somebody has to remember.
  *
  * So the session reads the manifest instead and the pane says what it found;
- * see {@link noteShipped}. This constant is what is left when that read failed,
- * which is the only case where the two can still disagree, and
+ * see {@link noteShipped}. A test can hold every seat to that, by answering the
+ * read rather than opening the file. This constant is what is left when the read
+ * failed, which is the only case where the two can still disagree, and
  * `dev/checkmeta.ts` keeps it honest for that case.
  */
 export const VERSION = '0.6.0'
