@@ -135,6 +135,23 @@ went round once. Between waves of several there is no such pairing to draw — s
 reviewers did not hand work to six others — so the waves in the middle of a
 phase are joined by nothing, and the two at its ends carry the wires.
 
+Two carries are not drawn at all. One is a carry to a band further back: the
+bands stand in the order they ran, so a source named on a later one — a fix
+agent whose answer the phase that asked for it quotes back — is a line from the
+foot of the drawing to its head, across every band between and every name on
+them. What it drew instead was the head on its own, since the run from the
+source stopped before it started: a lone arrowhead under a phase rule, pointing
+at nothing. The loop mark on the card says the phase was entered again, which is
+what the backward line was there to say.
+
+The other is a hop between two passes of one band with something standing
+between them. The hop is the whole gap between two neighbours and wants no
+gutter, but a band packed with cards a row apart has the next node in that gap,
+and a line run through it goes under that node's own name — the names are
+written after the wires, so what came back was a letter with a port or an
+arrowhead lost beneath it. The stack already says which pass went first. A wire
+no reader can see does not say it again.
+
 A gutter with no barrier can still get a bundle. Where a phase's edges cross it
 at an angle — each leaving a node in one row and arriving at a node in a
 different row of the next — they can be drawn as one line each or as a single

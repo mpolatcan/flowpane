@@ -14,6 +14,23 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { COMMAND as REGISTERED, orientationOf } from '../hooks/register'
 
+/**
+ * The home the stub answers with: a directory this machine actually has.
+ *
+ * The plugin looks for `$HOME/.claude/projects` on the way up, to recover the
+ * runs of earlier sessions, and the engine refuses `fs.exists` on a path it
+ * cannot reach — `a network location is not reached from here (host check)`. A
+ * refusal is not a false. The whole hook is skipped, so `command.run` and
+ * `session.start` came back with nothing, and the eighteen tests across these
+ * five files that drive a hook rather than the painter read an empty reply and
+ * failed for a reason none of them was about.
+ *
+ * `import.meta.dir` is this file's own folder: it exists, it holds no `.claude`,
+ * so the recovery finds nothing and returns — which is what `/home/test` was
+ * there to arrange — and it is wherever the repo happens to be checked out.
+ */
+const HOME = import.meta.dir
+
 const COMMAND = '/flowpane'
 /** What the command was called before, and what none of these replies may say. */
 const FORMER = '/wf'
@@ -51,7 +68,7 @@ const JOURNAL = [
  * before typing anything, and nothing renders it back.
  */
 function stubEngine(on: any, seen?: { register?: { name?: string; description?: string } }): void {
-  on('env.get', () => ({ value: '/home/test' }))
+  on('env.get', () => ({ value: HOME }))
   on('ui.open', () => ({ value: undefined }))
   on('ui.close', () => ({ value: undefined }))
   on('ui.blit', () => ({ value: { requestId: 'flowpane' } }))
@@ -148,7 +165,7 @@ test('the command is registered described by what typing it does', async ($, on)
   on('session.start', ($$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   stubEngine(on, seen)
 
-  await $.session.start({ cwd: '/home/test', surface: 'terminal', isInteractive: true })
+  await $.session.start({ cwd: HOME, surface: 'terminal', isInteractive: true })
 
   // The description is read in the command list, where there is no pane to look
   // at: it has to say what pressing it does and where the rest of it is, and it
@@ -166,7 +183,7 @@ test('the command is registered under the name the plugin answers to', async ($,
   on('session.start', ($$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   stubEngine(on, seen)
 
-  await $.session.start({ cwd: '/home/test', surface: 'terminal', isInteractive: true })
+  await $.session.start({ cwd: HOME, surface: 'terminal', isInteractive: true })
 
   expect(seen.register?.name).toBe(COMMAND.slice(1))
 })
@@ -286,7 +303,7 @@ test('the one constant the command is spelled from is the word it answers to', a
   on('session.start', ($$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   stubEngine(on, seen)
 
-  await $.session.start({ cwd: '/home/test', surface: 'terminal', isInteractive: true })
+  await $.session.start({ cwd: HOME, surface: 'terminal', isInteractive: true })
 
   // Every form of the command is built from this one word, so the word and the
   // registration are the same fact said twice. Said twice and checked once,

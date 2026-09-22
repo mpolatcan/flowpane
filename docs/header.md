@@ -777,17 +777,52 @@ the floor promised, and the body scrolls to the rest of them.
 
 The same rule runs down the pane, where a section is a band and the division is
 between the agents standing side by side inside one. A band of eight agents on
-a hundred and ten columns gave each card twelve cells for the same reason; it
-now stands five of them and scrolls sideways to the other three. Every band
-goes to the left edge rather than centring while that is true: centred, a band
-of two would stand in the middle of a drawing whose own first column is off at
-the left, and a reader scrolling to the wide band's tail would lose the narrow
-bands on the way there.
+a hundred and ten columns gave each card twelve cells for the same reason.
 
-A drawing wider than the pane is what the wheel over the foot rail moves — see
-[controls.md](controls.md) — and a live run's window is already centred on the
-phase at work, so a reader arrives where the run is rather than at the start of
-one that finished an hour ago.
+Down the pane it is answered with a second row rather than a sideways scroll. A
+band takes as many rows as its nodes need at a width they can be named at, and
+the drawing stays inside the pane it was handed: eight agents on a hundred and
+ten columns is two rows of four cards of twenty-six. Laid out across, the pane
+has phases to its right and the scroll goes between them; down the pane it has
+the rest of its own width beside every band, and a band pinned to the left with
+its tail off the edge was leaving that width empty to pay for a scroll.
+
+The rows are shared out rather than filled to the brim. Nine nodes into rows of
+seven is a row of seven with one under it, which reads as a fan with an
+afterthought; five and four is a block, and a block is what the band is. The
+width the cards get is then taken from the widest row of the drawing — so the
+band that wrapped widens every card in the run, rather than the run keeping the
+narrow cards the unwrapped band would have forced.
+
+```
+110 columns, a band of eight
+
+before                                        after
+╭─ ✔ one ──╮ ╭─ ✔ two ──╮ … ✔ eight ─╮        ╭───── ✔ one ─────╮ ╭──── ✔ two ────╮ …
+│ ⧖ 5.0s   │ │ ⧖ 5.0s   │   off the  │        │  ⧖ 5.0s ∑ 12k   │ │ ⧖ 5.0s ∑ 12k  │
+╰──────────╯ ╰──────────╯   pane ────╯        ╰─────────────────╯ ╰───────────────╯
+      ╭─ ✔ paint ╮  the band of two           ╭──── ✔ five ─────╮ ╭──── ✔ six ────╮ …
+      │ ⧖ 5.0s   │  under the first
+      ╰──────────╯  card of the one
+                    above it                          both bands centred
+```
+
+Every band stands in the middle of the pane. Opened at the left instead, a band
+of one sat under the first card of the band above it and the drawing read as a
+left margin with a ragged edge down the rest of the pane.
+
+Only the outer row of a wrapped band faces anything outside it: a wire into the
+second row would be drawn down through the cards on the first, and a line
+through a card is a line through a word. So the barrier lands on the row that
+faces it — the first row for what arrives, the last for what leaves — and what
+crosses between two bands is bundled onto those rows rather than drawn carry by
+carry. The rows between are held by the band's own rule, which is what says they
+belong to this phase.
+
+A drawing wider than the pane — which, laid out across, is most of them — is
+what the wheel over the foot rail moves, see [controls.md](controls.md). A live
+run's window is already centred on the phase at work, so a reader arrives where
+the run is rather than at the start of one that finished an hour ago.
 
 ### The height keeps the same bargain
 
@@ -846,11 +881,15 @@ drawing. It was not a rare case: any run with more phases than a third of the
 pane's rows hit it, which is most of them, so the vertical layout was in
 practice a list that could not scroll.
 
-The test is the width's test now: whether the body can stand two whole bands of
-cards. Past that the bands keep the depth their cards need, the drawing runs
-past the foot of the pane, and the body scrolls down to the rest — the same rail,
-the same wheel, the same floor of two. What is left of the list is the narrow
-case: a pane too narrow to name a phase, or too short to stand one band.
+The test is the width's test now: whether the body can stand two whole bands —
+at the depth the bands of this drawing actually take, which for a band that
+wrapped is several rows of cards rather than one. Past that the pane spends its
+rows on twice as many nodes by drawing each as a row; past that again the bands
+keep the depth they need, the drawing runs past the foot of the pane, and the
+body scrolls down to the rest — the same rail, the same wheel, the same floor of
+two. What is left of the list is the narrow case: a pane that cannot stand two
+legible nodes side by side, so a band has nothing to wrap into and one node a
+row is the list with a frame drawn round each row.
 
 ## The borders between phases
 

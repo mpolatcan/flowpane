@@ -448,7 +448,7 @@ test('a phase whose slice is already legible keeps every phase on the pane', () 
   expect(extentOf(view).w).toBeLessThanOrEqual(110)
 })
 
-test('down, a band of more agents than the pane can name stands fewer of them, wider', () => {
+test('down, a band of more agents than the pane can name wraps into rows of them', () => {
   const eight = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight']
   const run = runOf([
     ['Survey', eight],
@@ -465,15 +465,27 @@ test('down, a band of more agents than the pane can name stands fewer of them, w
     expect(node.w).toBeGreaterThanOrEqual(20)
   }
 
-  expect(extentOf(view).w).toBeGreaterThan(110)
+  // The band takes a second row rather than eight slivers on one, and the
+  // drawing stays inside the pane it was handed. Eight cards across a hundred
+  // and ten columns was thirteen cells each, four of them name, and the tail of
+  // the band was off the pane behind a sideways scroll nobody went looking for.
+  const survey = view.lanes[0]
 
-  // Every band opens at the left rather than centring. Centred, a band of two
-  // would stand in the middle of a drawing whose own first column is off at
-  // the left, and a reader scrolling to the wide band's tail would lose the
-  // narrow bands on the way there.
-  const opens = view.lanes.map(lane => lane.nodes[0]?.x).filter(x => x !== undefined)
+  expect(survey.rows).toBe(2)
+  expect(new Set(survey.nodes.map(node => node.row)).size).toBe(2)
+  expect(extentOf(view).w).toBeLessThanOrEqual(110)
 
-  expect(new Set(opens).size).toBe(1)
+  // A band's nodes stand in the middle of the pane, whether the band wrapped or
+  // holds one node. Opened at the left instead, a band of one sat under the
+  // first card of the band above it and the drawing read as a left margin with
+  // a ragged edge down the rest of the pane.
+  for (const lane of view.lanes) {
+    const first = lane.nodes[0]
+    const last = lane.nodes[lane.nodes.length - 1]
+    const right = 110 - (last.x + last.w)
+
+    expect(Math.abs(first.x - right)).toBeLessThanOrEqual(1)
+  }
 })
 
 test('across, the phases still ahead take a strip at the end, not a row under it', () => {
@@ -653,12 +665,15 @@ test('a band too short even for a row falls to the list, which says so', () => {
     ['Check', ['README']],
   ])
 
-  const view = layout(run, 60, 20, 'vertical')
+  // Thirty-six columns stands one row of a legible width and no more, so a
+  // band has nothing to wrap into: one node a row is the list with a frame
+  // drawn round each row, and the list is the honest drawing of that pane.
+  const view = layout(run, 36, 20, 'vertical')
 
   expect(view.density).toBe('row')
   expect(view.list).toBe(true)
 
-  const canvas = new Canvas(60, 20)
+  const canvas = new Canvas(36, 20)
 
   paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical' })
 

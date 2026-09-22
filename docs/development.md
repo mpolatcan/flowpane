@@ -22,6 +22,7 @@ bun dev/contrast.ts                   # every theme's roles against its own grou
 bun dev/edges.ts <dir>                # the graph derived for a run, and how it was derived
 bun dev/dryrun.ts <workflow>          # a workflow's control flow, stubbed, no agents spent
 bun dev/checkmeta.ts                  # the version the pane shows is the one the manifest ships
+bun dev/checktokens.ts [--all]        # the live token figure lands on the one the summary reports
 claude plugin test .                  # the test suite
 bunx tsc --noEmit                     # typecheck against types/claude-code.d.ts
 ```
@@ -32,13 +33,35 @@ Claude Code files one; `FLOWPANE_RUNS` points them at a corpus copied from
 somewhere else instead.
 
 `dev/lines.ts` is the one that reads the drawing rather than the code. It paints
-every journal this project has at every size in the audit's sweep, and after each
-frame asks four questions of the cells: whether a wire was written through a
+every journal this project has at every size in the audit's sweep, each run
+twice — once with its nested runs shut and once with every one of them unfolded,
+since an opened run is the widest drawing the pane ever makes and the wires
+around it are the ones most likely to land on a word — and after each frame asks
+four questions of the cells: whether a wire was written through a
 word, whether a word was written over one of the pieces only a wire is drawn
 with, whether an arrowhead has a stem behind it, and whether every arm of every
 line piece reaches something. Each cell remembers which function drew the line
 in it, read off the stack, so a fault comes back with the painter to go and
-look at. The five lines that are *meant* to be broken are quiet by default and
+look at.
+
+A cell is remembered as the canvas kept it, read back out of the buffer rather
+than through `at`, which reports a cell outside the current window blank whether
+or not anything is in it. A band sets a window and the canvas drops every cell written outside one,
+which the sweep could not see: the header's own `\u25b8 10 running` was recorded
+as a mark in a sentence, a clipped write over the same cell unrecorded it, and
+the mark came back as an arrowhead with nothing behind it — in the stacked
+layout alone, and only on a run with agents still going, which is why a corpus
+of finished runs never showed it. Read through `at` instead, every cell written
+before a window was set came back unkept, and the rules and junctions drawn
+before one lost the painter that drew them and were counted as lines stopping in
+mid air. A mark written as part of a string is exempt
+from the stem question wherever it stands, and the colour pass that pushes the
+drawing back behind a dialog re-puts the cells it dims without unmarking any of
+them. The block elements — a timeline bar, a card's rule, the scrollbar's thumb
+— are shapes rather than words, so a wire landing on one is not a wire through
+something legible. The timeline's now-marker has a painter of its own,
+`paintNow`, for the same reason the grid does: it is dropped into whatever cells
+the bars left blank and so reaches nothing at either end by design. The five lines that are *meant* to be broken are quiet by default and
 `--all` shows them: a card's edge under its name, the bar's top rule under the
 surface's close control, the borders and band rules, the timeline ruler's rule
 under the tick labels written along it, and the timeline's grid, whose dashed
@@ -349,3 +372,12 @@ derived graph and the file reads without a session, `dev/checkmeta.ts` holds the
 version the pane shows to the one the manifest ships, and `dev/dryrun.ts` runs a
 workflow's control flow against stubbed agents, so a change to `audit`
 can be checked for the shape it will draw before it is paid for.
+
+`dev/checktokens.ts` is the one that checks a number rather than a picture. It
+replays every agent transcript on disk through `contextOfUsage` and `noteStep` —
+the two functions the `turn.step` hook calls — and holds what the pane would
+have shown live to what the run summary says the same agent spent. `--all`
+sweeps the whole machine rather than this project's own runs, which is the point
+of it: the cases that break the rule are rare, and a corpus of thirty runs holds
+none of them. Eleven thousand agents holds five whose context was compacted and
+seven the engine retried.

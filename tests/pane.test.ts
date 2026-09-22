@@ -16,6 +16,23 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { cellColor } from '../hooks/canvas'
 
+/**
+ * The home the stub answers with: a directory this machine actually has.
+ *
+ * The plugin looks for `$HOME/.claude/projects` on the way up, to recover the
+ * runs of earlier sessions, and the engine refuses `fs.exists` on a path it
+ * cannot reach — `a network location is not reached from here (host check)`. A
+ * refusal is not a false. The whole hook is skipped, so `command.run` and
+ * `session.start` came back with nothing, and the eighteen tests across these
+ * five files that drive a hook rather than the painter read an empty reply and
+ * failed for a reason none of them was about.
+ *
+ * `import.meta.dir` is this file's own folder: it exists, it holds no `.claude`,
+ * so the recovery finds nothing and returns — which is what `/home/test` was
+ * there to arrange — and it is wherever the repo happens to be checked out.
+ */
+const HOME = import.meta.dir
+
 const TRANSCRIPT = '/session/subagents/workflows/wf_test'
 const RUN_FILE = '/session/workflows/wf_test.json'
 
@@ -182,7 +199,7 @@ function renderPane($: any) {
  * back — including for the calls whose value is nothing at all.
  */
 function stubEngine(on: any, opened: { id: string; title?: string }[] = []) {
-  on('env.get', () => ({ value: '/home/test' }))
+  on('env.get', () => ({ value: HOME }))
   on('ui.open', ($$: unknown, e: { id: string; title?: string }) => {
     opened.push({ id: e.id, title: e.title })
 
@@ -341,4 +358,70 @@ test('the pane says so when no workflow has run', async ($, on) => {
   // `$` is unused past here, but the run file path helper is what pairs a
   // transcript directory with the summary the engine writes at the end.
   expect(RUN_FILE).toBe('/session/workflows/wf_test.json')
+})
+
+test('a node counts what its agent holds, not what every request added up to', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+
+  // Six requests over one twenty-thousand-token context, which is what an agent
+  // reading its own cache back on every call looks like. The context grows a
+  // little each time, as a conversation does.
+  const held = [18_674, 18_674, 20_111, 20_403, 20_960, 21_323]
+
+  on('tool.call', { tool: 'Workflow' }, () => ({ result: LAUNCH }))
+
+  // The engine beneath the plugin: one response per request, each closing with
+  // the usage the API reported for it. The plugin's own hook is a generator
+  // that passes the chunks on, so nothing reaches it unless something under it
+  // yields them.
+  on('turn.step', async function* ($$: unknown, e: { turnId: string; index: number }) {
+    const context = held[e.index] ?? 0
+
+    yield {
+      kind: 'stop',
+      stopReason: 'end_turn',
+      usage: {
+        model: 'claude-opus-5',
+        input_tokens: 8,
+        output_tokens: 661,
+        cache_read_input_tokens: context - 8,
+        cache_creation_input_tokens: 0,
+      },
+    }
+
+    return {
+      turnId: e.turnId,
+      index: e.index,
+      answer: '',
+      toolUses: [],
+      stopReason: 'end_turn' as const,
+      usage: null,
+    }
+  })
+  stubEngine(on)
+
+  await $.tool.call({ tool: 'Workflow', script: SCRIPT })
+  // The journal names the agents, and a step is only counted against a run that
+  // already has the agent it names.
+  await clock.advance(600)
+
+  for (let index = 0; index < held.length; index++) {
+    for await (const _chunk of $.turn.step({
+      turnId: 't1',
+      index,
+      model: 'claude-opus-5',
+      messageCount: index * 2 + 1,
+      agentId: 'a1',
+    })) {
+      // The chunks are the engine's; the pane only watches them go by.
+    }
+  }
+
+  const text = paneOf(await renderPane($)).lines.join('\n')
+
+  // Added up, those six requests came to 127k while the engine's own panel
+  // beside the pane said 21.3k — the same cached context counted once per
+  // request. The node shows what the agent is holding now.
+  expect(text).toContain('21.3k')
+  expect(text).not.toContain('127')
 })

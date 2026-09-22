@@ -26,6 +26,7 @@ import {
   applyFileClock,
   applyJournal,
   applyRunFile,
+  contextOfUsage,
   readAgentMeta,
   inputOf,
   noteCallEnd,
@@ -36,7 +37,6 @@ import {
   readAgentTranscript,
   runFileOf,
   runOfScriptName,
-  tokensOfUsage,
   type RunState,
 } from './journal'
 import { aboutText, NAME, VERSION } from './about'
@@ -1202,7 +1202,7 @@ export function register(on: On, options: PluginOptions) {
         } else if (chunk.kind === 'stop') {
           noteStep(run, agentId, nowMs, {
             kind: 'stop',
-            tokens: chunk.usage ? tokensOfUsage(chunk.usage) : undefined,
+            tokens: chunk.usage ? contextOfUsage(chunk.usage) : undefined,
             output: chunk.usage?.output_tokens,
           })
         }

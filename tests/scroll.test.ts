@@ -10,6 +10,23 @@
 
 import { expect, mock, test } from 'claude-code/testing'
 
+/**
+ * The home the stub answers with: a directory this machine actually has.
+ *
+ * The plugin looks for `$HOME/.claude/projects` on the way up, to recover the
+ * runs of earlier sessions, and the engine refuses `fs.exists` on a path it
+ * cannot reach — `a network location is not reached from here (host check)`. A
+ * refusal is not a false. The whole hook is skipped, so `command.run` and
+ * `session.start` came back with nothing, and the eighteen tests across these
+ * five files that drive a hook rather than the painter read an empty reply and
+ * failed for a reason none of them was about.
+ *
+ * `import.meta.dir` is this file's own folder: it exists, it holds no `.claude`,
+ * so the recovery finds nothing and returns — which is what `/home/test` was
+ * there to arrange — and it is wherever the repo happens to be checked out.
+ */
+const HOME = import.meta.dir
+
 const TRANSCRIPT = '/session/subagents/workflows/wf_test'
 
 /** A pane with the room for two blocks of a detail beside each other. */
@@ -171,7 +188,7 @@ function renderPane($: any, columns = 84) {
 }
 
 function stubEngine(on: any, agentFile = AGENT_FILE) {
-  on('env.get', () => ({ value: '/home/test' }))
+  on('env.get', () => ({ value: HOME }))
   on('ui.open', () => ({ value: undefined }))
   on('ui.close', () => ({ value: undefined }))
   on('ui.blit', () => ({ value: { requestId: 'flowpane' } }))

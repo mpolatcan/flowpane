@@ -381,6 +381,12 @@ attempt's detail rather than the row's. Where the row has no cells for them all,
 the *last* passes are kept and the rest become `+2`: the recent attempts are the
 ones being read.
 
+What a card cannot show, the dialog does. A card drawn as a card rather than a
+row usually has cells for none of the marks — its width has gone to its name —
+so the node carries `↻10` alone, and the trips are reached from inside the
+detail, where a strip of its own carries every one of them. See
+[detail.md](detail.md).
+
 The row's own figures are the pass that decided the phase — the one that failed,
 else the one still running, else the last to land. An average of three attempts
 is a number about none of them.

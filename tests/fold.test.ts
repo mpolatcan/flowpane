@@ -11,7 +11,7 @@
 
 import { expect, test } from 'claude-code/testing'
 
-import { Canvas } from '../hooks/canvas'
+import { Canvas, DEFAULT_COLOR } from '../hooks/canvas'
 import type { AgentRow, RunState } from '../hooks/journal'
 import { paint, runName } from '../hooks/paint'
 import { foldedLanes } from '../hooks/shape'
@@ -385,8 +385,9 @@ test('the phases the run went round on are tied together by a rail', () => {
   // Once, three times, once, three times, once: a body that repeated with a
   // phase inside it that did not, and a phase either end that stands outside.
   const run = runOf([
-    // Four agents in a phase of its own, so a narrow pane cannot give a band
-    // boxes wide enough to name and draws the list, which is where the rail is.
+    // Four agents in a phase of its own, on a pane too narrow to stand two of
+    // them side by side, so the drawing falls to the list — which is where the
+    // rail is.
     agentOf('Gather', 'alpha'),
     agentOf('Gather', 'beta'),
     agentOf('Gather', 'gamma'),
@@ -402,7 +403,7 @@ test('the phases the run went round on are tied together by a rail', () => {
     agentOf('Report', 'Report'),
   ])
 
-  const canvas = new Canvas(46, 26)
+  const canvas = new Canvas(36, 26)
 
   paint(canvas, run, { nowMs: STARTED + 20_000, tick: -1, orientation: 'vertical' })
 
@@ -976,4 +977,116 @@ test('a phase fills its rule as its work lands, and draws nothing filled before'
   // every phase of a run in flight reads as a phase that has finished.
   expect(done.includes('━')).toBe(true)
   expect(going.includes('━')).toBe(false)
+})
+
+/** The pane with one trip of a looping phase open, on the prompt. */
+function stripOf(columns: number, trip: number, times = 6) {
+  const run = runLooped(times)
+  const agent = run.agents.filter(one => one.phase === 'Develop')[trip - 1]
+  const canvas = new Canvas(columns, 24)
+  const drawn = paint(canvas, run, {
+    nowMs: STARTED + 60_000,
+    tick: -1,
+    orientation: 'vertical',
+    selectedId: agent.agentId,
+    detailRows: 12,
+    detailTab: 0,
+  })
+
+  const rows = rowsOf(canvas)
+
+  return {
+    canvas,
+    drawn,
+    // The strip is the shelf between the dialog's title and its tabs.
+    strip: rows.find(row => row.includes('↻') && row.includes('✔')) ?? '',
+    passes: drawn.hotspots.filter(spot => spot.agentId.startsWith('@pass:')),
+  }
+}
+
+test('a dialog opened on one trip of a loop carries every trip of it', () => {
+  const { strip, passes } = stripOf(90, 3)
+
+  // A card shows the trips it has room for — four of ten on a wide one, none at
+  // all on a card whose width went to its name — so a reader who opened the
+  // last trip had no way back to the first. The strip carries all six, counted
+  // by the same mark the drawing already spends on a loop.
+  expect(strip).toContain('↻6')
+  expect(strip).toContain('✔ 1')
+  expect(strip).toContain('✔ 6')
+  expect(passes.length).toBe(6)
+
+  // The one being read is bracketed rather than coloured, in the brackets the
+  // tabs mark their open one with: a press target is drawn as a Button, and a
+  // Button throws away every colour painted into its cells.
+  expect(strip).toContain('┤ ✔ 3 ├')
+})
+
+test('a trip on the strip is pressed by its number, with its mark outside the press', () => {
+  const { canvas, passes } = stripOf(90, 3)
+
+  for (const spot of passes) {
+    for (let x = spot.x; x < spot.x + spot.w; x++) {
+      // The press is the number and nothing else. Its state mark stands a cell
+      // clear of it, which is the only spacing a Button allows a coloured cell.
+      expect(String.fromCodePoint(canvas.at(x, spot.y))).toMatch(/[0-9]/)
+      expect(canvas.cell(x, spot.y).bg).toBe(DEFAULT_COLOR)
+    }
+
+    expect(String.fromCodePoint(canvas.at(spot.x - 1, spot.y))).toBe(' ')
+    expect(String.fromCodePoint(canvas.at(spot.x - 2, spot.y))).toBe('✔')
+  }
+})
+
+test('a strip too narrow for every trip shows a window and steps to the rest', () => {
+  const { strip, passes } = stripOf(46, 3)
+
+  // What does not fit is stepped to rather than dropped: an arrow at either end
+  // opens the trip just outside the window, so the far ones are still reachable
+  // — the reader walks to them.
+  expect(strip).toContain('◂')
+  expect(strip).toContain('▸')
+  expect(strip).toContain('┤ ✔ 3 ├')
+  expect(strip).not.toContain('✔ 1')
+  expect(strip).not.toContain('✔ 6')
+
+  // Every trip on the window is a press, and so is each arrow.
+  expect(passes.length).toBe(5)
+})
+
+test('the window on a narrow strip keeps the end of the loop in view', () => {
+  const { strip } = stripOf(46, 1)
+
+  // Outward from the trip being read, the later ones taken first: a loop is
+  // read for how it ended, so a reader who opened the first trip is shown what
+  // came after it rather than the blank either side of one number.
+  expect(strip).toContain('┤ ✔ 1 ├')
+  expect(strip).toContain('✔ 2')
+  expect(strip).toContain('▸')
+  expect(strip).not.toContain('◂')
+})
+
+test('a run that went round once has no strip over its tabs', () => {
+  at = 0
+
+  const run = runOf([agentOf('Develop', 'Develop'), agentOf('Verify', 'Verify')])
+  const canvas = new Canvas(90, 24)
+
+  paint(canvas, run, {
+    nowMs: STARTED + 20_000,
+    tick: -1,
+    orientation: 'vertical',
+    selectedId: run.agents[0].agentId,
+    detailRows: 12,
+    detailTab: 0,
+  })
+
+  // The strip answers *which trip*, and a phase entered once poses no such
+  // question. Drawn anyway it is a shelf holding one number, and a row of the
+  // reading given up to furniture that says nothing.
+  const rows = rowsOf(canvas)
+  const title = rows.findIndex(row => row.includes('✕'))
+
+  expect(rows.some(row => row.includes('↻'))).toBe(false)
+  expect(rows[title + 1]).not.toMatch(/✔ 1/)
 })

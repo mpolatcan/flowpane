@@ -27,6 +27,7 @@ import {
   DETAIL_TAB,
   MAX_DETAIL,
   MIN_DETAIL,
+  PASS_OPEN,
   RUN_BACK,
   RUN_OPEN,
   RUN_PICKER,
@@ -513,6 +514,19 @@ export function applyPress(
     view.detailScroll = []
 
     return {}
+  }
+
+  // A trip on the dialog's own strip. The tab is left alone — a reader
+  // comparing what two attempts were asked is on the Prompt of both — and the
+  // way back to a nested run's list goes with it, since a strip inside that
+  // reading is not a way out of it.
+  if (pressed.startsWith(PASS_OPEN)) {
+    const agentId = pressed.slice(PASS_OPEN.length)
+
+    showDetail(view, agentId, view.fromRun)
+    view.detailScroll = []
+
+    return { opened: agentId }
   }
 
   if (pressed.startsWith(DETAIL_TAB)) {

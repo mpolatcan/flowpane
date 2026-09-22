@@ -20,9 +20,42 @@ alone are not enough:
 async generator that forwards every chunk untouched and only watches them go by,
 so a node says `thinking` (or the tail of what the model is saying) while a
 request streams, its token count climbs request by request rather than landing
-once at the end, and the header sums the spend across the run. The four usage
-counts are added the same way the run summary adds them, so the live figure
-lands on the final one. An agent nothing has been heard from — no chunk, no tool
+once at the end, and the header sums the spend across the run.
+
+What a node shows is the context its newest request carried — the `input`,
+`cache_creation` and `cache_read` counts of that request added together. That is
+what the run summary's own per-agent `tokens` turns out to be: over the eleven
+thousand agents on this machine whose transcript and summary can both be read,
+the two agree to within a fraction of a percent on all but seven. The run's
+`totalTokens` is those per-agent figures added up, so the header's sum is right
+once the parts are. `dev/checktokens.ts` is the check.
+
+It used to add all four counts of every request together. That counts the same
+context once per request: an agent that made eleven requests over a
+twenty-thousand-token context read `∑ 224k` on the pane while the engine's own
+panel beside it read `21.3k`, and a long one read `∑ 2m` against `153.5k`.
+Cached context is read back whole on every request and is not spent again, so
+adding it up measures how often the agent was called, not what it cost. The
+output is left out for the same reason it is left out of the summary's figure:
+the number is what the agent had to hold, not what it produced — the per-call
+`stepTokens` in the detail's call list is the one that says what a request
+wrote.
+
+The newest request rather than the widest, which are the same figure until a
+context is compacted. Five agents in the corpus were: they ran to a quarter of a
+million tokens, were cut back, and finished at a third of that — and the engine
+reports what they finished carrying, so a high-water mark would leave the pane a
+hundred thousand above the panel beside it for the rest of the run. A usage with
+every count zero is skipped: the last record of a transcript is often one, the
+stream being closed rather than a request being paid for.
+
+The seven it still misses are retries. The engine's figure for an agent it ran
+twice covers both tries and the transcript keeps only the last, so a retried
+agent reads low until the summary lands and replaces the figure outright. A drop
+in context cannot be banked to fix it, because compaction is the same drop and
+banking it would double-count the five above.
+
+An agent nothing has been heard from — no chunk, no tool
 call — for 45 seconds is marked `quiet` in the warning colour, and the header
 counts them, which is how a hung agent is told from a slow one before the run
 itself times out.

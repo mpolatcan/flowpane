@@ -13,7 +13,14 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { AgentRow, RunState } from '../hooks/journal'
-import { inputOf, noteCallEnd, noteCallStart, readAgentTranscript } from '../hooks/journal'
+import {
+  contextOfUsage,
+  inputOf,
+  noteCallEnd,
+  noteCallStart,
+  noteStep,
+  readAgentTranscript,
+} from '../hooks/journal'
 
 /** The cells of an argument the run keeps, past which it is cut and marked. */
 const INPUT_MAX = 4_000
@@ -150,4 +157,55 @@ test('a replayed call holds as much of its answer as a live one', () => {
   ).calls[0].result
 
   expect(replayed).toBe(run.agents[0].calls?.[0].result)
+})
+
+test('a request’s cost is what it had to hold, not what it produced', () => {
+  // The run summary's own per-agent `tokens` is the context a request carried:
+  // what was sent fresh, what was written to the cache, and what was read back
+  // out of it. Adding the output on overshoots it on every agent of every run
+  // on this machine.
+  const usage = {
+    input_tokens: 8,
+    output_tokens: 661,
+    cache_read_input_tokens: 20_960,
+    cache_creation_input_tokens: 355,
+  }
+
+  expect(contextOfUsage(usage)).toBe(21_323)
+})
+
+/** An agent that made these requests, in this order, and stopped. */
+function spent(asked: number[]): number | undefined {
+  const run = runOf()
+
+  for (const tokens of asked) {
+    noteStep(run, 'a1', STARTED + 1_000, { kind: 'start' })
+    noteStep(run, 'a1', STARTED + 2_000, { kind: 'stop', tokens, output: 300 })
+  }
+
+  return run.agents[0].liveTokens
+}
+
+test('an agent’s live spend is its newest request, not every request added up', () => {
+  // Nine requests over one twenty-thousand-token context, which is an agent
+  // reading its own cache back on each. Added up they came to 224k while the
+  // engine's own panel beside the pane read 21.3k; a long agent read `∑ 2m`
+  // against `153.5k`. Cached context is read back whole every request and is
+  // not spent again.
+  expect(spent([18_684, 18_684, 18_684, 20_119, 20_119, 20_411, 20_968, 21_323])).toBe(21_323)
+})
+
+test('an agent whose context was compacted carries what is left, not what it had', () => {
+  // Five agents in the corpus ran to a quarter of a million tokens, were cut
+  // back, and finished at a third of that. The engine reports what they
+  // finished carrying, so a high-water mark would leave the pane a hundred
+  // thousand above the panel beside it for the rest of the run.
+  expect(spent([120_000, 247_025, 82_000, 166_031])).toBe(166_031)
+})
+
+test('the empty usage that closes a stream is not read as the newest request', () => {
+  // The last record of a transcript is often a usage with every count zero: the
+  // stream being closed rather than a request being paid for. Taken as the
+  // newest, it dropped the figure to nothing at the moment the agent finished.
+  expect(spent([38_041, 0])).toBe(38_041)
 })

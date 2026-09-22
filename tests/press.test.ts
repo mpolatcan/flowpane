@@ -557,3 +557,51 @@ test('opening another run folds up the nested runs the last one was left with', 
   // they did open in the run they left is folded back up when they return.
   expect(v.opened).toEqual([])
 })
+
+test('pressing a trip on the strip opens it and keeps the tab it was read on', () => {
+  const v = view()
+
+  applyPress(v, 'a1', { hasRun: true })
+  applyPress(v, '@tab:1', { hasRun: true })
+  applyPress(v, '@call:c3', { hasRun: true })
+
+  const moved = applyPress(v, '@pass:a4', { hasRun: true })
+
+  expect(v.selectedId).toBe('a4')
+  // A reader comparing what two attempts were asked is on the Prompt of both,
+  // so the trip changes under the tab rather than sending the reader back to
+  // the first one. The call does not survive the move: it belonged to the agent
+  // that made it.
+  expect(v.detailTab).toBe(1)
+  expect(v.openCall).toBe(null)
+  expect(v.detailScroll).toEqual([])
+  // The plugin loads the transcript of whatever comes back here, which is how
+  // the trip's own calls and prompt reach the dialog.
+  expect(moved.opened).toBe('a4')
+})
+
+test('a trip pressed twice stays open rather than shutting the dialog', () => {
+  const v = view()
+
+  applyPress(v, '@pass:a4', { hasRun: true })
+  applyPress(v, '@pass:a4', { hasRun: true })
+
+  // The node's own id toggles — pressing the card that is open shuts it — and a
+  // strip is not a toggle. A reader picking along ten trips expects the tenth
+  // press to show the tenth trip, not to close what they were reading.
+  expect(v.selectedId).toBe('a4')
+})
+
+test('a trip opened from inside a nested run keeps the way back to its list', () => {
+  const v = view()
+
+  applyPress(v, '@run:▸ code-review', { hasRun: true })
+  applyPress(v, 'a1', { hasRun: true, fromRun: '▸ code-review' })
+  applyPress(v, '@pass:a4', { hasRun: true })
+
+  expect(v.fromRun).toBe('▸ code-review')
+
+  applyPress(v, '@run-back', { hasRun: true })
+
+  expect(v.selectedId).toBe('@run:▸ code-review')
+})

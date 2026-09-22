@@ -57,16 +57,24 @@ const BEHIND: Record<number, { dx: number; dy: number }> = {
 
 const blank = (code: number) => code === 0 || code === 0x20
 
+/**
+ * The block elements: a bar on the timeline, a card's own rule down its left
+ * edge, the scrollbar's thumb. A fill rather than a word — nothing in one is
+ * read — so a wire landing on one is a wire over a shape, which is a question
+ * about the layout and not about a line running through something legible.
+ */
+const fill = (code: number) => code >= 0x2580 && code <= 0x259f
+
 /** Whether a cell holds a word rather than a wire: something a reader reads. */
 function ink(code: number): boolean {
-  return !blank(code) && armsOf(code) === undefined && code !== PORT && !ARROWS.has(code)
+  return !blank(code) && !fill(code) && armsOf(code) === undefined && code !== PORT && !ARROWS.has(code)
 }
 
 /** Whether a cell holds a piece of wire, which nothing written may land on. */
 const wire = (code: number) => armsOf(code) !== undefined || code === PORT || ARROWS.has(code)
 
 /** The painters whose lines are drawn to be broken, and are not faults. */
-const GIVES_WAY = new Set(['paintNode', 'paintBar', 'ink', 'paintRuler', 'paintGrid'])
+const GIVES_WAY = new Set(['paintNode', 'paintBar', 'ink', 'paintRuler', 'paintGrid', 'paintNow'])
 
 type Clash = { x: number; y: number; over: number; under: number; kind: string; by: string }
 const clashes: Clash[] = []
@@ -80,6 +88,18 @@ const writers = new Map<number, string>()
  * stops: a line ending against one of these is no fault.
  */
 const cleared = new Set<number>()
+/**
+ * The cells an arrowhead was written into as part of a string.
+ *
+ * The header says how many agents are going as `\u25b8 10 running`, and the
+ * strip names the phases still ahead as `Verify \u25b8 Escalate`: the mark is a
+ * word in a sentence there, with a space in front of it rather than a stem. The
+ * painter that wrote it is what tells the two apart, and reading that off the
+ * stack came back `?` for the header — the frame it names has no function in
+ * it. Whether the cell was written inside `Canvas.text` says the same thing and
+ * always says it.
+ */
+const prose = new Set<number>()
 let watching = false
 let inText = false
 
@@ -107,10 +127,25 @@ Canvas.prototype.text = function (this: Canvas, ...args: Parameters<Canvas['text
   }
 }
 
-Canvas.prototype.put = function (this: Canvas, x, y, code, fg, bg) {
-  if (watching && x >= 0 && y >= 0 && x < this.columns && y < this.rows) {
-    const under = this.at(x, y)
+/** A cell as the buffer holds it, which is not what `at` reports inside a window. */
+const inBuffer = (c: Canvas, x: number, y: number) =>
+  x >= 0 && y >= 0 && x < c.columns && y < c.rows ? c.cell(x, y).code : 0x20
 
+Canvas.prototype.put = function (this: Canvas, x, y, code, fg, bg) {
+  const under = watching ? inBuffer(this, x, y) : 0
+  const out = rawPut.call(this, x, y, code, fg, bg)
+
+  // What the canvas kept, not what the painter asked for. A band sets a window
+  // and every cell it writes outside one is dropped, and the drop was invisible
+  // here: the header's `\u25b8 10 running` was recorded as prose, then a clipped
+  // write over the same cell unrecorded it, and the mark read back as an
+  // arrowhead with nothing behind it in the one layout that windows its bands.
+  //
+  // Read back through `cell` rather than `at`, which reports a cell outside the
+  // window blank whether or not anything is in it: read that way, every cell a
+  // painter wrote before the window was set came back unkept, and the rules and
+  // junctions drawn before one lost the painter that drew them.
+  if (watching && x >= 0 && y >= 0 && x < this.columns && y < this.rows && inBuffer(this, x, y) === code) {
     const held = writers.get(y * this.columns + x)
 
     if (!blank(code) && inText && WIRE_ONLY.has(under)) {
@@ -122,7 +157,18 @@ Canvas.prototype.put = function (this: Canvas, x, y, code, fg, bg) {
     if (wire(code)) {
       writers.set(y * this.columns + x, writer())
       cleared.delete(y * this.columns + x)
+
+      if (inText) {
+        prose.add(y * this.columns + x)
+      } else if (code !== under) {
+        // The same glyph written again is the colour pass that pushes the
+        // drawing back behind a dialog, not a wire taking the cell over: it
+        // re-puts every cell it dims, prose included, and a mark unmarked
+        // there came back a stemless arrowhead.
+        prose.delete(y * this.columns + x)
+      }
     } else {
+      prose.delete(y * this.columns + x)
       writers.delete(y * this.columns + x)
 
       if (blank(code)) {
@@ -131,7 +177,7 @@ Canvas.prototype.put = function (this: Canvas, x, y, code, fg, bg) {
     }
   }
 
-  return rawPut.call(this, x, y, code, fg, bg)
+  return out
 }
 
 type Fault = { x: number; y: number; what: string; by: string }
@@ -153,9 +199,10 @@ function loose(c: Canvas, rows: Set<number>): Fault[] {
       const code = c.at(x, y)
 
       // An arrowhead written as part of a string is a mark in a sentence — the
-      // strip names its phases `Verify \u25b8 Escalate` — and not the end of a
-      // line, so it has no stem to look for.
-      if (ARROWS.has(code) && !(writers.get(y * c.columns + x) ?? '').startsWith('text ')) {
+      // strip names its phases `Verify \u25b8 Escalate`, the header counts the
+      // agents still going — and not the end of a line, so it has no stem to
+      // look for.
+      if (ARROWS.has(code) && !prose.has(y * c.columns + x)) {
         const back = BEHIND[code] as { dx: number; dy: number }
         const stem = c.at(x + back.dx, y + back.dy)
 
@@ -249,40 +296,62 @@ const tally = (what: string, where: string) => {
   }
 }
 
+/**
+ * The nested runs a frame is drawn with unfolded.
+ *
+ * A shut nested run is one node, and the band it stands in is one card wide.
+ * Opened it is that whole workflow's own fan-out in a single band — which is
+ * the widest band the pane ever lays out, and the one that wraps on to rows of
+ * its own. Swept shut only, the wires either side of a wrapped band were never
+ * drawn in this audit at all.
+ */
+function unfolded(run: RunState): string[] {
+  return [
+    ...new Set(
+      run.agents.map(agent => agent.phase.replace(/ #\d+$/, '')).filter(phase => phase.startsWith('\u25b8 ')),
+    ),
+  ]
+}
+
 for (const { run, name } of picked) {
+  const folds = unfolded(run)
+
   for (const orientation of LAYOUTS) {
-    for (const columns of widths) {
-      for (const rows of heights) {
-        const canvas = new Canvas(columns, rows)
-        const what = `${name} ${orientation} ${columns}×${rows}`
+    for (const open of folds.length > 0 ? [[], folds] : [[]]) {
+      for (const columns of widths) {
+        for (const rows of heights) {
+          const canvas = new Canvas(columns, rows)
+          const what = `${name} ${orientation}${open.length > 0 ? ' opened' : ''} ${columns}×${rows}`
 
-        clashes.length = 0
-        writers.clear()
-        cleared.clear()
-        watching = true
-        const drawn = paint(canvas, run, { nowMs: run.startedMs + 40_000, tick: 3, orientation })
-        watching = false
-        frames++
+          clashes.length = 0
+          writers.clear()
+          cleared.clear()
+          prose.clear()
+          watching = true
+          const drawn = paint(canvas, run, { nowMs: run.startedMs + 40_000, tick: 3, orientation, opened: open })
+          watching = false
+          frames++
 
-        for (const clash of clashes) {
-          if (!all && GIVES_WAY.has(clash.by.split(' ')[0] as string)) {
-            continue
+          for (const clash of clashes) {
+            if (!all && GIVES_WAY.has(clash.by.split(' ')[0] as string)) {
+              continue
+            }
+
+            tally(
+              `${clash.kind}: ${String.fromCodePoint(clash.over)} over ${String.fromCodePoint(clash.under)}, ${clash.by}`,
+              `${what} at ${clash.x},${clash.y}`,
+            )
           }
 
-          tally(
-            `${clash.kind}: ${String.fromCodePoint(clash.over)} over ${String.fromCodePoint(clash.under)}, ${clash.by}`,
-            `${what} at ${clash.x},${clash.y}`,
-          )
-        }
+          for (const fault of loose(canvas, new Set(drawn.hotspots.map(h => h.y)))) {
+            if (!all && GIVES_WAY.has(fault.by.split(' ')[0] as string)) {
+              continue
+            }
 
-        for (const fault of loose(canvas, new Set(drawn.hotspots.map(h => h.y)))) {
-          if (!all && GIVES_WAY.has(fault.by.split(' ')[0] as string)) {
-            continue
+            tally(fault.what, `${what} at ${fault.x},${fault.y}`)
           }
-
-          tally(fault.what, `${what} at ${fault.x},${fault.y}`)
         }
-      }
+    }
     }
   }
 }

@@ -54,6 +54,16 @@ export type NodeBox = {
    * its own way back out can go.
    */
   inside?: { agents: number; phase: string; alone?: boolean }
+  /**
+   * Which row of its band this node stands on, where the band wrapped.
+   *
+   * Absent for a band that stands on one row, which is most of them. A band
+   * with more nodes than the pane can stand side by side takes as many rows as
+   * it needs, and the wires either side of it go to the row facing them: a
+   * wire into the third row of a band would cross the two rows of cards above
+   * it, and a line through a card is a line through a word.
+   */
+  row?: number
   x: number
   y: number
   w: number
@@ -79,6 +89,8 @@ export type LaneBox = {
   /** Where the barrier's spine stands, in the gutter before this lane. */
   busAt: number
   nodes: NodeBox[]
+  /** How many rows this band's nodes wrapped on to, where it took more than one. */
+  rows?: number
   /**
    * True for a nested run a reader has opened: its rows are a run of their own
    * and are drawn one step in, behind a gutter of their own, with the row at
@@ -710,15 +722,11 @@ function stackLayout(
   }
 
   const gaps = [2, 1]
-  const nodeGap = gaps.find(g => widthAt(g) >= MIN_COL) ?? 1
+  // The gap the widest band can be stood whole at, or — where no gap stands it
+  // whole and the band is going to wrap — the wider of the two: a band cut to
+  // the nodes a row holds has the width for air between them.
+  const nodeGap = gaps.find(g => widthAt(g) >= MIN_COL) ?? 2
   const wide = widthAt(nodeGap)
-
-  // Below the width a label needs, side-by-side boxes stop being a graph and
-  // start being confetti. The band becomes a list instead: one agent per row,
-  // which is what a pane forty columns wide can actually carry.
-  if (wide < MIN_COL) {
-    return listLayout(lanes, columns, body, headerRows)
-  }
 
   // Every phase gets a band of the same depth, and a band carries its node, the
   // rule that opens the band under it, and the two rows the wires arriving need:
@@ -761,6 +769,84 @@ function stackLayout(
    */
   const airyAs = (nodeH: number) => nodeH + 6
   /**
+   * How a band would be laid out at one density: how many nodes stand on a row
+   * of it, how wide each of them is, and how many rows a band of n takes.
+   *
+   * Asked twice. Everything here turns on what a node spends on itself before a
+   * letter of its name is drawn — a card pays for its frame, a row does not —
+   * so the density has to be settled before the widths are, and the depth a
+   * band of cards actually takes is what settles it.
+   */
+  const planFor = (density: Layout['density']) => {
+    const nodeH = density === 'card' ? CARD_H : 1
+    /**
+     * What a node spends on itself before a letter of its name is drawn.
+     *
+     * MIN_COL is a floor on the node's whole width, and a card spends CARD_W of
+     * it on its own frame and its state mark — so a band of eight agents across
+     * a hundred and ten columns gave each card twelve cells, four of which were
+     * the name, and every one of them came back `Bas…`. A row pays no frame and
+     * keeps the floor it always had.
+     */
+    const cost = NODE_COST[density]
+    /**
+     * How many nodes of a legible width the pane stands side by side.
+     *
+     * The ceiling on a band's row. Past it a band does not divide the pane any
+     * further — it wraps, taking as many rows of that width as its nodes need —
+     * because a column narrower than this carries a truncation where its name
+     * should be, and twelve truncations is a drawing of a phase nobody can read.
+     */
+    const held = Math.floor((usable + nodeGap) / (cost + MIN_COL + nodeGap))
+    /**
+     * Whether the widest band stands whole on one row.
+     *
+     * Two ways it does not: the share of the pane every node would get is below
+     * the floor a node is legible at, or it is above that floor and still below
+     * what a name needs once the frame has taken its cells. Either way the band
+     * wraps rather than shrinking — a card is drawn at the width it is read at,
+     * and the nodes past the end of a row go on the row under it.
+     */
+    const whole = wide >= MIN_COL && (wide >= cost + NAME_MIN || widest <= held)
+    /** The most nodes a row of any band may hold. */
+    const perRow = whole ? Math.max(1, widest) : Math.max(1, held)
+    /** How many rows a band of this many nodes takes. */
+    const rowsFor = (nodes: number) => Math.max(1, Math.ceil(Math.max(1, nodes) / perRow))
+    /**
+     * How many nodes a band of this many stands on each of its rows.
+     *
+     * Shared out rather than filled to the brim: nine nodes into rows of seven
+     * is a row of seven and a row of one, which reads as a fan with an
+     * afterthought under it. Five and four is a block, and a block is what the
+     * band is.
+     */
+    const acrossFor = (nodes: number) => Math.ceil(Math.max(1, nodes) / rowsFor(nodes))
+    /** The widest row in the drawing, which is what the columns divide. */
+    const spread = Math.max(1, ...lanes.map(lane => acrossFor(lane.folds.length)))
+    const colW = whole
+      ? wide
+      : Math.max(MIN_COL, Math.min(MAX_COL, Math.floor((usable - nodeGap * (spread - 1)) / spread)))
+    /** The air between one wrapped row of a band and the next. */
+    const rowGap = density === 'card' ? 1 : 0
+    /** What a band of that many rows stands in, its air between rows included. */
+    const blockFor = (rows: number) => rows * nodeH + Math.max(0, rows - 1) * rowGap
+
+    return {
+      density,
+      nodeH,
+      held,
+      whole,
+      rowsFor,
+      acrossFor,
+      colW,
+      rowGap,
+      blockFor,
+      /** What the deepest band in the drawing stands in, wrapped rows and all. */
+      deepest: Math.max(...lanes.map(lane => blockFor(rowsFor(lane.folds.length)))),
+    }
+  }
+
+  /**
    * Whether the bands stand cards, which is the height's half of the bargain
    * the width already keeps.
    *
@@ -770,14 +856,16 @@ function stackLayout(
    * its cards and scrolled sideways to the rest. The same run on the same seat
    * was a graph under one setting and a list under the other.
    *
-   * The test now is the one `densityOf` makes of the width: whether the body
-   * can stand two whole bands of cards. Past that the bands keep the depth
-   * their cards need, the drawing runs past the foot of the pane, and the body
-   * scrolls down to the rest.
+   * The test is whether the body can stand two whole bands — at the depth the
+   * bands of this drawing actually take, which for a band that wrapped is
+   * several rows of cards rather than one. Past that the pane spends its rows
+   * on twice as many nodes by drawing each as a row. Past that again the bands
+   * keep the depth they need, the drawing runs past the foot of the pane, and
+   * the body scrolls down to the rest.
    */
-  const density: Layout['density'] =
-    Math.min(bands, CARDS_MIN) * deepAs(CARD_H) <= body ? 'card' : 'row'
-  const nodeH = density === 'card' ? CARD_H : 1
+  const carded = planFor('card')
+  const plan = Math.min(bands, CARDS_MIN) * deepAs(carded.deepest) <= body ? carded : planFor('row')
+  const { density, nodeH, rowsFor, acrossFor, colW, rowGap, blockFor } = plan
 
   // Below even one band, a band is a rule with its node against it and every
   // wire into it drawn through one, so the pane reads better as a list.
@@ -785,51 +873,44 @@ function stackLayout(
     return listLayout(lanes, columns, body, headerRows)
   }
 
-  // What a band does not spend on its card it spends on the wires arriving at
-  // it, so room the pane has to spare goes where the drawing is rather than
-  // into a margin at the foot of it.
-  const bandH = Math.max(airyAs(nodeH), Math.floor(body / bands))
+  // A pane that cannot stand two legible nodes side by side has nothing to wrap
+  // into: one node a row is a column of nodes with the pane's whole width
+  // beside it, which is the list with a frame drawn round each row. The list is
+  // the honest drawing of that pane.
+  if (!plan.whole && plan.held < 2) {
+    return listLayout(lanes, columns, body, headerRows)
+  }
   /**
-   * The narrowest node that still carries a name.
+   * What a band is given down the pane: its own block with the air a band keeps
+   * around it, and never less than an even share of the body.
    *
-   * MIN_COL is a floor on the node's whole width, and a card spends CARD_W of
-   * it on its own frame and its state mark before a letter of the name is
-   * drawn — so a band of eight agents across a hundred and ten columns gave
-   * each card twelve cells, four of which were the name, and every one of them
-   * came back `Bas…`. A row pays no frame and keeps the floor it always had.
+   * Equal shares are what give the stack its rhythm — every phase the same
+   * depth, every card in the middle of its own band. A band that wrapped takes
+   * the rows its own rows need, and the bands around it keep theirs.
    */
-  /**
-   * How many nodes a band stands side by side, once dividing the pane between
-   * all of them has stopped carrying a name.
-   *
-   * Past that the band takes the width it needs, the drawing runs past the
-   * pane's edge, and the body scrolls sideways to the rest — the same rule the
-   * across layout keeps for its columns, so the two settings give way the same
-   * way and a reader who learns one has learned the other.
-   *
-   * Never fewer than two, and never narrower than dividing the pane already
-   * gave: a pane that cannot stand two nodes at MIN_COL came back as a list
-   * several steps ago, and this is here to stop a band spreading itself thin,
-   * not to take width off one that had room to spare.
-   */
-  const cost = NODE_COST[density]
-  const held = Math.max(2, Math.floor((usable + nodeGap) / (cost + MIN_COL + nodeGap)))
-  const colW =
-    wide >= cost + NAME_MIN || widest <= held
-      ? wide
-      : Math.max(wide, Math.min(MAX_COL, Math.floor((usable - nodeGap * (held - 1)) / held)))
-  /** What the widest band takes at that width, which is what the drawing reaches. */
-  const spread = widest * colW + Math.max(0, widest - 1) * nodeGap
+  const depthOf = (lane: Lane) => Math.max(airyAs(blockFor(rowsFor(lane.folds.length))), Math.floor(body / bands))
+  /** Where each band opens, which is where the one before it ended. */
+  const tops: number[] = []
+  let at = headerRows
+
+  for (const lane of lanes) {
+    tops.push(at)
+    at += depthOf(lane)
+  }
 
   const boxes: LaneBox[] = []
 
   lanes.forEach((lane, place) => {
-    const top = headerRows + place * bandH
+    const top = tops[place] as number
+    const bandH = depthOf(lane)
+    const rows = rowsFor(lane.folds.length)
+    const across = acrossFor(lane.folds.length)
+    const blockH = blockFor(rows)
     // A band's last row carries the next band's name rule, so the card centres
     // in what is left over. The last band has no rule under it and centres in
     // the whole of its own.
     const room = bandH - (place === lanes.length - 1 ? 0 : 1)
-    const slack = Math.max(0, room - nodeH)
+    const slack = Math.max(0, room - blockH)
     // Centred in what the band has, and never nearer the rule above than three
     // rows: the first carries the bundle every wire into this band turns on, the
     // last the arrowheads, and the one between them is where a card fed from
@@ -846,15 +927,19 @@ function stackLayout(
     // stands in the middle of it.
     const lift = slack === 0 ? 0 : Math.max(Math.min(slack, 3), Math.floor(slack / 2))
     const y = top + lift
-    const width = lane.folds.length * colW + Math.max(0, lane.folds.length - 1) * nodeGap
-    // Centred while the drawing fits the pane, which is what makes a fan read
-    // as a fan. Where the widest band runs past the edge every band goes left
-    // instead: centred, a band of two would stand in the middle of a drawing
-    // whose own first column is off at the left, and a reader scrolling to the
-    // wide band's tail would lose the narrow bands on the way. From the left,
-    // every band opens on its own first agent.
-    const left =
-      spread > columns ? 1 : Math.max(1, Math.floor((columns - width) / 2))
+    const shown = Math.min(lane.folds.length, across)
+    const width = shown * colW + Math.max(0, shown - 1) * nodeGap
+    // Centred, which is what makes a fan read as a fan — and what a band of one
+    // needs, since a lone card pinned to the left edge of a pane it has all of
+    // is a drawing that ran out rather than one placed. A band never reaches
+    // past the pane now: the nodes a row cannot hold are on the row below, so
+    // there is no drawing off the edge for a left margin to keep in view.
+    //
+    // The rows of a wrapped band share one left edge, so its columns line up
+    // and the block reads as a block. The last row is short and stands where it
+    // falls, which is what says it is the end of the band rather than the start
+    // of another.
+    const left = Math.max(1, Math.floor((columns - width) / 2))
 
     boxes.push({
       phase: lane.phase,
@@ -862,7 +947,8 @@ function stackLayout(
       x: 0,
       y,
       w: columns,
-      h: nodeH,
+      h: blockH,
+      ...(rows > 1 ? { rows } : {}),
       // The band's name rule is the line between it and the band before it: the
       // last row of that band, and for the first the row the header keeps back.
       edgeAt: -1,
@@ -875,10 +961,11 @@ function stackLayout(
       busAt: lift > 1 ? top : Math.max(0, top - 1),
       nodes: lane.folds.map((fold, i) => ({
         ...boxOf(fold),
-        x: left + i * (colW + nodeGap),
-        y,
+        x: left + (i % across) * (colW + nodeGap),
+        y: y + Math.floor(i / across) * (nodeH + rowGap),
         w: colW,
         h: nodeH,
+        ...(rows > 1 ? { row: Math.floor(i / across) } : {}),
       })),
       // On the row a card in this band would have its middle on, not the row a
       // card would start at: one row set against the top of a three-row block

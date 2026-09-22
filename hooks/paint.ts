@@ -51,10 +51,12 @@ import {
   follows,
   isPipelineLike,
   orderedLanes,
+  passesFor,
   passesOf,
   sourcesOf,
   type Carry,
   type FoldedLane,
+  type FoldPass,
   type Pass,
 } from './shape'
 
@@ -3078,6 +3080,8 @@ function openDetail(
   options: PaintOptions,
   hotspots: Hotspot[],
   fedBy: string[],
+  /** Every trip through the open agent's own work: see `passesFor`. */
+  passes: FoldPass[],
   defaultModel?: string,
 ): DetailView {
   if (phase !== undefined && inside.length > 0) {
@@ -3122,6 +3126,7 @@ function openDetail(
     options.detailTab ?? 0,
     hotspots,
     fedBy,
+    passes,
     defaultModel,
     options.fromRun,
   )
@@ -3147,6 +3152,10 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
   // writes the same phases beside the card; the dialog is where they are said
   // in full, and where the mark beside the card is spelled out in a word.
   const fedBy = selected === undefined ? [] : (sourcesOf(run).get(selected.agentId) ?? [])
+  // Which trip through its own work this agent is. The card it was opened from
+  // carries the same marks, but only as many of them as its width allows — so
+  // the dialog reads the whole list rather than the drawn part of it.
+  const trips = selected === undefined ? [] : passesFor(run, selected.agentId)
   /** Which nested runs the reader has unfolded, in whichever layout is drawn. */
   const opened = options.opened && options.opened.length > 0 ? new Set(options.opened) : undefined
 
@@ -3170,7 +3179,7 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
     modal(hotspots, panel !== null && reading, menuKeeps(options))
 
     const detail = panel && reading
-      ? openDetail(c, selected, inside, phase, nowMs, tick, panel, options, hotspots, fedBy, run.defaultModel)
+      ? openDetail(c, selected, inside, phase, nowMs, tick, panel, options, hotspots, fedBy, trips, run.defaultModel)
       : undefined
 
     onCanvas(c, hotspots, c.rows)
@@ -3356,6 +3365,54 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
       ? exitOf(from, 'horizontal').y === entryOf(to, 'horizontal').y
       : exitOf(from, 'vertical').x === entryOf(to, 'vertical').x)
 
+  /**
+   * The nodes of a band a wire from outside it can reach.
+   *
+   * A band that wrapped stands its nodes on several rows, and only the outer
+   * two face anything: a wire into the second row would be drawn down through
+   * the row of cards above it, and a line through a card is a line through a
+   * word. So the barrier lands on the row that faces it — the first row for
+   * what arrives, the last for what leaves — and the rows between are held by
+   * the band's own rule, which is what says they belong to this phase.
+   *
+   * A band on one row is every band in most runs, and answers with all of it.
+   */
+  const facing = (lane: LaneBox, nodes: NodeBox[], side: 'head' | 'tail'): NodeBox[] => {
+    const rows = lane.rows ?? 1
+
+    if (rows < 2) {
+      return nodes
+    }
+
+    const want = side === 'head' ? 0 : rows - 1
+    const kept = nodes.filter(node => (node.row ?? 0) === want)
+
+    return kept.length > 0 ? kept : lane.nodes.filter(node => (node.row ?? 0) === want)
+  }
+
+  /**
+   * Whether a carry can be drawn as a line at all, which a wrapped band decides.
+   *
+   * Between two bands it has to leave the row facing the next band and arrive
+   * on the row facing the last; inside one, both ends have to stand on the same
+   * row. Anything else is a line across cards. The edge is not lost to the
+   * reader — the two agents are still a row apart in a band the rule names —
+   * but it is not drawn as a wire through the drawing.
+   */
+  const reaches = (from: NodeBox, to: NodeBox, span: number): boolean => {
+    const above = view.lanes[laneOf.get(from.agent.agentId) ?? -1]
+    const below = view.lanes[laneOf.get(to.agent.agentId) ?? -1]
+
+    if (span === 0) {
+      return (from.row ?? 0) === (to.row ?? 0)
+    }
+
+    return (
+      (above === undefined || (from.row ?? 0) === (above.rows ?? 1) - 1) &&
+      (below === undefined || (to.row ?? 0) === 0)
+    )
+  }
+
   /** The gutters drawn as one bundle, whose carries are not drawn again. */
   const bundled = new Set<number>()
   /** Where every edge put its arrowhead, so a rail can be kept off them. */
@@ -3375,7 +3432,18 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
 
     const crossing = carries.filter(e => laneOf.get(e.fromId) === i - 1 && laneOf.get(e.toId) === i)
     const askew = crossing.filter(e => !abreast(byId.get(e.fromId), byId.get(e.toId)))
-    const wants = askew.length > 0 && deeper(view, right) && crowded(view, crossing, byId)
+    /**
+     * A band that wrapped always bundles what crosses it.
+     *
+     * Only the outer row of a wrapped band faces the band beyond it, so a wire
+     * from a row inside cannot be drawn without crossing the cards between —
+     * and dropping it instead left the two bands with nothing between them at
+     * all, which says they are unrelated. The bundle is drawn from the rows
+     * that do face each other and stands for every carry in the gutter.
+     */
+    const wrapped = (left.rows ?? 1) > 1 || (right.rows ?? 1) > 1
+    const wants =
+      crossing.length > 0 && (wrapped || (askew.length > 0 && deeper(view, right) && crowded(view, crossing, byId)))
     const bundle = () => {
       const pick = (ids: string[]) =>
         [...new Set(ids)].flatMap(id => {
@@ -3387,8 +3455,8 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
       bundled.add(i)
       paintBarrier(
         c,
-        pick(crossing.map(e => e.fromId)),
-        pick(crossing.map(e => e.toId)),
+        facing(left, pick(crossing.map(e => e.fromId)), 'tail'),
+        facing(right, pick(crossing.map(e => e.toId)), 'head'),
         right.busAt,
         view.orientation,
         true,
@@ -3434,8 +3502,8 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
 
       paintBarrier(
         c,
-        ends(waves[i - 1], group => group[group.length - 1], left.nodes),
-        ends(waves[i], group => group[0], right.nodes),
+        facing(left, ends(waves[i - 1], group => group[group.length - 1], left.nodes), 'tail'),
+        facing(right, ends(waves[i], group => group[0], right.nodes), 'head'),
         right.busAt,
         view.orientation,
         false,
@@ -3487,7 +3555,7 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
       const to = byId.get(carry.toId)
       const lane = laneOf.get(carry.toId) ?? -1
 
-      if (!from || !to || lane - (laneOf.get(carry.fromId) ?? 0) !== 1) {
+      if (!from || !to || lane - (laneOf.get(carry.fromId) ?? 0) !== 1 || !reaches(from, to, 1)) {
         continue
       }
 
@@ -3663,6 +3731,24 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
       continue
     }
 
+    // And a carry to a band further back is not drawn at all. The bands stand
+    // in the order they ran, so a source named on a later one — a fix agent
+    // whose answer the phase that asked for it quotes back — is a line from the
+    // foot of the drawing to its head, across every band between and every name
+    // on them. What came out was the head alone: the run from the source
+    // stopped before it started, and a lone arrowhead sat under a phase rule
+    // pointing at nothing. The loop mark on the card already says the phase was
+    // entered again.
+    if (span < 0) {
+      continue
+    }
+
+    // Either end on a row of a wrapped band the wire cannot reach: see
+    // `reaches`.
+    if (!reaches(from, to, span)) {
+      continue
+    }
+
     // Already in this gutter's bundle.
     if (span === 1 && bundled.has(laneOf.get(carry.toId) ?? -1)) {
       continue
@@ -3684,6 +3770,7 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
     const lit = to.agent.state === 'running'
     const solid = carry.confirmed === true
     const stroke = tone
+
     const across = solid ? 0x2500 : DASH_H
     const down = solid ? 0x2502 : DASH_V
 
@@ -3742,8 +3829,21 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
       const at = flow ? from.x + Math.floor(from.w / 2) : from.y + Math.floor(from.h / 2)
 
       const abreast = flow ? to.x === from.x : to.y === from.y
+      // And the cells between them have to be empty for a line to run through
+      // them. A lane packed with cards a row apart has another node standing in
+      // the gap, and a line drawn through that node runs under its name: the
+      // names are written after the wires, so the cell came back a letter with
+      // a port or an arrowhead lost beneath it. The stack already says which
+      // pass went first; a wire no reader can see does not say it again.
+      const lane = view.lanes[laneOf.get(carry.fromId) ?? -1]
+      const between = (lane?.nodes ?? []).some(node =>
+        node !== from && node !== to &&
+        (flow
+          ? node.y < to.y && node.y + node.h > from.y + from.h && at >= node.x && at < node.x + node.w
+          : node.x < to.x && node.x + node.w > from.x + from.w && at >= node.y && at < node.y + node.h),
+      )
 
-      if (abreast && gap >= 1 && gap <= 3) {
+      if (abreast && !between && gap >= 1 && gap <= 3) {
         const head = flow ? to.y - 1 : to.x - 1
         const route: { x: number; y: number }[] = []
 
@@ -4022,7 +4122,7 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
   modal(hotspots, panel !== null && reading, menuKeeps(options))
 
   const detail = panel && reading
-    ? openDetail(c, selected, inside, phase, nowMs, tick, panel, options, hotspots, fedBy, run.defaultModel)
+    ? openDetail(c, selected, inside, phase, nowMs, tick, panel, options, hotspots, fedBy, trips, run.defaultModel)
     : undefined
 
   onCanvas(c, hotspots, c.rows)
@@ -6203,13 +6303,7 @@ function paintTimeline(
   // it, and claim a moment the drawing contradicts. What happened to each
   // agent is a word in its own column instead.
   if (running && onAxis(nowX)) {
-    for (let row = top; row < Math.min(y, floor); row++) {
-      const cell = c.at(nowX, row)
-
-      if (cell === 0x20 || cell === 0 || cell === DASH_V) {
-        c.put(nowX, row, DASH_V, mix(COLORS.track, COLORS.running, 0.35))
-      }
-    }
+    paintNow(c, nowX, top, Math.min(y, floor))
   }
 
   c.window()
@@ -6706,6 +6800,141 @@ function answerLines(answer: string, width: number, color: Rgb): DetailLine[] {
 }
 
 /**
+ * The key a pass on the dialog's own strip presses: one trip through this piece
+ * of work, read whole.
+ *
+ * A key of its own rather than the agent's bare id, which is what a card's pass
+ * marks press. The id toggles — pressing the node that is open shuts it — and a
+ * strip is not a toggle: a reader picking along ten trips expects the tenth
+ * press to show the tenth trip, not to close what they were reading. It also
+ * keeps the way back to a nested run's list, which the bare id drops.
+ */
+export const PASS_OPEN = '@pass:'
+
+/** A pass on the strip: its mark, a cell of air, its number, and the air around it. */
+const PASS_SIDES = 5
+
+/**
+ * Every trip through this piece of work, along a strip of its own, with the one
+ * being read set apart.
+ *
+ * A phase entered ten times is one row on the drawing with a mark per trip, and
+ * the marks are pressable — but only the ones that fit: four of ten on a wide
+ * card, none at all on a card whose width has gone to its name. So a reader who
+ * opened the last trip had no way to the first, which is the trip a loop is
+ * usually read for. The strip is where the dialog carries them all: the same
+ * mark-and-number the card draws, at a size where every one of them is there.
+ *
+ * Set into a shelf of its own, above the tabs. The two strips answer different
+ * questions — which trip, then which part of it — and a reader moving along one
+ * keeps their place in the other, which is why the tab is not touched when the
+ * trip changes. The open one is bracketed rather than coloured: a press target
+ * is drawn as a Button and a Button carries no colour, so the marker has to
+ * stand outside the cells it marks.
+ *
+ * Where the strip is too narrow for all of them it shows a window around the
+ * open trip, with an arrow at either end that steps to the trip just outside
+ * it. Every trip is still reachable; the reader walks to the far ones.
+ */
+function paintPassStrip(
+  c: Canvas,
+  rect: Rect,
+  y: number,
+  edge: Rgb,
+  passes: FoldPass[],
+  openAt: number,
+  tick: number,
+  hotspots: Hotspot[],
+): void {
+  // The count leads the strip, in the mark the drawing already spends on a
+  // loop: a reader who has seen `↻10` on the card knows what the numbers after
+  // it are counting before reading one of them.
+  const lead = loopMark(passes.length)
+
+  paintCrossbar(c, rect, y, edge, lead)
+
+  const rule = quietOf(c.background)
+  const first = rect.x + 4 + cells(lead) + 2
+  const end = rect.x + rect.w - 2
+  const itemW = (at: number) => 2 + cells(String(passes[at].index)) + PASS_SIDES
+  const room = end - first + 1
+  const whole = passes.reduce((w, _, at) => w + itemW(at), 0)
+  /** The cells an arrow and the air either side of it take, at each end. */
+  const STEP_W = 3
+  const capacity = whole <= room ? room : room - 2 * STEP_W
+
+  let from = openAt
+  let to = openAt
+  let used = itemW(openAt)
+  let grew = true
+
+  // Outward from the trip being read, the later ones first: a loop is read for
+  // how it ended, so the window keeps the end of it in view where it can.
+  while (grew) {
+    grew = false
+
+    if (to + 1 < passes.length && used + itemW(to + 1) <= capacity) {
+      used += itemW(to + 1)
+      to += 1
+      grew = true
+    }
+
+    if (from - 1 >= 0 && used + itemW(from - 1) <= capacity) {
+      used += itemW(from - 1)
+      from -= 1
+      grew = true
+    }
+  }
+
+  const step = (x: number, glyph: number, at: number) => {
+    c.put(x - 1, y, 0x20, rule)
+    c.put(x, y, glyph, COLORS.dim)
+    c.put(x + 1, y, 0x20, rule)
+    hotspots.push({ agentId: `${PASS_OPEN}${passes[at].agent.agentId}`, x, y, w: 1 })
+  }
+
+  let at = first + (from > 0 ? STEP_W : 0) + 2
+
+  if (from > 0) {
+    step(first + 1, ARROW_LEFT, from - 1)
+  }
+
+  for (let index = from; index <= to; index++) {
+    const pass = passes[index]
+    const digits = String(pass.index)
+    const w = 2 + cells(digits)
+
+    if (at + w + 1 > end) {
+      break
+    }
+
+    // The same brackets the tabs mark their open one with, in the same places:
+    // the strip never shifts under the pointer, so picking along it is picking
+    // along a row of fixed targets.
+    if (index === openAt) {
+      c.put(at - 2, y, 0x2524, COLORS.accent)
+      c.put(at + w + 1, y, 0x251c, COLORS.accent)
+    }
+
+    c.put(at - 1, y, 0x20, rule)
+    c.put(at + w, y, 0x20, rule)
+    // The mark stands outside the target, a cell of air between the two, which
+    // is the spacing every mark-and-name on the pane keeps and the only one a
+    // Button allows.
+    c.put(at, y, markOf(pass.agent.state, tick), colorOf(pass.agent.state))
+    c.put(at + 1, y, 0x20, rule)
+    c.text(at + 2, y, digits, index === openAt ? COLORS.text : COLORS.dim)
+    hotspots.push({ agentId: `${PASS_OPEN}${pass.agent.agentId}`, x: at + 2, y, w: cells(digits) })
+
+    at += w + PASS_SIDES
+  }
+
+  if (to < passes.length - 1) {
+    step(end - 1, ARROW_RIGHT, to + 1)
+  }
+}
+
+/**
  * The selected agent, in full, in a dialog over the drawing.
  *
  * The three things worth knowing about an agent — what it was asked, what it
@@ -6730,6 +6959,8 @@ function paintDetail(
   hotspots: Hotspot[],
   /** The phases that fed this agent from further back than the band above it. */
   fedBy: string[],
+  /** Every trip through this agent's own work, where it was done more than once. */
+  passes: FoldPass[],
   model?: string,
   /** Set when this agent was opened out of a nested run's list, to return to. */
   fromRun?: string,
@@ -6973,14 +7204,28 @@ function paintDetail(
   // One row of chrome for the tabs, not two: the strip is set into the rule that
   // used to close the title off from the reading, so naming the blocks costs
   // nothing a five-row dialog cannot pay.
-  const tabY = rect.y + 1
+  //
+  // A second shelf above it, and only where there is a second question to
+  // answer: the trips this piece of work took. It costs the reading a row, so
+  // it is drawn for a loop and never for the work that ran once.
+  const passAt = passes.findIndex(pass => pass.agent.agentId === agent.agentId)
+  const looped = passes.length > 1 && passAt >= 0
+  const passY = rect.y + 1
+  const tabY = rect.y + (looped ? 2 : 1)
   const bodyY = tabY + 1
   const rows = Math.max(0, ruleY - bodyY)
   const inner: Rect = { x: rect.x + 1, y: bodyY, w: rect.w - 2, h: rows }
 
   // An empty dialog over a node that was just pressed reads as a dialog that did
   // not open. It says which of the two it is instead.
+  const strip = () => {
+    if (looped) {
+      paintPassStrip(c, rect, passY, edge, passes, passAt, tick, hotspots)
+    }
+  }
+
   if (sections.length === 0) {
+    strip()
     crossbar(tabY)
     c.text(
       inner.x + 1,
@@ -6999,6 +7244,7 @@ function paintDetail(
   const on = Math.max(0, Math.min(sections.length - 1, Math.floor(tab)))
 
   if (rows < 1) {
+    strip()
     crossbar(tabY)
     paintTabs(c, rect.x + 1, tabY, rect.w - 2, sections, on, hotspots)
     paintFoot('')
@@ -7015,6 +7261,7 @@ function paintDetail(
   const pane = paintTabBody(c, inner, sections[on], scroll[on] ?? 0, on, hotspots)
   const panes = sections.map((_, i) => (i === on ? pane : { total: 0, visible: 0, scroll: scroll[i] ?? 0 }))
 
+  strip()
   crossbar(tabY)
   paintTabs(c, rect.x + 1, tabY, rect.w - 2, sections, on, hotspots)
   paintFoot(
@@ -8681,6 +8928,26 @@ function paintRunLine(
   // finding(s) in 1 pass(es)` — is a fragment of a data structure sitting in
   // the one row that says what the run is. Whoever wants the answer opens the
   // agent that wrote it, where the whole of it is set out and scrolls.
+}
+
+/**
+ * The clock's own column, down the rows the agents took.
+ *
+ * Drawn only into the cells no bar claimed, so it runs in pieces: a bar that
+ * reaches it is still going, one that stops short landed, and the marker
+ * disappears behind both. It is a scale rather than a line anything travels
+ * along, which is why it has a name of its own — `dev/lines.ts` reads the
+ * painter off the stack, and the lines that are meant to end in blank cells are
+ * the ones it knows by name.
+ */
+function paintNow(c: Canvas, x: number, top: number, floor: number): void {
+  for (let row = top; row < floor; row++) {
+    const cell = c.at(x, row)
+
+    if (cell === 0x20 || cell === 0 || cell === DASH_V) {
+      c.put(x, row, DASH_V, mix(COLORS.track, COLORS.running, 0.35))
+    }
+  }
 }
 
 /** How far a phase has got, and how that is written wherever it is written. */

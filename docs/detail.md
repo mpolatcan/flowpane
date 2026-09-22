@@ -230,6 +230,58 @@ which sentence depends on whether there is anything still to come:
   that is not there. Naming the file is what makes the difference between a
   dialog that looks broken and one a reader can check.
 
+## A phase entered ten times opens on one trip, with the other nine a press away
+
+A workflow that loops enters a phase again and again, and the drawing folds
+those trips into one node with a mark per trip — see
+[nodes.md](nodes.md). The marks on the node are pressable, but only the ones
+that fit: four of ten on a wide card, none at all on a card whose width has gone
+to its name. A reader who opened the last trip had no way back to the first,
+which is the trip a loop is usually read for. They could not compare what two
+attempts were asked, or find which call the third one made that the fourth did
+not.
+
+The dialog carries them all, on a shelf of its own above the tabs:
+
+```
+╭───────────────────────────── ✔ Develop ──────────────────────────── ✕ ─╮
+├── ↻10 ── ✔ 1 ─── ✔ 2 ──┤ ✔ 3 ├── ✔ 4 ─── ✔ 5 ─── ✔ 6 ─── ✔ 7 ─── … ───┤
+├── Prompt ──┤ Tool Calls (67) ├── Response ────────────────────────────┤
+│ ✔  regex_search   applyStatus|useEmailTemplateApplier|aiTe…  ⧖ 6.1s    │
+```
+
+The count leads the strip in the mark the drawing already spends on a loop, so
+a reader who has seen `↻10` on the card knows what the numbers after it are
+counting before reading one of them. Each trip is its own press, and the press
+is the number: its state mark stands a cell clear of it, because a press target
+is drawn as a `Button` and a `Button` throws away every colour painted into its
+cells — see [engine.md](engine.md). For the same reason the open trip is
+bracketed rather than coloured, `┤ ✔ 3 ├`, in the brackets the tabs mark their
+open one with.
+
+Two strips, and they answer different questions: which trip, then which part of
+it. A reader moving along one keeps their place in the other, so changing the
+trip leaves the tab alone — comparing what two attempts were asked is being on
+the Prompt of both. A trip is not a toggle either: pressing the one already open
+leaves it open, where pressing the node behind the dialog shuts it. A reader
+picking along ten trips expects the tenth press to show the tenth trip, not to
+close what they were reading.
+
+Where the strip is too narrow for every trip it shows a window around the open
+one, with an arrow at either end that steps to the trip just outside it:
+
+```
+├── ↻10 ─ ◂ ─ ✔ 4 ──┤ ✔ 5 ├── ✔ 6 ─────── ▸ ┤
+```
+
+The window grows outward from the trip being read, the later trips first: a loop
+is read for how it ended, so what fits keeps the end of it in view. Every trip is
+still reachable; the reader walks to the far ones.
+
+A phase entered once has no strip. It answers *which trip*, and a phase with one
+poses no such question — drawn anyway it is a shelf holding one number, and a
+row of the reading given up to furniture that says nothing.
+
 ## A nested run opens as the list of what it ran
 
 A nested workflow is drawn as one row, because fourteen agents of somebody

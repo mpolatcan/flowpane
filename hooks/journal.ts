@@ -80,7 +80,7 @@ export type AgentRow = {
   toolCalls?: number
   /** The last tool the summary saw it call, with what that call was about. */
   lastTool?: string
-  /** Tokens its model requests have used so far, summed live from `turn.step`. */
+  /** The most context any of its model requests has carried, live from `turn.step`. */
   liveTokens?: number
   /** Model requests made so far, counted live from `turn.step`. */
   steps?: number
@@ -708,9 +708,31 @@ const SAYING_MAX = 240
  * `turn.step` carries the agent's id and streams the request beneath it, so
  * the pane learns three things the journal and the summary never say while an
  * agent runs: that it is thinking, what it has said so far, and what its
- * requests have cost. Tokens are summed from each request's `usage`, the same
- * four counts the run summary adds up, so the live figure lands on the final
- * one rather than beside it.
+ * requests have cost.
+ *
+ * The cost is the context its newest request carried, which is what the run
+ * summary's own `tokens` turns out to be: over the eleven thousand agents on
+ * this machine whose transcript and summary can both be read, the two agree to
+ * within a fraction of a percent on all but seven.
+ *
+ * It was the four usage counts of every request added together, which counts
+ * the same context once per request: an agent that made eleven requests over a
+ * twenty-thousand-token context read `∑ 224k` while the engine's own panel
+ * beside it read `21.3k`, and a long one read `∑ 2m` against `153.5k`. Cached
+ * context is read back whole on every request and is not spent again, so adding
+ * it up measures how often the agent was called rather than what it cost.
+ *
+ * The newest rather than the widest, which are the same figure until a context
+ * is compacted. Five agents in the corpus were: they ran to a quarter of a
+ * million tokens, were cut back, and finished at a third of that — and the
+ * engine reports what they finished carrying. A high-water mark would leave the
+ * pane a hundred thousand above the panel beside it for the rest of the run.
+ *
+ * The seven it misses are retries. The engine's figure for an agent it ran
+ * twice covers both tries and the transcript keeps only the last, so a retry
+ * reads low until the summary lands and replaces the figure outright. A drop in
+ * context cannot be banked instead, because compaction is the same drop and
+ * banking it would double-count the five above.
  */
 export function noteStep(run: RunState, agentId: string, nowMs: number, part: StepPart): boolean {
   const row = run.agents.find(a => a.agentId === agentId)
@@ -730,8 +752,17 @@ export function noteStep(run: RunState, agentId: string, nowMs: number, part: St
 
     row.saying = said.length > SAYING_MAX ? said.slice(said.length - SAYING_MAX) : said
   } else if (part.kind === 'stop') {
-    if (part.tokens !== undefined) {
-      row.liveTokens = (row.liveTokens ?? 0) + part.tokens
+    // A usage with nothing in it is the stream being closed rather than a
+    // request being paid for — the last record of a transcript is often one,
+    // every count zero. Taking it as the newest request would drop the figure
+    // to nothing at the moment the agent finished.
+    if (part.tokens) {
+      // The newest request's context, not a running total and not the widest
+      // one either. An agent's context usually only grows, so the widest and
+      // the newest are the same figure — until it is compacted, and then the
+      // agent carries what is left rather than what it had at its fullest. The
+      // engine's own per-agent `tokens` is the newest, on both sides of that.
+      row.liveTokens = part.tokens
 
       // The calls this request issued are stamped with what it wrote: tokens
       // belong to a request, not a call, so the same figure stands on each.
@@ -758,8 +789,15 @@ export function noteStep(run: RunState, agentId: string, nowMs: number, part: St
   return true
 }
 
-/** The four counts a request's usage carries, as one number. */
-export function tokensOfUsage(usage: {
+/**
+ * The context a request carried: what was sent fresh, what was written to the
+ * cache, and what was read back out of it.
+ *
+ * Not the output. The engine's own per-agent `tokens` is this figure at its
+ * widest, and adding the output on overshoots it — the run summary is counting
+ * what the agent had to hold, not what it produced.
+ */
+export function contextOfUsage(usage: {
   input_tokens?: number
   output_tokens?: number
   cache_read_input_tokens?: number
@@ -767,7 +805,6 @@ export function tokensOfUsage(usage: {
 }): number {
   return (
     (usage.input_tokens ?? 0) +
-    (usage.output_tokens ?? 0) +
     (usage.cache_read_input_tokens ?? 0) +
     (usage.cache_creation_input_tokens ?? 0)
   )

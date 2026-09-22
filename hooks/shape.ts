@@ -390,6 +390,36 @@ export function passesOf(run: RunState): Map<string, Pass> {
 }
 
 /**
+ * Every trip through the piece of work one agent belongs to, that agent's own
+ * among them — and nothing where the work was done once.
+ *
+ * {@link passesOf} answers the drawing's question, which is how many marks a
+ * card carries. This answers the dialog's: a reader looking at the third trip
+ * through `Develop` wants the first, and the card behind the dialog has room
+ * for four marks out of ten — or, at a card's narrowest, for none of them.
+ *
+ * Read with every nested run unfolded, whatever the reader has opened in the
+ * drawing. An agent inside a shut nested run is still reachable — the run's row
+ * opens a list and a row of that list opens the agent — so its passes have to
+ * be found whether or not the run is drawn open behind the dialog.
+ */
+export function passesFor(run: RunState, agentId: string): FoldPass[] {
+  const opened = new Set(
+    run.agents.map(agent => phaseKeyOf(agent.phase)).filter(phase => phase.startsWith(NESTED)),
+  )
+
+  for (const lane of foldedLanes(run, opened)) {
+    for (const fold of lane.folds) {
+      if (fold.passes.length > 1 && fold.passes.some(pass => pass.agent.agentId === agentId)) {
+        return fold.passes
+      }
+    }
+  }
+
+  return []
+}
+
+/**
  * A phase's agents grouped into the waves they ran in: each wave the agents
  * that overlapped, the waves in the order they went.
  *

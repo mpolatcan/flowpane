@@ -835,3 +835,47 @@ test('every theme draws a card frame a reader can tell from a plain border', () 
 
   useTheme(DEFAULT_THEME)
 })
+
+/** Two phases of eight, which is more than a hundred and ten columns can name. */
+function wrapped(): RunState {
+  const names = ['rivers', 'reefs', 'dunes', 'forests', 'ridges', 'marshes', 'deltas', 'plains']
+
+  return runOf('haiku', ['Gather', 'Draft'], [
+    ...names.map((name, i) => agentOf(`g${i}`, `gather:${name}`, 'Gather', 0, 4_000)),
+    ...names.map((name, i) => agentOf(`d${i}`, `draft:${name}`, 'Draft', 5_000, 4_000)),
+  ])
+}
+
+test('a band that wrapped is left from its last row and entered on its first', () => {
+  const { rows, view } = drawn(wrapped(), 110, 40, 'vertical')
+  const gather = view.lanes.find(lane => lane.phase === 'Gather')
+  const draft = view.lanes.find(lane => lane.phase === 'Draft')
+
+  expect(gather?.rows).toBe(2)
+  expect(draft?.rows).toBe(2)
+
+  const last = Math.max(...(gather?.nodes ?? []).map(node => node.y + node.h))
+  const first = Math.min(...(draft?.nodes ?? []).map(node => node.y))
+
+  // The columns a card's own frame stands in, which carry the same stroke a
+  // wire does and are not one.
+  const frames = new Set((gather?.nodes ?? []).flatMap(node => [node.x, node.x + node.w - 1]))
+
+  // Only the outer row of a wrapped band faces the band beyond it. A wire out
+  // of the row above it would be drawn down through the cards on the row below,
+  // and a line through a card is a line through a word.
+  for (let y = gather?.y ?? 0; y < last; y++) {
+    const wires = columnsOf(rows[y] as string, [LINE_V, DASH_V, ARROW_DOWN]).filter(x => !frames.has(x))
+
+    expect(`row ${y}: ${wires.join(',') || 'clear'}`).toBe(`row ${y}: clear`)
+  }
+
+  // And the two bands are still tied together: what crosses between them is
+  // bundled onto the rows that do face each other, rather than dropped for
+  // being unreachable — two bands with nothing drawn between them say they had
+  // nothing to do with each other.
+  const between = rows.slice(last, first).join('\n')
+
+  expect(between).toContain(ARROW_DOWN)
+  expect(between).toMatch(/[│┆]/)
+})

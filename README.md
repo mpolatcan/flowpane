@@ -158,7 +158,7 @@ it changed:
 ## Status
 
 Loads and runs on **Claude Code 2.1.272**: hooks register, `/flowpane` lists, the launch
-hook fires and reads the journal. 275 tests run over the engine with `claude
+hook fires and reads the journal. 293 tests run over the engine with `claude
 plugin test .`; `dev/lines.ts` checks every line of every run on disk at twelve
 widths and ten heights. Nothing the pane reads leaves the machine.
 

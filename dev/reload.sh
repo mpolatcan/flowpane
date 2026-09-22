@@ -14,9 +14,14 @@
 # `/flowpane` keeps working while `/flowpane-dev` draws this tree. The names are
 # patched in the copy, never in the repo, so what ships is unchanged.
 #
-# Only the names the engine keys off. The title the pane draws is left alone: a
-# build is told apart by the version it already prints, and a product name bent
-# out of shape to serve a dev install is a dev install leaking into the picture.
+# Only the names the engine keys off, and the label the surface files the pane's
+# tab under — which is one of them. Two panes titled `workflow · ai-review-agentic`
+# sat side by side in the tab bar with nothing to say which build drew which, so
+# the dev copy's reads `workflow-dev · ...`.
+#
+# The title the pane *draws* is left alone: a build is told apart by the version
+# it already prints, and a product name bent out of shape to serve a dev install
+# is a dev install leaking into the picture.
 #
 # The engine installs its own copy under the manifest's version, and an install
 # over a version already installed is a no-op, so the cached copy goes first.
@@ -36,6 +41,8 @@ rsync -a --delete --exclude .git --exclude node_modules "$root/" "$plugin/"
 sed -i '' 's/"name": "flowpane"/"name": "flowpane-dev"/' "$plugin/.claude-plugin/plugin.json"
 sed -i '' "s/^const PANE_ID = 'flowpane'/const PANE_ID = 'flowpane-dev'/" "$plugin/hooks/register.ts"
 sed -i '' "s/^export const COMMAND = 'flowpane'/export const COMMAND = 'flowpane-dev'/" "$plugin/hooks/register.ts"
+sed -i '' "s/title: 'workflow'/title: 'workflow-dev'/g" "$plugin/hooks/register.ts"
+sed -i '' 's/title: `workflow · ${run.name}`/title: `workflow-dev · ${run.name}`/' "$plugin/hooks/register.ts"
 
 # The marketplace entry names the version the install resolves, so it moves with
 # the manifest or the install asks for one the copy no longer is. The

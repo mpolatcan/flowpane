@@ -12,6 +12,23 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { NAME, VERSION } from '../hooks/about'
 
+/**
+ * The home the stub answers with: a directory this machine actually has.
+ *
+ * The plugin looks for `$HOME/.claude/projects` on the way up, to recover the
+ * runs of earlier sessions, and the engine refuses `fs.exists` on a path it
+ * cannot reach — `a network location is not reached from here (host check)`. A
+ * refusal is not a false. The whole hook is skipped, so `command.run` and
+ * `session.start` came back with nothing, and the eighteen tests across these
+ * five files that drive a hook rather than the painter read an empty reply and
+ * failed for a reason none of them was about.
+ *
+ * `import.meta.dir` is this file's own folder: it exists, it holds no `.claude`,
+ * so the recovery finds nothing and returns — which is what `/home/test` was
+ * there to arrange — and it is wherever the repo happens to be checked out.
+ */
+const HOME = import.meta.dir
+
 type Node = {
   type?: string
   props?: Record<string, unknown>
@@ -47,7 +64,7 @@ function flatten(tree: unknown): Node[] {
  * is where a preference dropped on the way in shows.
  */
 function stubEngine(on: any, stored: Record<string, unknown> = {}): void {
-  on('env.get', () => ({ value: '/home/test' }))
+  on('env.get', () => ({ value: HOME }))
   on('ui.open', () => ({ value: undefined }))
   on('ui.close', () => ({ value: undefined }))
   on('ui.blit', () => ({ value: { requestId: 'flowpane' } }))
@@ -246,7 +263,7 @@ test('the row says the layout a session picked up from the store', async ($, on)
   on('session.start', ($$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   stubEngine(on, { orientation: 'stack' })
 
-  await $.session.start({ cwd: '/home/test', surface: 'terminal', isInteractive: true })
+  await $.session.start({ cwd: HOME, surface: 'terminal', isInteractive: true })
 
   const { texts } = footOf(flatten(await renderPane($, 90)))
   const state = texts.find(t => t.includes('\u2502')) ?? ''

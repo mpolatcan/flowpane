@@ -9,6 +9,7 @@ import { NAME, VERSION } from '../hooks/about'
 import { Canvas, DEFAULT_COLOR } from '../hooks/canvas'
 import { applyJournal, applyRunFile, runFileOf, type RunState } from '../hooks/journal'
 import { paint } from '../hooks/paint'
+import { passesFor } from '../hooks/shape'
 import { pictureOf } from '../hooks/tree'
 
 const dir = process.argv[2]
@@ -76,10 +77,14 @@ for (const spot of drawn.hotspots) {
 console.log(`cells coloured under a button ${swallowed}`)
 
 // Again with a node selected, so the detail dialog's own controls are checked.
+// A trip of a phase the run entered more than once where the run has one, since
+// that is the node whose dialog draws the pass strip — a row of press targets
+// with a coloured state mark between each pair of them.
+const looped = run.agents.find(agent => passesFor(run, agent.agentId).length > 1)
 const open = paint(canvas, run, {
   nowMs: Date.now(),
   tick: 5,
-  selectedId: run.agents[0]?.agentId,
+  selectedId: (looped ?? run.agents[0])?.agentId,
   detailRows: Math.min(16, Math.floor(rows / 2)),
   runPicker: 'open',
   runs: [
@@ -100,11 +105,41 @@ for (const spot of open.hotspots) {
 // The detail dialog and the run menu are modal too: a node left pressable
 // behind either is a node drawn at full strength over a drawing that was
 // pushed back, because a Button carries a label and no colour.
-const behindOpen = open.hotspots.filter(h => !/^(@close|detail-|run:|@runs)/.test(h.agentId))
+const behindOpen = open.hotspots.filter(h => !/^(@close|@tab:|@pass:|@call|detail-|run:|@runs)/.test(h.agentId))
 
 console.log(
   `with the dialog open: hotspots ${open.hotspots.length}  pressable behind ${behindOpen.length}  cells coloured under a button ${swallowedOpen}`,
 )
+
+// The pass strip, where the run has a phase it entered more than once. It is a
+// row of press targets with a coloured state mark between each pair of them, so
+// it is the densest place on the pane for a mark to end up inside a target.
+if (looped) {
+  const trips = paint(canvas, run, {
+    nowMs: Date.now(),
+    tick: 5,
+    selectedId: looped.agentId,
+    detailRows: Math.min(16, Math.floor(rows / 2)),
+  })
+  const strip = trips.hotspots.filter(h => h.agentId.startsWith('@pass:'))
+  let marked = 0
+
+  for (const spot of strip) {
+    for (let x = spot.x; x < spot.x + spot.w; x++) {
+      const cell = canvas.cell(x, spot.y)
+
+      // A digit or an arrow, and never a state mark: the mark stands a cell
+      // clear of the target, which is the only spacing a Button allows it.
+      if (!/[0-9◂▸]/.test(String.fromCodePoint(cell.code)) || cell.bg !== DEFAULT_COLOR) {
+        marked++
+      }
+    }
+  }
+
+  console.log(
+    `with a loop's strip up: trips ${passesFor(run, looped.agentId).length}  presses ${strip.length}  cells a press should not hold ${marked}`,
+  )
+}
 
 // And again with the settings up, and once more with a list of them unrolled:
 // both draw press targets over cells the dialog painted, and a theme's swatch

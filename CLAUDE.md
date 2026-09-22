@@ -11,7 +11,7 @@ workflow writes, and everything it says has to fit in cells.
 ## Commands
 
 ```bash
-claude plugin test .          # the test suite — 275 tests across 21 files
+claude plugin test .          # the test suite — 293 tests across 21 files
 bunx tsc --noEmit             # typecheck (hooks/ and types/ only; see tsconfig.json)
 ```
 
@@ -33,20 +33,54 @@ bun dev/edges.ts <dir>                             # the graph derived for a run
 bun dev/recover.ts <sessionId> [home]              # what a session's runs rebuild to
 bun dev/dryrun.ts <workflow>                       # a workflow's control flow, stubbed, no agents spent
 bun dev/checkmeta.ts                               # the version the pane shows is the one the manifest ships
+bun dev/checktokens.ts [--all]                     # the live token figure lands on the one the summary reports
 sh  dev/reload.sh                                 # install this tree as flowpane-dev, beside the released build
 ```
 
+## Testing a change against real runs
+
+The suite paints fixtures. The sweeps paint what this machine has actually run,
+and that is where a drawing change is proved.
+
+`audit.ts` and `lines.ts` find their runs by deriving the session directory from
+the working directory, so left alone they see this repository's own runs and no
+others. Every one of those is finished and none of them is wide, which makes a
+clean sweep there say less than it looks like it says: a header counting the
+agents still going never appears in it, and neither does a band of ninety-five
+agents wrapping into five columns. Both of those held faults nothing in the
+repository's own corpus could show.
+
+`FLOWPANE_RUNS` points any of the tools at another session's runs:
+
+```bash
+FLOWPANE_RUNS=~/.claude/projects/<project>/<session>/subagents/workflows bun dev/lines.ts
+```
+
+So a change to what the pane draws is swept over a handful of other corpora
+before it is handed over — a run with a phase entered ten times, a run with a
+band too wide to draw as one row, a run still going — and
+`bun dev/checktokens.ts --all` reads every agent transcript on the machine
+against the figure the engine reported for it.
+
+A live check is a different thing again, and the only way to get one is
+`sh dev/reload.sh` followed by a session restart: hooks are read once, when the
+session starts, so a reload inside a running session changes nothing a reader
+can see.
+
 `dev/reload.sh` installs this tree *beside* the released plugin rather than in
 place of it: `~/claude-dev-marketplaces/flowpane-dev` holds a copy of the repo
-with the three names the engine keys off moved aside — the manifest's `name`,
-`COMMAND` and `PANE_ID`. Renamed, both can be enabled at once: `/flowpane` stays
-the released build and `/flowpane-dev` draws this tree. Unrenamed they collide on
-every one of them — one command, one pane id, one `tool.call` hook opening one
-pane. They are patched in the copy, never in the repo, so what ships is unchanged.
+with the names the engine keys off moved aside — the manifest's `name`,
+`COMMAND`, `PANE_ID`, and the label the surface files the pane's tab under.
+Renamed, both can be enabled at once: `/flowpane` stays the released build and
+`/flowpane-dev` draws this tree. Unrenamed they collide on every one of them —
+one command, one pane id, one `tool.call` hook opening one pane, and two tabs
+both reading `workflow · <run>` with nothing to say which build drew which. They
+are patched in the copy, never in the repo, so what ships is unchanged.
 
-The title the pane draws is left alone. A build is told apart by the version it
+The title the pane *draws* is left alone. A build is told apart by the version it
 already prints, and a product name bent out of shape to serve a dev install is a
-dev install leaking into the picture.
+dev install leaking into the picture. The tab label is not that title — it is a
+name the surface keys off, like the other three.
 
 A *copy*, not a symlink. A symlinked plugin source installs files that look
 right — the engine's cache comes out byte-identical to the tree — and then never
@@ -120,6 +154,11 @@ test and wrong in a terminal.
   boundaries rather than lines anything travels along, so a wire meeting one
   breaks the boundary and runs through whole. A card's exit point is marked
   whatever else wants the cell.
+- **Only the outer row of a wrapped band faces anything outside it.** A wire
+  into the second row is a line down through the cards on the first, which is a
+  line through a word — so a barrier lands on the row that faces it, and what
+  crosses between two bands where either wrapped is bundled onto those rows
+  rather than drawn carry by carry. See `facing` and `reaches`.
 - **A phase is entered where it started and left where it finished.** Its
   agents group into waves by their clocks — the ones that overlapped, in the
   order the waves went — and the barrier above it lands on the first wave, the
@@ -138,10 +177,13 @@ test and wrong in a terminal.
 - **A section is never narrower than a name, and a node never shorter than its
   frame.** The pane divides itself only among the phases — and, down the pane,
   the agents — it can give a column wide enough to name. Past that the columns
-  take the width they need, the drawing runs past the pane's edge and the body
-  scrolls to the rest. The height keeps the same bargain: a column with more
-  nodes than the pane can stand as cards keeps the cards and scrolls, rather
-  than flattening every node in the drawing to a row. See `docs/header.md`.
+  take the width they need. Laid out across, the drawing runs past the pane's
+  edge and the body scrolls to the rest; down the pane a band wraps instead,
+  into as many rows as its nodes need at a width they can be named at, shared
+  out evenly and centred, so the drawing stays inside the width it was handed.
+  The height keeps the same bargain: a column with more nodes than the pane can
+  stand as cards keeps the cards and scrolls, rather than flattening every node
+  in the drawing to a row. See `docs/header.md`.
 
 ## Conventions
 
