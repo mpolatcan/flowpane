@@ -1110,3 +1110,53 @@ test('every band opens clear of the one above it', () => {
     expect(lane.captionRow ?? lane.y).toBeGreaterThanOrEqual(bottom)
   })
 })
+
+test('the list reads down the pane, however wide the pane is', () => {
+  // `auto` picks the axis from the pane's proportions, and a seat this wide
+  // picks across. The list is not a shape the proportions can argue with: it
+  // stands a row an agent down the pane, so it takes the downward axis and the
+  // header that axis takes. Read as `horizontal` instead, the header would
+  // keep a row for a line of phase names the list never draws.
+  expect(resolveOrientation('auto', 200, 40, 3)).toBe('horizontal')
+  expect(resolveOrientation('list', 200, 40, 3)).toBe('vertical')
+
+  // And on the panes the other way round, where the answer is the same but for
+  // the pane's own reasons: a narrow seat, and a run of one phase, which `auto`
+  // keeps horizontal for want of a direction to read in.
+  expect(resolveOrientation('list', 40, 40, 3)).toBe('vertical')
+  expect(resolveOrientation('list', 200, 40, 1)).toBe('vertical')
+})
+
+test('across, the room between two nodes of a column is capped at three cells', () => {
+  // The leftover depth goes between a lane's nodes rather than into margins at
+  // its two ends, and past three cells it stops being air between cards and
+  // starts being a column of gaps with cards in it — a lane of two would put
+  // its nodes at opposite corners of the body.
+  const roomy = layout(RUN, 150, 60, 'horizontal')
+  const lane = roomy.lanes[0]
+
+  expect(lane.nodes.length).toBe(5)
+
+  const gaps = lane.nodes.slice(1).map((node, i) => node.y - (lane.nodes[i].y + lane.nodes[i].h))
+
+  expect(gaps).toEqual([3, 3, 3, 3])
+})
+
+test('across, two nodes of a column keep a cell between them on a pane with none to spare', () => {
+  // The floor. Five cards need fifteen rows of body before a gap is counted at
+  // all, so the slack here is nothing or less than nothing — and a gap of zero
+  // is two cards sharing a border, which reads as one card with a rule through
+  // it. The drawing overruns the pane instead and the body scrolls to the rest.
+  const tight = layout(RUN, 150, 16, 'horizontal')
+  const lane = tight.lanes[0]
+
+  const gaps = lane.nodes.slice(1).map((node, i) => node.y - (lane.nodes[i].y + lane.nodes[i].h))
+
+  expect(gaps).toEqual([1, 1, 1, 1])
+
+  // Between the two, the room there is: neither the cap nor the floor.
+  const between = layout(RUN, 150, 30, 'horizontal')
+  const mid = between.lanes[0]
+
+  expect(mid.nodes[1].y - (mid.nodes[0].y + mid.nodes[0].h)).toBe(2)
+})

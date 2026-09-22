@@ -1259,3 +1259,49 @@ test('a phase that has run beside one that has not is marked with nothing at all
   // gutter would take the phase after it with it.
   expect(rows.join('\n')).toContain('security')
 })
+
+/** A band of two on a pane too narrow to hold one of its cards whole. */
+function offPane(): RunState {
+  return runOf('audit', ['Survey', 'Review'], [
+    agentOf('s1', 'survey:paint', 'Survey', 0, 4_000),
+    agentOf('s2', 'survey:layout', 'Survey', 0, 4_000),
+    agentOf('r1', 'review:paint', 'Review', 5_000, 4_000),
+  ])
+}
+
+test('a barrier on a pane narrower than one card reaches the card it feeds, and runs off the edge to the one it cannot show', () => {
+  // The pane this is about used to be a flat list: a band that could not stand
+  // one card as a card was drawn as rows instead, and no barrier was drawn at
+  // all. A card is the same width at every size of pane now, so the band runs
+  // past the edge and the barrier under it runs past the edge with it — which
+  // is the one wire in the drawing with an end the pane cannot show.
+  const { rows, view } = drawn(offPane(), 26, 30, 'vertical')
+  const gather = view.lanes[0]
+  const next = view.lanes[1]
+
+  expect(gather.nodes[0].w).toBeGreaterThan(26)
+  expect(gather.nodes.length).toBe(2)
+
+  const port = exitOf(gather.nodes[0], 'vertical')
+  const entry = entryOf(next.nodes[0], 'vertical')
+  const spine = rows[next.busAt] as string
+
+  // The point the wire leaves the card it can show is marked, as it is at
+  // every other size of pane.
+  expect((rows[port.y] as string)[port.x]).toBe(PORT)
+
+  // The card taps the spine at a fork, not at a crossing: the barrier goes on
+  // past it to the card off the edge, which is one line becoming two.
+  expect(FORKS).toContain(spine[port.x])
+  expect(spine[port.x]).not.toBe(CROSS)
+
+  // And it goes on to the last cell the pane has, rather than stopping in the
+  // blank halfway: an arm that ended mid-body would say the barrier ended
+  // there, when what it reaches is a card the reader scrolls sideways to.
+  for (let x = port.x + 1; x < 25; x++) {
+    expect(spine[x]).toBe('─')
+  }
+
+  // The arm down out of the spine ends in an arrowhead against the card below.
+  expect((rows[next.nodes[0].y - 1] as string)[entry.x]).toBe(ARROW_DOWN)
+})

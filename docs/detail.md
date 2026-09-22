@@ -94,16 +94,35 @@ The panes are the same four they always were:
   bottom — so the block opened on the oldest call every time and the interesting
   end had to be hunted for.
 
-  Each call is one row, and every row is the same height: its outcome mark, the
-  tool in a column of its own, what the tool was passed, then `⧖` how long it
-  took and `∑` what the model wrote to issue it against the far edge.
+  Each call is one row, and every row is drawn in the same columns: its outcome
+  mark, the tool in a column of its own, what the tool was passed, then `⧖` how
+  long it took and `∑` what the model wrote to issue it, the two of them against
+  the far edge.
 
   ```
-   ✔  Bash    git add -A src/ && git status --short && echo "=== staged…  ⧖ 2.6s   ∑ 3 tkns
-   ✔  Bash    bunx eslint src/stores/ai-status.ts src/composables/useA…  ⧖ 7.7s   ∑ 395 tkns
-   ✔  Edit    …/workspace/src/composables/useCortexBlueprintBridge.ts   ⧖ 148ms   ∑ 437 tkns
-   ✖  Edit    …/workspace/src/components/organisms/header/MiddleSlot.vue  ⧖ 10ms   ∑ 3 tkns
+   ✔  Bash    git add -A src/ && git status --short && echo "=== staged…  ⧖  2.6s  ∑    3 tkns
+   ✔  Bash    bunx eslint src/stores/ai-status.ts src/composables/useA…  ⧖  7.7s  ∑  395 tkns
+   ✔  Edit    …/workspace/src/composables/useCortexBlueprintBridge.ts    ⧖ 148ms  ∑  437 tkns
+   ✖  Edit    …/workspace/src/components/organisms/header/MiddleSlot.v…  ⧖  10ms
   ```
+
+  The columns are measured over the whole list rather than row by row. Each
+  figure stands in a column as wide as its widest row fills it, with the mark
+  against the column's left edge and the value against its right — so the counts
+  line up under one another and the units line up with them. The last row above
+  is a call whose token count was never recorded: it leaves that column empty,
+  and nothing else on the row moves to fill it.
+
+  Measured row by row, which is how it was done, neither of those held. The
+  figures are pinned to the block's far edge, so the row with no count pulled
+  its clock across into the cells the row above it had written tokens in; and
+  each row picked its own rung of the ladder below, which set `∑ 259 tkns` under
+  `∑ 1.7k` — one count in a different column from the other, and spelled a
+  different way. Neither difference is one a reader can do anything with: the
+  row is not saying that call was quicker or cheaper, it is saying the row
+  beside it knows something this one does not. The whole reason a call is one
+  row is that the list is read as a table, one column at a time, looking for the
+  slow call or the expensive one.
 
   The row shows the one argument that says which call this is, and drops its
   key. A payload is two or three fields and only one of them identifies the
@@ -154,9 +173,17 @@ The panes are the same four they always were:
   thing on the row that says which call this is. The figures go down a ladder
   until it has twenty-four cells — about a path's last two segments, or a
   command and its first flag: the unit first (`∑ 4.2k tkns` to `∑ 4.2k`), then
-  the count, then the clock with it. A narrow pane runs out before the ladder
+  the count, then the clock with it. One rung for the whole list, like the
+  columns: two rows of one list spelling the same measurement two ways are two
+  figures a reader has to convert before either can be compared with the other. A narrow pane runs out before the ladder
   does, and there the row is the tool and what it was passed, with the figures
   in the call's own dialog where they are three fields on a row of their own.
+
+  A row's press covers the whole of its own columns rather than the cells its
+  argument happened to fill, so every row of the list is the same thing to aim
+  at. Ending the target where the text ended made the calls with short arguments
+  harder to hit than the calls with long ones — a list of controls whose targets
+  were all different sizes, for a reason nothing about the list explained.
 
   The list sits on the pane's own ground rather than the quoted ground the
   other panes take. Every row on it is a control, a control is emitted as a

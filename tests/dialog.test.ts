@@ -292,6 +292,69 @@ test('every call in the block takes one row, and the rows line up', () => {
   expect(new Set(at).size).toBe(1)
 })
 
+test('the figures stand in two columns, and a call with no count recorded leaves one blank', () => {
+  const run = runOf()
+  const agent = run.agents.find(one => one.agentId === 'r1')
+  const calls = agent?.calls ?? []
+  // Figures of two widths in each column: a count under a thousand beside one
+  // over it, and a call measured in seconds beside calls measured in
+  // milliseconds. Each row used to pick its own spelling and its own place, so
+  // these are the two rows that used to come out of line.
+  const first = calls[1]
+  const slow = calls[2]
+
+  if (first !== undefined) {
+    first.stepTokens = 259
+  }
+
+  if (slow !== undefined) {
+    slow.endedMs = slow.startedMs + 5_400
+  }
+
+  const canvas = new Canvas(110, 32)
+
+  paint(canvas, run, {
+    nowMs: STARTED + 20_000,
+    tick: 0,
+    orientation: 'vertical',
+    selectedId: 'r1',
+    detailRows: 14,
+    detailTab: CALLS,
+  })
+
+  const rows = rowsOf(canvas).filter(row => /[\u2714\u2716]\s\s(Bash|Read)\s/.test(row))
+
+  expect(rows.length).toBe(7)
+
+  // Every clock in one column. The figures are pinned to the block's far edge,
+  // so the row whose count was never recorded used to pull its clock across
+  // into the cells the row above it wrote tokens in.
+  expect(new Set(rows.map(row => row.indexOf('\u29d6'))).size).toBe(1)
+
+  // One call of the seven has no count, and it leaves the column empty rather
+  // than closing it up.
+  const spend = rows.map(row => row.indexOf('\u2211'))
+
+  expect(spend.filter(at => at < 0).length).toBe(1)
+  expect(new Set(spend.filter(at => at >= 0)).size).toBe(1)
+
+  // And the counts are right-aligned under one another, so `259` and `1.7k`
+  // put their units in the same column rather than a digit of one under the
+  // unit of the next.
+  const units = rows.filter(row => row.includes('tkns')).map(row => row.indexOf('tkns'))
+
+  expect(units.length).toBe(6)
+  expect(new Set(units).size).toBe(1)
+
+  // The same for the durations. Every one of them ends in the same column, so
+  // the shorter `5.4s` stands against the end of `600ms` rather than against
+  // its middle.
+  const durations = rows.map(row => row.slice(row.indexOf('\u29d6')).match(/^\u29d6\s+\S+/)?.[0] ?? '')
+
+  expect(durations.some(said => said.endsWith('5.4s'))).toBe(true)
+  expect(new Set(rows.map((row, i) => row.indexOf('\u29d6') + durations[i].length)).size).toBe(1)
+})
+
 test('a row of the list opens that call, and the way back is in the corner', () => {
   const canvas = new Canvas(110, 32)
   const drew = paint(canvas, runOf(), {

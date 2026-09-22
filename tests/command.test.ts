@@ -351,3 +351,13 @@ test('a layout stored under a word the pane has never had is no layout', () => {
     null, null, null,
   ])
 })
+
+test('the word the command takes for the list selects the list, not the axis it reads on', () => {
+  // The reply says `list`, so a mapping that set the pane to `vertical` would
+  // be answered with the same line and read as correct — and the reader would
+  // get bands of cards down the pane, which is the layout `list` exists to be
+  // different from. The word and what it is mapped to are two facts, and this
+  // is the one the reply cannot show.
+  expect(orientationOf('list')).toBe('list')
+  expect(orientationOf('list')).not.toBe('vertical')
+})

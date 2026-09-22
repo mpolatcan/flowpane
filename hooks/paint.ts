@@ -487,7 +487,16 @@ export type RunWindow = {
 
 export type PaintResult = {
   hotspots: Hotspot[]
-  orientation: 'horizontal' | 'vertical' | 'timeline' | 'list'
+  /**
+   * Which way the drawing was read, not which layout drew it.
+   *
+   * `list` is a layout a reader can ask for and never an answer here: the flat
+   * list runs down the pane, so it is drawn on the vertical axis and reports
+   * it. Naming it in this union would offer a caller a case that can never
+   * arrive, and a caller that branched on it to find the list would silently
+   * never match.
+   */
+  orientation: 'horizontal' | 'vertical' | 'timeline'
   /** The detail list's extent and window, when one is drawn. */
   detail?: DetailView
   /** Where the drawing sits in the body, when it is larger than the body. */
@@ -6756,25 +6765,114 @@ function isPath(said: string): boolean {
  * running is drawn as a call that finished, not as one still in flight, since
  * the agent it belonged to certainly is not.
  */
-function callRow(call: ToolCall, nowMs: number, width: number, live: boolean, nameW: number): DetailLine {
+function callRow(call: ToolCall, table: CallTable, nowMs: number, live: boolean): DetailLine {
   const running = live && call.startedMs > 0 && call.endedMs === undefined
   const mark = running ? '\u2026' : call.isError ? '\u2716' : '\u2714'
   const color = running ? COLORS.running : call.isError ? COLORS.failed : COLORS.done
   const quiet = mix(COLORS.text, color, 0.3)
-  // What the call cost and how long it took, and nothing else. It used to carry
-  // the number of the model request that issued it as well, which is an index
-  // into a list the dialog does not draw — a figure a reader can do nothing
-  // with, sitting in the row where the two they can are.
-  const until = call.endedMs ?? (running ? nowMs : undefined)
-  const tailWith = (form: (n: number) => string): Field[] =>
-    [
-      {
-        text: call.startedMs > 0 && until !== undefined ? `${CLOCK_MARK} ${elapsed(until - call.startedMs)}` : '',
-        color: COLORS.clock,
-      },
-      { text: call.stepTokens === undefined ? '' : form(call.stepTokens), color: COLORS.spend },
-    ].filter(f => f.text.length > 0)
+  const name = truncate(toolShort(call.name), table.nameW)
+  const flat = flatten(saidOf(call.input))
+  const said = isPath(flat) ? tailPath(flat, table.room) : truncate(flat, table.room)
 
+  return {
+    text: '',
+    color,
+    // The mark carries the state and stands outside the press. Every cell under
+    // a Button comes out in the Button's own plain label, so a mark inside one
+    // would lose the colour that is the whole of what it says.
+    fields: [
+      { text: mark, color },
+      { text: `${name}${' '.repeat(Math.max(0, table.nameW - cells(name)))}`, color: quiet },
+      { text: said, color: quietOf(COLORS.text) },
+    ],
+    right: table.tailOf(call, nowMs, live),
+    // The whole of the row's own columns, not the cells this argument happened
+    // to fill. Every row of the list opens something, and a target that ended
+    // where the text did meant the shorter arguments were harder to hit than
+    // the longer ones — a list of controls whose targets are all different
+    // sizes.
+    press: { key: `${CALL_OPEN}${call.id}`, at: 3, w: table.nameW + 2 + table.room },
+  }
+}
+
+/**
+ * A figure set into a fixed column: its mark against the column's left edge,
+ * its value against the right.
+ *
+ * The mark names the measurement and the value is what a reader compares, so
+ * the values are what line up. `∑ 1.7k tkns` over `∑  259 tkns` puts both
+ * units in one column and both counts in another; right-aligning the pair
+ * whole would have set `1.7k` over `259` with the `k` where a digit is.
+ */
+function inColumn(text: string, w: number): string {
+  if (text === '') {
+    return ' '.repeat(w)
+  }
+
+  const at = text.indexOf(' ')
+  const mark = at < 0 ? '' : text.slice(0, at + 1)
+  const value = at < 0 ? text : text.slice(at + 1)
+
+  return `${mark}${' '.repeat(Math.max(0, w - cells(mark) - cells(value)))}${value}`
+}
+
+/**
+ * The columns a list of calls is drawn in, measured once over the whole list.
+ *
+ * Every row used to measure its own, and the two figures are pinned to the
+ * block's right edge — so a call whose token count was never recorded pulled
+ * its clock across into the cells the row above it had written tokens in, and
+ * the rung of the spelling ladder was chosen from each row's own figures, which
+ * set `∑ 259 tkns` under `∑ 1.7k` with the two counts in different columns and
+ * spelled two ways. Neither is a fault a reader can do anything about: the row
+ * is not saying the call was quicker, it is saying the row next to it knows
+ * something this one does not.
+ *
+ * The whole reason a call is one row is that the list is read as a table — a
+ * reader scans one column down it looking for the slow call or the expensive
+ * one. So the columns are measured over every row in the list, one spelling is
+ * picked for all of them, and every row is drawn in those columns, including
+ * the rows with nothing to put in one: a column with no figure is left blank
+ * and the columns either side of it do not move.
+ */
+type CallTable = {
+  /** Cells the tool name takes, the same on every row. */
+  nameW: number
+  /** Cells the argument takes, the same on every row. */
+  room: number
+  /** The figures of one call, each set into its own column. */
+  tailOf: (call: ToolCall, nowMs: number, live: boolean) => Field[]
+}
+
+function callTable(calls: ToolCall[], nowMs: number, width: number, live: boolean, nameW: number): CallTable {
+  // What the call cost and how long it took, and nothing else. The row used to
+  // carry the number of the model request that issued it as well, which is an
+  // index into a list the dialog does not draw — a figure a reader can do
+  // nothing with, sitting in the row where the two they can are.
+  const tookIn = (call: ToolCall, at: number, going: boolean): string => {
+    const running = going && call.startedMs > 0 && call.endedMs === undefined
+    const until = call.endedMs ?? (running ? at : undefined)
+
+    return call.startedMs > 0 && until !== undefined ? `${CLOCK_MARK} ${elapsed(until - call.startedMs)}` : ''
+  }
+  const spentIn = (form: (n: number) => string) => (call: ToolCall): string =>
+    call.stepTokens === undefined ? '' : form(call.stepTokens)
+  /**
+   * One column, as wide as the widest row fills it.
+   *
+   * A running call's clock grows while the pane watches it, so the column is
+   * measured at the moment it is drawn rather than kept from the frame before:
+   * a width latched at `965ms` would cut `1.2s` short a frame later.
+   */
+  const columnOf = (of: (call: ToolCall, at: number, going: boolean) => string, color: Rgb) => ({
+    widthAt: (at: number, going: boolean) => Math.max(0, ...calls.map(call => cells(of(call, at, going)))),
+    cellAt: (call: ToolCall, at: number, going: boolean, w: number): Field => ({
+      text: inColumn(of(call, at, going), w),
+      color,
+    }),
+  })
+  const clock = columnOf(tookIn, COLORS.clock)
+  const spend = (form: (n: number) => string) => columnOf(spentIn(form), COLORS.spend)
   // The argument is the only thing on the row that says which call this is, so
   // it is the last thing to give way. The figures go down a ladder until the
   // argument has twenty-four cells — about a path's last two segments, or a
@@ -6786,29 +6884,23 @@ function callRow(call: ToolCall, nowMs: number, width: number, live: boolean, na
   // taken: the tool and what it was passed, and the figures in the call's own
   // dialog, where they are three fields on a row of their own.
   const lead = 3 + nameW + 2
-  const ladder = [tailWith(tokensNamed), tailWith(tokensWide), tailWith(tokensNamed).slice(0, 1), []]
-  const fits = (row: Field[]) =>
-    lead + (row.length > 0 ? widthOf(row, 2) + 2 : 0) + 24 <= width
-  const tail = ladder.find(fits) ?? ladder[ladder.length - 1]
-  const tailW = tail.length > 0 ? widthOf(tail, 2) : 0
-  const room = Math.max(4, width - lead - (tailW > 0 ? tailW + 2 : 0))
-  const name = truncate(toolShort(call.name), nameW)
-  const flat = flatten(saidOf(call.input))
-  const said = isPath(flat) ? tailPath(flat, room) : truncate(flat, room)
+  const ladder = [[clock, spend(tokensNamed)], [clock, spend(tokensWide)], [clock], []]
+  const spread = (columns: typeof ladder[number]) =>
+    columns.map(column => ({ column, w: column.widthAt(nowMs, live) })).filter(one => one.w > 0)
+  const spanOf = (kept: ReturnType<typeof spread>) =>
+    kept.length > 0 ? kept.reduce((sum, one) => sum + one.w, 0) + (kept.length - 1) * 2 : 0
+  const fits = (columns: typeof ladder[number]) => {
+    const span = spanOf(spread(columns))
+
+    return lead + (span > 0 ? span + 2 : 0) + 24 <= width
+  }
+  const kept = spread(ladder.find(fits) ?? ladder[ladder.length - 1])
+  const span = spanOf(kept)
 
   return {
-    text: '',
-    color,
-    // The mark carries the state and stands outside the press. Every cell under
-    // a Button comes out in the Button's own plain label, so a mark inside one
-    // would lose the colour that is the whole of what it says.
-    fields: [
-      { text: mark, color },
-      { text: `${name}${' '.repeat(Math.max(0, nameW - cells(name)))}`, color: quiet },
-      { text: said, color: quietOf(COLORS.text) },
-    ],
-    right: tail,
-    press: { key: `${CALL_OPEN}${call.id}`, at: 3, w: Math.max(0, lead - 3 + cells(said)) },
+    nameW,
+    room: Math.max(4, width - lead - (span > 0 ? span + 2 : 0)),
+    tailOf: (call, at, going) => kept.map(one => one.column.cellAt(call, at, going, one.w)),
   }
 }
 
@@ -7332,7 +7424,11 @@ function paintDetail(
       // or what it did last, and the call that answers that was at the bottom of
       // a list long enough to scroll — so the block opened on the oldest call
       // every time, and the interesting end had to be hunted for.
-      lines: w => [...calls].reverse().map(call => callRow(call, nowMs, w, agent.state === 'running', nameW(w))),
+      lines: w => {
+        const table = callTable(calls, nowMs, w, agent.state === 'running', nameW(w))
+
+        return [...calls].reverse().map(call => callRow(call, table, nowMs, agent.state === 'running'))
+      },
     })
   } else if (agent.tools.length > 0) {
     const list = agent.tools.map(t => (t.count > 1 ? `${t.name} ×${t.count}` : t.name)).join('   ')

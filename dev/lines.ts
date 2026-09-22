@@ -114,8 +114,39 @@ function writer(): string {
   return named ? `${named[1]} ${named[2]}:${named[3]}` : '?'
 }
 
+/**
+ * The window the canvas is clipped to, tracked here because a put outside one
+ * is invisible to the test that follows it.
+ *
+ * Whether a put landed is read back as whether the cell holds what the painter
+ * asked for, and that agrees with the truth everywhere except a cell that
+ * already held the very glyph being asked for. The body is windowed to its own
+ * rows, so a wire clipped off the top of it asked for `\u2500` in a cell the
+ * header's opening rule had already drawn `\u2500` in \u2014 and read back as a wire
+ * that landed. The rule then belonged to that wire, and its deliberate stop two
+ * columns short of the surface's close control was reported as the wire's arm
+ * running into a blank cell.
+ */
+let clip = { x: 0, y: 0, w: 0, h: 0 }
+
 const rawPut = Canvas.prototype.put
 const rawText = Canvas.prototype.text
+const rawWindow = Canvas.prototype.window
+
+Canvas.prototype.window = function (this: Canvas, ...args: Parameters<Canvas['window']>) {
+  const [x, y, w, h] = args
+
+  clip =
+    x === undefined
+      ? { x: 0, y: 0, w: this.columns, h: this.rows }
+      : { x, y: y ?? 0, w: w ?? this.columns, h: h ?? this.rows }
+
+  return rawWindow.apply(this, args)
+}
+
+/** Whether a cell is inside the window, and so whether a put into it lands. */
+const inWindow = (x: number, y: number) =>
+  x >= clip.x && y >= clip.y && x < clip.x + clip.w && y < clip.y + clip.h
 
 Canvas.prototype.text = function (this: Canvas, ...args: Parameters<Canvas['text']>) {
   const was = inText
@@ -145,7 +176,10 @@ Canvas.prototype.put = function (this: Canvas, x, y, code, fg, bg) {
   // window blank whether or not anything is in it: read that way, every cell a
   // painter wrote before the window was set came back unkept, and the rules and
   // junctions drawn before one lost the painter that drew them.
-  if (watching && x >= 0 && y >= 0 && x < this.columns && y < this.rows && inBuffer(this, x, y) === code) {
+  if (
+    watching && x >= 0 && y >= 0 && x < this.columns && y < this.rows &&
+    inWindow(x, y) && inBuffer(this, x, y) === code
+  ) {
     const held = writers.get(y * this.columns + x)
 
     if (!blank(code) && inText && WIRE_ONLY.has(under)) {
