@@ -321,3 +321,44 @@ test('a short idle pane scrolls to the runs it has no room for', () => {
   expect(end.pressable).toContain('runs-up')
   expect(end.pressable).not.toContain('runs-down')
 })
+
+/**
+ * The bar's own column, read between its two arrows: the track as a string,
+ * one character per row, so where the thumb stands is a position in it.
+ */
+function trackOf(lines: string[]): string {
+  const up = lines.findIndex(line => line.includes('▴'))
+  const down = lines.findIndex(line => line.includes('▾'))
+  const column = lines[up].indexOf('▴')
+
+  return lines
+    .slice(up + 1, down)
+    .map(line => line[column] ?? ' ')
+    .join('')
+}
+
+test('the thumb stands at the head of an unscrolled list and at its foot once it is scrolled home', () => {
+  const many = Array.from({ length: 9 }, (_, i) => entry(`wf_${i}`, 'stopped', NOW - (i + 1) * HOUR, 'audit'))
+
+  // Where in the list the reader is standing is the one thing the bar is there
+  // to say, and a thumb that sits in the same place at both ends says nothing.
+  expect(trackOf(idleOf(many, 60, 10, 0).lines)).toMatch(/^█+│*$/)
+  expect(trackOf(idleOf(many, 60, 10, 99).lines)).toMatch(/^│*█+$/)
+})
+
+test('a menu opened on a run deep in the list seats that run in the middle of the window', () => {
+  const runs = Array.from({ length: 30 }, (_, i) => entry(`wf_${i}`, 'stopped', NOW - (i + 1) * HOUR, 'audit'))
+  const { lines, runList } = menuPaint(runs, 'wf_15', 20)
+  const visible = runList?.visible ?? 0
+
+  // Far enough down that the window has rows to give on both sides, and far
+  // enough from the end that nothing clamps the seat back to the last
+  // screenful: what is being read here is the centring and only that.
+  expect(visible).toBeGreaterThan(4)
+  expect(runList?.scroll).toBeGreaterThan(0)
+
+  // Seated at the top or at the foot the row is still on screen, which is all
+  // the first test of this asked for; the rows either side of it are what the
+  // list was opened to reach.
+  expect(lines.findIndex(line => line.includes(SHOWN))).toBe(Math.floor((visible - 1) / 2))
+})

@@ -3277,22 +3277,37 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
   //
   // The rails cost cells, and the cells change what fits, so the size is
   // settled first: lay out, see which way the drawing overruns, give up the
-  // column or the row that rail needs, and lay out again at what is left. Two
-  // passes reach a fixed point — the second can only add a rail, never take one
-  // away, because giving up a column cannot make the drawing narrower.
+  // column or the row that rail needs, and lay out again at what is left.
+  //
+  // A rail once asked for is kept, and that is what makes the search end. It
+  // used to be free to take one away again, on the grounds that giving up a
+  // column cannot make the drawing narrower — which is true of the column and
+  // false of the row. Past the height `densityOf` will stand cards in, every
+  // node in the drawing flattens to a row, so the foot's one row can make the
+  // drawing much shorter: at 30 by 16 a run laid out 53 by 36 as cards and 45
+  // by 14 as rows. The taller one wants a rail, the shorter one does not, and
+  // each is reached by doing what the other asked for — there is no fixed
+  // point to find. What shipped was the worse half of the pair: a drawing
+  // overrunning the body by twenty-one rows with no arrows beside it.
+  //
+  // Latched, the flags only ever turn on, so three passes settle them. A rail
+  // that turns out to have nothing to scroll is not drawn — see below — and
+  // the cells it reserved are simply left blank, which is what the timeline
+  // has always done with its foot.
   let railed: boolean = false
   let footed: boolean = false
   let view = layout(run, c.columns, c.rows, setting, 0, opened)
 
-  for (let pass = 0; pass < 2; pass++) {
+  for (let pass = 0; pass < 3; pass++) {
     const reach = extentOf(view)
     // A body with no room for two arrows and a track between them cannot show
     // a rail, and giving up cells for one it cannot draw makes the pane that
     // was already too small smaller. A drawing overruns such a pane whatever
     // is done about it.
     const roomy = c.rows - view.headerRows >= 2 + RAIL_MIN
-    const wantsRail: boolean = roomy && reach.h > c.rows - (footed ? 1 : 0)
-    const wantsFoot: boolean = c.columns >= 2 + RAIL_MIN && reach.w > c.columns - (railed ? RAIL_W : 0)
+    const wantsRail: boolean = railed || (roomy && reach.h > c.rows - (footed ? 1 : 0))
+    const wantsFoot: boolean =
+      footed || (c.columns >= 2 + RAIL_MIN && reach.w > c.columns - (railed ? RAIL_W : 0))
 
     if (wantsRail === railed && wantsFoot === footed) {
       break
@@ -4188,11 +4203,16 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
   c.window()
   inWindow(hotspots, headerSpots, { x: 0, y: bodyTop, w: bodyW, h: bottom - bodyTop })
 
-  if (railed) {
+  // Reserved and drawn are two questions. The reservation is what the drawing
+  // was laid out against and cannot be taken back here; the rail is drawn only
+  // where it has somewhere to go, because a scrollbar with both arrows greyed
+  // and a full thumb is a control that reads as broken. The timeline's foot
+  // has always asked the second question; both of these now do too.
+  if (railed && spanY > 0) {
     paintBodyRail(c, c.columns - 1, bodyTop, bottom - bodyTop, atY, spanY, hotspots)
   }
 
-  if (footed) {
+  if (footed && spanX > 0) {
     paintFootRail(c, c.rows - 1, c.columns, atX, spanX, bodyW, hotspots)
   }
 
@@ -5827,8 +5847,25 @@ function paintListBar(
     }
   }
 
-  key(y, ARROW_UP, window.scroll > 0, 'runs-up')
-  key(y + rows - 1, ARROW_DOWN, window.scroll + window.visible < window.total, 'runs-down')
+  const up = window.scroll > 0
+  const down = window.scroll + window.visible < window.total
+
+  // A bar one cell tall cannot carry two arrows with a track between them, and
+  // drawn as a pair the second landed on the first: the cell said `▾` and
+  // nothing else, and at the foot of the list it said nothing at all while both
+  // hotspots claimed it. One cell carries the one arrow that has somewhere to
+  // go — down while there is more list below it, up at the end — so a list the
+  // pane can stand a single row of is still a list a reader can walk.
+  if (rows < 2) {
+    if (up || down) {
+      key(y, down ? ARROW_DOWN : ARROW_UP, true, down ? 'runs-down' : 'runs-up')
+    }
+
+    return
+  }
+
+  key(y, ARROW_UP, up, 'runs-up')
+  key(y + rows - 1, ARROW_DOWN, down, 'runs-down')
 
   const track = rows - 2
 

@@ -237,3 +237,74 @@ function rowsOf(canvas: Canvas): string[] {
 
   return lines
 }
+
+/** One phase of agents, none of them counted by anything, all landed. */
+function uncountedRun(n: number): RunState {
+  const run = emptyRun()
+
+  run.status = 'completed'
+  run.startedMs = STARTED
+  run.endedMs = STARTED + 20_000
+  run.defaultModel = 'claude-opus-5[1m]'
+  run.phases = ['Gather']
+  run.agents = Array.from({ length: n }, (_, i) => ({
+    agentId: `a${i}`,
+    label: `gather:thing${i}`,
+    phase: 'Gather',
+    state: 'done' as const,
+    startedMs: STARTED,
+    endedMs: STARTED + 4_000,
+    tools: [],
+  }))
+
+  return run
+}
+
+test('a node drawn as a row says its missing count in the tight spelling', () => {
+  const canvas = new Canvas(70, 14)
+
+  // Six nodes across a narrow pane flattens the cards to rows, and a row has no
+  // cell to spare for the air a card holds between the mark and the figure.
+  paint(canvas, uncountedRun(6), { nowMs: READ_AT, tick: -1, orientation: 'vertical' })
+
+  const drawn = rowsOf(canvas).join('\n')
+
+  expect(drawn).toContain('∑—')
+  expect(drawn).not.toContain('∑ —')
+})
+
+test('a timeline of agents nothing counted still draws the spend column', () => {
+  const canvas = new Canvas(100, 20)
+
+  paint(canvas, uncountedRun(3), { nowMs: READ_AT, tick: -1, orientation: 'timeline' })
+
+  const rows = rowsOf(canvas).filter(line => line.includes('gather:thing'))
+
+  expect(rows.length).toBe(3)
+
+  // Sized from the figures alone the column collapsed here, and every row came
+  // out one field narrower than a row of the same run that had been counted.
+  for (const row of rows) {
+    expect(row).toContain('∑ —')
+  }
+})
+
+test('the spend column holds its place whether or not the row has a figure', () => {
+  const run = uncountedRun(3)
+
+  run.agents[0].tokens = 15_000
+
+  const canvas = new Canvas(100, 20)
+
+  paint(canvas, run, { nowMs: READ_AT, tick: -1, orientation: 'timeline' })
+
+  const rows = rowsOf(canvas).filter(line => line.includes('gather:thing'))
+  const ends = rows.map(line => line.indexOf('tkns'))
+
+  expect(rows[0]).toContain('∑ 15k')
+  expect(rows[1]).toContain('∑ —')
+  // One column down the page, so a run's costs can be read down it: the dash
+  // stands where the figure would, rather than shifting the row's other fields.
+  expect(new Set(ends).size).toBe(1)
+  expect(ends[0]).toBeGreaterThan(0)
+})

@@ -52,6 +52,25 @@ told as a place, and a place can be moved. The thumb says how much of the run is
 on the pane and whereabouts in it, so the two questions the count could not
 answer — how much is there, and where am I — are answered by looking.
 
+Whether a rail is drawn and whether it was paid for are two questions. A rail
+costs cells, and the cells change what fits, so the size is settled by laying
+out, seeing which way the drawing overruns, giving up the column or the row the
+rail needs, and laying out again at what is left. That search used to be free to
+take a rail away again on its second pass, on the reasoning that giving up a
+column cannot make the drawing narrower — which is true of the column and false
+of the row. The foot's one row can drop the body under the height cards need,
+and then every node in the drawing flattens to a row: one pane laid out 53 by 36
+as cards and 45 by 14 as rows. The taller answer wants the rail, the shorter one
+does not, and each is reached by doing what the other asked for. There is no
+fixed point, and what shipped was the worse half of the pair — a drawing
+overrunning its body by twenty-one rows with no arrows beside it.
+
+A rail asked for is kept now, so the search only ever adds and always settles.
+What it reserved is not always drawn: a rail is painted only where it has
+somewhere to go, because a scrollbar with both arrows greyed and a full thumb is
+a control that reads as broken. The cells it took are left blank instead, which
+is what the timeline has always done with its foot.
+
 The header does not move. Which run this is, how far along it is and what it has
 spent are the pane's own furniture, not part of the drawing, and they hold
 whatever the body is showing.

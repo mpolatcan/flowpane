@@ -643,6 +643,46 @@ test('across, a lane too tall for the pane keeps its cards and scrolls to the re
   expect(heads(scrolled)).toContain('Draft')
 })
 
+test('every rail the pane draws has somewhere to go, and every overrun has a rail', () => {
+  const run = runOf([
+    ['Collect', ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight']],
+    ['Review', ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight']],
+    ['Verify', ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight']],
+    ['Report', ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight']],
+  ])
+  const wrong: string[] = []
+
+  // The rails used to be settled by laying out twice and taking whatever the
+  // second pass said, on the reasoning that a pass could only ever add one.
+  // Giving up the foot's row can drop the drawing under the height cards need
+  // — 53 by 36 as cards, 45 by 14 as rows — and the shorter one does not want
+  // the rail the taller one asked for. The two answers each produced the other,
+  // and the pane shipped a drawing overrunning its body by twenty-one rows with
+  // no arrows beside it.
+  for (const orientation of ['horizontal', 'vertical', 'timeline'] as const) {
+    for (let columns = 26; columns <= 220; columns += 2) {
+      for (let rows = 12; rows <= 50; rows += 2) {
+        const canvas = new Canvas(columns, rows)
+        const drawn = paint(canvas, run, { nowMs: STARTED + 20_000, tick: -1, orientation, follow: false })
+        const lines = rowsOf(canvas)
+        const rail = lines.some(line => (line[columns - 1] ?? '') === '\u25b4')
+        const foot = (lines[rows - 1] ?? '').includes('\u25c2')
+        const size = `${orientation} ${columns}\u00d7${rows}`
+
+        if (((drawn.body?.spanY ?? 0) > 0) !== rail) {
+          wrong.push(`${size}: spanY ${drawn.body?.spanY ?? 0}, rail ${rail}`)
+        }
+
+        if (((drawn.body?.spanX ?? 0) > 0) !== foot) {
+          wrong.push(`${size}: spanX ${drawn.body?.spanX ?? 0}, foot ${foot}`)
+        }
+      }
+    }
+  }
+
+  expect(wrong.slice(0, 5)).toEqual([])
+})
+
 test('across, a pane too short for two cards falls back to a row each', () => {
   const run = runOf([
     ['Gather', ['rivers', 'reefs']],
