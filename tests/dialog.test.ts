@@ -574,7 +574,9 @@ test('a long answer keeps both its ends and counts what it left out', () => {
 test('a call sets what it ran apart from what it ran on, in weight alone', () => {
   const canvas = opened({ id: 'lit', input: 'command: git status --porcelain' })
   const rows = rowsOf(canvas)
-  const y = rows.findIndex(row => row.includes('git status'))
+  // Past the sentence at the top, which names the command too: this reads the
+  // dialog's own row.
+  const y = rows.findIndex((row, i) => i > 0 && row.includes('git status'))
   const toneAt = (text: string) => canvas.cell(rows[y]!.indexOf(text), y).fg
 
   // Three weights of the block's own grey and no fourth colour: colour in this

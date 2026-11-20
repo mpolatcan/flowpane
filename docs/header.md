@@ -28,11 +28,32 @@ work is often scrolled out past the edge. This row says it outright.
 ```
 
 A live run is told by the phase or phases with agents running, what each of
-those agents is doing, which agents have failed, and the phase that comes next.
-A tool an agent is running is said as a verb where the pane knows one —
-`reading a file` for `Read`, `running a command` for `Bash` — and named
-otherwise, since a verb guessed for a tool the pane does not know is a claim
-about what it does. An agent nothing has been heard from for 45 seconds is said
+those agents is doing and to what, which agents have failed and why, the last
+gate to report and what it said, and the phase that comes next:
+
+```
+ In Develop, Develop is running `npm run lint` (2 files changed). Preflight: plan located, tools ready. Verify comes next.
+ In Develop, Develop is thinking, after running `npm run type-check` (2 files changed). Verify comes next.
+ In Develop, Develop is editing config.ts. Verify comes next.
+```
+
+A call is said with the thing it is working on, taken from its own argument:
+`editing stores/config.ts`, ``running `npm run lint` ``, `searching for
+'storyOf'`. The verb alone said the agent was busy, which the spinner already
+says; a reader watching a pipeline wants to know which file the develop step is
+in and which command a gate is running. A path keeps its file and the folder it
+is in, since a pipeline works in a worktree several folders deep. An agent
+between calls is thinking about the last thing it did, so that is what it is
+said to be thinking after. The files an agent has changed — the distinct paths
+its `Edit`, `Write` and `MultiEdit` calls named — are counted after its clause.
+A tool the pane has no verb for is named, since a verb guessed for a tool the
+pane does not know is a claim about what it does.
+
+The last gate to report is the agent most recently landed with a summary in its
+answer — see the verdicts in `docs/nodes.md` — and the clause is its name and
+that summary. A failed agent is followed by its reason where it is the only one
+that failed. The ladder gives these up first: the report, then the reasons, then
+the tally, then the folder of the path. An agent nothing has been heard from for 45 seconds is said
 to have said nothing, and for how long. More than three agents at work are
 counted rather than listed.
 

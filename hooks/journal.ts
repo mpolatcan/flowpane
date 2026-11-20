@@ -90,7 +90,20 @@ export type AgentRow = {
   activeMs?: number
   /** The tail of what the model said in its latest request, from the text chunks. */
   saying?: string
+  /**
+   * What the agent reported about its own work, where its answer says so.
+   *
+   * A pipeline's gates answer with an object that carries `passed` (or `ok`)
+   * and a `summary`, and a gate that ran to the end and reported `passed:
+   * false` is a gate that failed: the agent is `done`, the work is not. Read
+   * off the answer the moment it lands, so the drawing says which gates held
+   * while the run is still going. An agent that errored gets one too, with its
+   * error as the summary.
+   */
+  verdict?: Verdict
 }
+
+export type Verdict = { passed: boolean; summary?: string }
 
 export type RunStatus = 'running' | 'completed' | 'failed' | 'stopped'
 
@@ -272,6 +285,45 @@ function answerOfLine(value: unknown): string | undefined {
   return text.length > 20_000 ? text.slice(0, 20_000) : text
 }
 
+/**
+ * The verdict an answer carries, or nothing where it carries none.
+ *
+ * Only a boolean `passed`, or failing that a boolean `ok`, counts: a field the
+ * pane guesses the meaning of is a field it will one day read backwards. The
+ * summary is the first of `summary`, `headline` or `detail` that is text, cut to
+ * its first line. An answer written as text that is itself an object is read
+ * as one, since an agent asked for JSON often answers with JSON in a string.
+ */
+export function verdictOf(value: unknown): Verdict | undefined {
+  let said = value
+
+  if (typeof said === 'string' && said.trimStart().startsWith('{')) {
+    try {
+      said = JSON.parse(said)
+    } catch {
+      return undefined
+    }
+  }
+
+  if (!said || typeof said !== 'object' || Array.isArray(said)) {
+    return undefined
+  }
+
+  const fields = said as Record<string, unknown>
+  const passed = typeof fields.passed === 'boolean' ? fields.passed : typeof fields.ok === 'boolean' ? fields.ok : undefined
+
+  if (passed === undefined) {
+    return undefined
+  }
+
+  const text = [fields.summary, fields.headline, fields.detail].find(
+    (v): v is string => typeof v === 'string' && v.trim().length > 0,
+  )
+  const summary = text?.split('\n').find(l => l.trim().length > 0)?.trim()
+
+  return summary ? { passed, summary: summary.length > 200 ? `${summary.slice(0, 197)}...` : summary } : { passed }
+}
+
 function previewOf(value: unknown): string {
   const text = typeof value === 'string' ? value : JSON.stringify(value) ?? ''
   const line = text.split('\n').find(l => l.trim().length > 0) ?? ''
@@ -332,13 +384,17 @@ export function applyJournal(run: RunState, text: string, nowMs: number): boolea
       const row = run.agents.find(a => a.agentId === line.agentId)
 
       if (row) {
-        row.state = line.type === 'error' ? 'failed' : 'done'
+        const said = line.type === 'error' ? line.error : line.result
+
+        row.verdict =
+          line.type === 'error'
+            ? { passed: false, ...(previewOf(said) ? { summary: previewOf(said) } : {}) }
+            : verdictOf(said)
+        row.state = line.type === 'error' || row.verdict?.passed === false ? 'failed' : 'done'
         // When it landed is the reading, not the landing — the journal line
         // carries no clock. A row the summary has already timed keeps that
         // time; this only covers the gap before the summary is written.
         row.endedMs = row.endedMs ?? nowMs
-
-        const said = line.type === 'error' ? line.error : line.result
 
         row.resultPreview = previewOf(said)
         // The preview is one line cut to fit a node's tail; the dialog wants the
@@ -526,8 +582,10 @@ function applyProgress(run: RunState, summary: RunSummary, nowMs: number): void 
       row.activeMs = entry.lastProgressAt
     }
 
+    // A gate that reported itself failed stays failed: the engine's `done`
+    // says the agent finished, which the verdict does not dispute.
     if (entry.state === 'done') {
-      row.state = 'done'
+      row.state = row.verdict?.passed === false ? 'failed' : 'done'
     } else if (entry.state === 'failed' || entry.state === 'error') {
       row.state = 'failed'
     } else if (run.status !== 'running' && row.state === 'running') {

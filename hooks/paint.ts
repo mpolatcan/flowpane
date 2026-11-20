@@ -1182,6 +1182,14 @@ function tailOf(agent: AgentRow, nowMs: number): string {
  * what is worrying about it.
  */
 function doingOf(agent: AgentRow, nowMs: number): string {
+  // A failed agent's edge says why, where it said why: a gate's own summary,
+  // or the first line of an error. The model it ran on matters less than the
+  // reason the run cannot go on, and the reason is the thing a reader opens
+  // the card to find.
+  if (agent.state === 'failed') {
+    return agent.verdict?.summary ?? ''
+  }
+
   if (agent.state !== 'running') {
     return ''
   }
@@ -9851,30 +9859,129 @@ function verbOf(tool: string, short: boolean): string {
     case 'Agent':
     case 'Task':
       return short ? 'delegating' : 'waiting on a subagent'
+    case 'StructuredOutput':
+      return short ? 'answering' : 'writing its answer'
     default:
       return short ? tool : `calling ${tool}`
   }
 }
 
-/** A running agent's activity, for the sentence: the full clause, or the word that stands for it. */
-function activityOf(agent: AgentRow, nowMs: number, short: boolean): string {
+/** The tools that change a file, as against the ones that only look at one. */
+const CHANGES = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit'])
+
+/**
+ * A path cut to the part a reader recognises: the file and the folder it is in.
+ *
+ * A pipeline works in a worktree several folders deep, and the whole path is a
+ * line of directories the reader already knows, ending in the two words they
+ * are looking for.
+ */
+function shortPath(path: string, keep = 2): string {
+  const parts = path.split('/').filter(Boolean)
+
+  return parts.length <= keep ? parts.join('/') : parts.slice(-keep).join('/')
+}
+
+/** The first line of a value, cut to `max` cells with an ellipsis where it was cut. */
+function clipped(text: string, max: number): string {
+  const line = text.split('\n').find(l => l.trim().length > 0)?.trim() ?? ''
+
+  return line.length > max ? `${line.slice(0, Math.max(1, max - 1))}\u2026` : line
+}
+
+/**
+ * What one call is doing, with the thing it is doing it to: `editing
+ * stores/config.ts`, `running \`npm run lint\``, `searching for 'storyOf'`.
+ *
+ * The verb alone — `is editing a file` — says the agent is busy, which the
+ * spinner already said. What a reader watching a pipeline wants is which file
+ * the develop step is in and which command the gate is running, and the call's
+ * own argument is where that is written. `tight` spells the object shorter, for
+ * the second rung of the sentence's ladder.
+ */
+function callPhrase(call: ToolCall, tight: boolean): string {
+  // A call with several arguments is held as `key: value` lines; the sentence
+  // wants the value, since the key is the same word the verb already says.
+  const input = (call.input ?? '').replace(/^[a-z_][a-z0-9_]*:\s+/i, '')
+
+  if (!input.trim()) {
+    return verbOf(call.name, false)
+  }
+
+  const path = shortPath(input, tight ? 1 : 2)
+
+  switch (call.name) {
+    case 'Read':
+      return `reading ${path}`
+    case 'Edit':
+    case 'MultiEdit':
+    case 'NotebookEdit':
+      return `editing ${path}`
+    case 'Write':
+      return `writing ${path}`
+    case 'Bash':
+      return `running \`${clipped(input, tight ? 24 : 48)}\``
+    case 'Grep':
+      return `searching for '${clipped(input, tight ? 16 : 32)}'`
+    case 'Glob':
+      return `looking for ${clipped(input, tight ? 16 : 32)}`
+    case 'WebFetch':
+      return `fetching ${clipped(input.replace(/^https?:\/\//, '').split('/')[0] ?? input, 32)}`
+    case 'WebSearch':
+      return `searching the web for '${clipped(input, tight ? 16 : 32)}'`
+    default:
+      return verbOf(call.name, false)
+  }
+}
+
+/** The distinct files an agent has changed, in the order it first changed them. */
+function changedFiles(agent: AgentRow): string[] {
+  const seen: string[] = []
+
+  for (const call of agent.calls ?? []) {
+    if (CHANGES.has(call.name) && !call.isError && call.input && !seen.includes(call.input)) {
+      seen.push(call.input)
+    }
+  }
+
+  return seen
+}
+
+/**
+ * A running agent's activity, for the sentence: the full clause with what it is
+ * working on, a tighter one, or the word that stands for it.
+ */
+function activityOf(agent: AgentRow, nowMs: number, rung: 'full' | 'tight' | 'short'): string {
+  const short = rung === 'short'
+  const calls = agent.calls ?? []
+  const open = [...calls].reverse().find(c => c.endedMs === undefined)
   const busy = agent.tools.find(t => t.isRunning)
+  const changed = changedFiles(agent).length
+  const tally = rung === 'full' && changed > 0 ? ` (${changed} ${changed === 1 ? 'file' : 'files'} changed)` : ''
+
+  if (open && !short) {
+    return `is ${callPhrase(open, rung === 'tight')}${tally}`
+  }
 
   if (busy) {
-    return short ? verbOf(busy.name, true) : `is ${verbOf(busy.name, false)}`
+    return short ? verbOf(busy.name, true) : `is ${verbOf(busy.name, false)}${tally}`
   }
 
   if (agent.isThinking) {
-    return short ? 'thinking' : 'is thinking'
+    // What it is thinking about is what it did last: `thinking, after running
+    // \`npm test\`` says which result the agent is reading.
+    const before = [...calls].reverse().find(c => c.endedMs !== undefined)
+
+    return short ? 'thinking' : before ? `is thinking, after ${callPhrase(before, rung === 'tight')}${tally}` : `is thinking${tally}`
   }
 
   const quiet = quietFor(agent, nowMs)
 
   if (quiet > 0) {
-    return short ? `quiet ${elapsed(quiet)}` : `has said nothing for ${elapsed(quiet)}`
+    return short ? `quiet ${elapsed(quiet)}` : `has said nothing for ${elapsed(quiet)}${tally}`
   }
 
-  return short ? 'working' : 'is working'
+  return short ? 'working' : `is working${tally}`
 }
 
 /** `a`, `a and b`, `a, b and c`, with the names in their own colours and the joins in the prose's. */
@@ -9908,7 +10015,7 @@ function storyOf(run: RunState, nowMs: number, prose: Rgb, plain: Rgb): Words[][
   const failed = run.agents.filter(a => a.state === 'failed')
   const finished = run.agents.filter(a => a.state === 'done').length
   const total = run.agents.length
-  const failures = (where: string[]): Words[] => {
+  const failures = (where: string[], why = false): Words[] => {
     if (failed.length === 0) {
       return []
     }
@@ -9917,12 +10024,22 @@ function storyOf(run: RunState, nowMs: number, prose: Rgb, plain: Rgb): Words[][
       return [say(`${failed.length} agents failed`)]
     }
 
-    const elsewhere = failed.every(a => !where.includes(a.phase)) && failed.every(a => a.phase === failed[0]!.phase)
+    // The phase is named only where it says something the agent's name does
+    // not: a pipeline's gates are mostly phases of one agent, and `Lint failed
+    // in Lint` says the word twice.
+    const elsewhere =
+      failed.every(a => !where.includes(a.phase)) &&
+      failed.every(a => a.phase === failed[0]!.phase) &&
+      failed.some(a => nodeLabel(a) !== a.phase)
+    // Why, where one agent failed and said why: the reason is what a reader
+    // looks for next, and a list of several reasons is a paragraph, not a clause.
+    const reason = why && failed.length === 1 ? failed[0]!.verdict?.summary : undefined
 
     return [
       ...listed(failed.map(a => [name(a)]), prose),
       say(' failed'),
       ...(elsewhere ? [say(' in '), phase(failed[0]!.phase)] : []),
+      ...(reason ? [say(`: ${clipped(reason, 72)}`)] : []),
     ]
   }
 
@@ -9947,11 +10064,15 @@ function storyOf(run: RunState, nowMs: number, prose: Rgb, plain: Rgb): Words[][
               : `All ${total} agents finished`
           : `${finished} of ${total} agents finished`
     const lost = failures([])
+    const lostWhy = failures([], true)
 
     return [
-      error
-        ? [say(`${opening}: ${error}`)]
-        : [say(`${opening}. ${counted}`), ...(lost.length > 0 ? [say('; '), ...lost] : []), say('.')],
+      ...(error
+        ? [[say(`${opening}: ${error}`)]]
+        : [
+            [say(`${opening}. ${counted}`), ...(lostWhy.length > 0 ? [say('; '), ...lostWhy] : []), say('.')],
+            [say(`${opening}. ${counted}`), ...(lost.length > 0 ? [say('; '), ...lost] : []), say('.')],
+          ]),
       [say(`${opening}. ${finished} of ${total} finished${failed.length > 0 ? `, ${failed.length} failed` : ''}.`)],
       [say(`${opening}.`)],
     ]
@@ -9964,6 +10085,13 @@ function storyOf(run: RunState, nowMs: number, prose: Rgb, plain: Rgb): Words[][
   const next = last >= 0 ? run.phases[last + 1] : run.phases[0]
   const here = where.length > 0 ? where : entered.slice(-1)
   const lost = failures(here)
+  const lostWhy = failures(here, true)
+  // The last gate to report, and what it said: the line a reader watching a
+  // pipeline is waiting for each time a phase lands.
+  const reported = run.agents
+    .filter(a => a.state === 'done' && a.verdict?.summary && a.endedMs !== undefined)
+    .sort((x, y) => (y.endedMs ?? 0) - (x.endedMs ?? 0))[0]
+  const report = reported ? [say(' '), name(reported), say(`: ${clipped(reported.verdict!.summary!, 72)}.`)] : []
 
   if (running.length === 0) {
     const waiting = here.length > 0 ? [say('Between phases, after '), phase(here[0]!)] : [say('Starting')]
@@ -9977,18 +10105,25 @@ function storyOf(run: RunState, nowMs: number, prose: Rgb, plain: Rgb): Words[][
   const phases = listed(here.map(p => [phase(p)]), prose)
   const few = running.length <= 3
   const thinking = running.filter(a => a.isThinking && !a.tools.some(t => t.isRunning)).length
-  const doing = few
-    ? listed(running.map(a => [name(a), say(` ${activityOf(a, nowMs, false)}`)]), prose)
-    : [say(`${running.length} agents are running${thinking > 0 ? `, ${thinking} of them thinking` : ''}`)]
+  const crowd = [say(`${running.length} agents are running${thinking > 0 ? `, ${thinking} of them thinking` : ''}`)]
+  const doing = few ? listed(running.map(a => [name(a), say(` ${activityOf(a, nowMs, 'full')}`)]), prose) : crowd
+  const doingTight = few ? listed(running.map(a => [name(a), say(` ${activityOf(a, nowMs, 'tight')}`)]), prose) : crowd
   const doingShort = few
-    ? listed(running.map(a => [name(a), say(` ${activityOf(a, nowMs, true)}`)]), prose)
+    ? listed(running.map(a => [name(a), say(` ${activityOf(a, nowMs, 'short')}`)]), prose)
     : [say(`${running.length} running`)]
   const ahead = next ? [say(' '), phase(next), say(' comes next.')] : []
   const aheadShort = next ? [say(' Next: '), phase(next), say('.')] : []
   const counts = `${running.length} running${failed.length > 0 ? `, ${failed.length} failed` : ''}`
 
+  const opening = (what: Words[]) => [say('In '), ...phases, say(', '), ...what, say('.')]
+  const then = (why: Words[]) => (why.length > 0 ? [say(' '), ...why, say('.')] : [])
+
   return [
-    [say('In '), ...phases, say(', '), ...doing, say('.'), ...(lost.length > 0 ? [say(' '), ...lost, say('.')] : []), ...ahead],
+    [...opening(doing), ...then(lostWhy), ...report, ...ahead],
+    [...opening(doing), ...then(lostWhy), ...ahead],
+    [...opening(doing), ...then(lost), ...ahead],
+    [...opening(doingTight), ...then(lost), ...ahead],
+    [...opening(doingTight), ...then(lost)],
     [...phases, say(': '), ...doingShort, say('.'), ...(lost.length > 0 ? [say(' '), ...lost, say('.')] : []), ...aheadShort],
     [...phases, say(': '), ...doingShort, say('.'), ...(lost.length > 0 ? [say(' '), ...lost, say('.')] : [])],
     [...phases, say(': '), ...doingShort, say(failed.length > 0 ? `. ${failed.length} failed.` : '.')],

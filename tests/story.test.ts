@@ -10,7 +10,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { Canvas } from '../hooks/canvas'
-import type { AgentRow, AgentState, RunState } from '../hooks/journal'
+import { applyJournal, verdictOf, type AgentRow, type AgentState, type RunState, type ToolCall } from '../hooks/journal'
 import { paint } from '../hooks/paint'
 
 const STARTED = 1_700_000_000_000
@@ -78,7 +78,7 @@ test('a live run says which phase is working, what each agent is doing, what fai
 })
 
 test('a narrower pane gets a shorter sentence, never one cut off at the edge', () => {
-  expect(firstRow(live(), 80).text).toBe(' Verify: bugs reading and perf thinking. tests failed. Next: Report.')
+  expect(firstRow(live(), 80).text).toBe(' In Verify, bugs is reading a file and perf is thinking. tests failed.')
   expect(firstRow(live(), 60).text).toBe(' Verify: bugs reading and perf thinking. tests failed.')
   expect(firstRow(live(), 48).text).toBe(' Verify: 2 running, 1 failed')
 })
@@ -126,4 +126,77 @@ test('only the agent names carry colour, so colour still says state', () => {
   expect(failed).not.toEqual(prose)
   expect(failed).not.toEqual(reading)
   expect(canvas.cell(text.indexOf('Verify'), 0).fg).not.toEqual(reading)
+})
+
+/** A pipeline in its develop step, with the calls the hooks would have seen. */
+function developing(open: ToolCall | undefined, thinking = false): RunState {
+  const calls: ToolCall[] = [
+    { id: 'c1', name: 'Read', input: '/wt/feature/src/stores/config.ts', startedMs: NOW - 4_000, endedMs: NOW - 3_900 },
+    { id: 'c2', name: 'Edit', input: '/wt/feature/src/stores/config.ts', startedMs: NOW - 3_000, endedMs: NOW - 2_900 },
+    { id: 'c3', name: 'Edit', input: '/wt/feature/src/components/QuotaCard.vue', startedMs: NOW - 2_000, endedMs: NOW - 1_900 },
+    { id: 'c4', name: 'Bash', input: 'npm run type-check', startedMs: NOW - 1_500, endedMs: NOW - 1_000 },
+    ...(open ? [open] : []),
+  ]
+
+  return runOf(
+    'running',
+    [
+      agent('p1', 'Preflight', 'Preflight', 'done', {
+        label: 'Preflight',
+        endedMs: NOW - 5_000,
+        verdict: { passed: true, summary: 'plan located, tools ready' },
+      }),
+      agent('d1', 'Develop', 'Develop', 'running', { label: 'Develop', calls, isThinking: thinking }),
+    ],
+    { phases: ['Preflight', 'Develop', 'Verify'] },
+  )
+}
+
+test('a running agent is said to be at the file or command its call names, with what it has changed so far', () => {
+  const open = { id: 'c5', name: 'Bash', input: 'command: npm run lint', startedMs: NOW - 200 }
+
+  expect(firstRow(developing(open), 160).text).toBe(
+    ' In Develop, Develop is running `npm run lint` (2 files changed). Preflight: plan located, tools ready. Verify comes next.',
+  )
+})
+
+test('an agent between calls is thinking about the last thing it did', () => {
+  expect(firstRow(developing(undefined, true), 120).text).toBe(
+    ' In Develop, Develop is thinking, after running `npm run type-check` (2 files changed). Verify comes next.',
+  )
+})
+
+test('a narrower pane keeps the file and gives up the tally and the report first', () => {
+  const open = { id: 'c5', name: 'Edit', input: '/wt/feature/src/stores/config.ts', startedMs: NOW - 200 }
+
+  expect(firstRow(developing(open), 72).text).toBe(' In Develop, Develop is editing config.ts. Verify comes next.')
+})
+
+test('a gate that answered passed: false is drawn failed, and says why', () => {
+  const run = runOf('running', [], { phases: ['Commit (tests)', 'Publish'] })
+
+  applyJournal(
+    run,
+    [
+      JSON.stringify({ type: 'started', agentId: 'g1', label: 'Commit (tests)', phase: 'Commit (tests)' }),
+      JSON.stringify({ type: 'result', agentId: 'g1', result: { passed: false, summary: 'tree not clean after commit' } }),
+    ].join('\n'),
+    NOW,
+  )
+
+  expect(run.agents[0]!.state).toBe('failed')
+  expect(firstRow(run, 110).text).toBe(' Between phases, after Commit (tests). Commit (tests) failed.')
+
+  run.status = 'stopped'
+  run.endedMs = NOW
+
+  expect(firstRow(run, 140).text).toBe(
+    ' Stopped after 8.0s in Commit (tests). 0 of 1 agents finished; Commit (tests) failed: tree not clean after commit.',
+  )
+})
+
+test('an answer with no verdict leaves the agent as it landed', () => {
+  expect(verdictOf({ findings: [] })).toBeUndefined()
+  expect(verdictOf('{"ok": true, "headline": "clean"}')).toEqual({ passed: true, summary: 'clean' })
+  expect(verdictOf('passed: false')).toBeUndefined()
 })

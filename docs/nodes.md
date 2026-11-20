@@ -108,6 +108,27 @@ line and the detail dialog already use for the same two things. Going quiet has
 no mark, because nothing in the drawing means quiet; it has a duration instead,
 which is the whole of what is worrying about it.
 
+A failed agent's edge says why it failed, where it said why — a gate's own
+summary, or the first line of an error — and keeps it, in the failed colour:
+
+```
+╭────── ✖ Commit (tests) ──────╮
+│    ⧖ 5m50s  ∑ 54.6k tkns     │
+╰─ Commit created (src/stores… ╯
+```
+
+The model it ran on matters less than the reason the run cannot go on, and the
+reason is what a reader opens the card to find; the whole of it is in the
+dialog.
+
+A gate is an agent whose answer carries a boolean `passed` (or, failing that,
+`ok`). One that reports `passed: false` is drawn failed even though it ran to
+the end: the agent finished, the gate did not hold, and a pipeline's reader is
+asking the second question. The verdict is read off the journal's `result` line
+the moment the agent lands, so a failed gate is red while the run is still going.
+Only those two fields count — a field the pane guessed the meaning of is a field
+it would one day read backwards. See `verdictOf`.
+
 The middle row stays figures, and so does the space after a list row's label.
 Both carried the agent's own words for a while — what it was thinking on a card,
 what it answered on a row — and prose cut to a card's width is a sentence broken
