@@ -10,13 +10,27 @@ plugin API from [anthropics/claude-code#91870](https://github.com/anthropics/cla
 
 ## Screenshots
 
-| Phases across | Phases down |
+| Phases across, mid-run | Phases down, with nested runs unfolded |
 | --- | --- |
-| ![The graph with its phases laid out across the pane](docs/images/flow.png) | ![The same run with its phases stacked down the pane](docs/images/stack.png) |
+| ![A run eleven minutes in: one agent running, its tool count on its card, the phase still ahead dashed at the right, and the activity strip saying what each agent did](docs/images/flow.png) | ![A code review three minutes in: two nested workflows unfolded, three reviewers running side by side, and the activity strip below](docs/images/stack.png) |
 
 | Timeline | A node's detail |
 | --- | --- |
-| ![One bar per agent against the clock](docs/images/timeline.png) | ![The dialog a node opens, over the graph](docs/images/detail.png) |
+| ![The same review as bars against the clock, the running ones still growing toward now](docs/images/timeline.png) | ![The dialog a node opens, on its tool calls, each with its time and tokens](docs/images/detail.png) |
+
+| The session's runs | Settings |
+| --- | --- |
+| ![The menu the run's name opens: the run going now and the ones the session finished](docs/images/runs.png) | ![The settings dialog with the theme list unrolled, all twelve palettes](docs/images/settings.png) |
+
+| A finished run | A row per agent, in a light palette |
+| --- | --- |
+| ![The run complete, with the phase it never entered drawn as skipped](docs/images/finished.png) | ![The list layout in github-light: done, running, thinking and failed agents, and the phase still ahead](docs/images/list.png) |
+
+The pictures are the pane's own cells, painted by the plugin's own code from
+real runs replayed to a moment — except the list, which is the preview's
+synthetic run, where a failure and an agent still thinking stand together. The
+bottom row is drawn by Claude Code rather than the canvas, so it is written in
+beside each picture to read the way the pane writes it.
 
 ## What it draws
 
