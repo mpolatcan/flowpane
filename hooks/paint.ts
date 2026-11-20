@@ -10111,6 +10111,16 @@ function activityOf(agent: AgentRow, nowMs: number, rung: 'full' | 'tight' | 'sh
     // What it is thinking about is what it did last: `thinking, after running
     // \`npm test\`` says which result the agent is reading.
     const before = [...calls].reverse().find(c => c.endedMs !== undefined)
+    // What it is saying, where it has said anything yet: the agent's own account
+    // of what it makes of the last result, which is the reasoning a reader
+    // wants and the one thing nothing else in the pane quotes.
+    const words = agent.stepSaid?.trim()
+
+    if (rung === 'full' && words) {
+      // The quote's own full stop goes: the sentence closes after it, and
+      // `artifact.”.` is two stops.
+      return `is thinking: \u201c${gist(words, 90).replace(/[.;:]$/, '')}\u201d`
+    }
 
     return short ? 'thinking' : before ? `is thinking, after ${callPhrase(before, rung === 'tight')}${tally}` : `is thinking${tally}`
   }
@@ -10471,8 +10481,112 @@ type FeedRow = {
   atMs: number
   agent: AgentRow
   text: string
+  /**
+   * What the agent did on the strength of what it said, where the line is the
+   * agent's own words: `ran npx vitest run, edited 2 files`. Drawn after the
+   * words and quieter than them, since the words are the part the reader
+   * cannot see anywhere else.
+   */
+  tail?: string
   /** A gate's verdict or a call that failed, as the mark ahead of the agent's name. */
   mark?: 'passed' | 'failed' | 'running'
+}
+
+/**
+ * An agent's words cut to one line: the markdown taken out, the lines run
+ * together, and the whole of it kept up to `max` — ended at a sentence where
+ * one ends in reach, so a line stops on a full stop rather than mid-word.
+ */
+function gist(text: string, max: number): string {
+  const flat = text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/\*\*|__|^#+\s*/gm, '')
+    .replace(/^\s*[-*]\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (flat.length <= max) {
+    return flat
+  }
+
+  const cut = flat.slice(0, max)
+  const stop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf(': '), cut.lastIndexOf('; '))
+
+  return stop > max * 0.5 ? cut.slice(0, stop + 1) : `${cut.slice(0, max - 1).trimEnd()}\u2026`
+}
+
+/** The `description` a call carries beside its arguments, where it carries one. */
+function descriptionOf(call: ToolCall): string | undefined {
+  const line = (call.input ?? '').split('\n').find(l => l.startsWith('description: '))
+  const said = line?.slice('description: '.length).trim()
+
+  return said ? said : undefined
+}
+
+/** What a stretch of calls did, said in one clause: `read 3 files, ran npm test, edited config.ts`. */
+function didOf(calls: ToolCall[]): string {
+  const reads: string[] = []
+  const edits: string[] = []
+  const writes: string[] = []
+  const commands: string[] = []
+  const order: string[] = []
+  let searches = 0
+  let other = 0
+  const first = (kind: string) => {
+    if (!order.includes(kind)) {
+      order.push(kind)
+    }
+  }
+
+  for (const call of calls) {
+    const subject = subjectOf(call)
+
+    if (call.name === 'Read') {
+      first('read')
+      if (subject && !reads.includes(subject)) {
+        reads.push(subject)
+      }
+    } else if (call.name === 'Grep' || call.name === 'Glob' || call.name === 'WebSearch' || call.name.endsWith('__search')) {
+      first('search')
+      searches++
+    } else if (call.name === 'Write' && subject) {
+      first('write')
+      writes.push(subject)
+    } else if (CHANGES.has(call.name) && subject) {
+      first('edit')
+      if (!edits.includes(subject)) {
+        edits.push(subject)
+      }
+    } else if (call.name === 'Bash' && subject) {
+      first('ran')
+      commands.push(subject)
+    } else if (call.name !== 'ToolSearch' && call.name !== 'StructuredOutput') {
+      first('other')
+      other++
+    }
+  }
+
+  const files = (verb: string, paths: string[]) =>
+    paths.length <= 2 ? `${verb} ${paths.map(path => shortPath(path, 1)).join(' and ')}` : `${verb} ${paths.length} files`
+
+  return order
+    .map(kind => {
+      switch (kind) {
+        case 'read':
+          return reads.length === 0 ? 'read' : files('read', reads)
+        case 'search':
+          return `searched${searches > 1 ? ` ${searches} times` : ''}`
+        case 'edit':
+          return files('edited', edits)
+        case 'write':
+          return files('wrote', writes)
+        case 'ran':
+          return commands.length === 1 ? `ran ${clipped(commands[0]!, 40)}` : `ran ${commands.length} commands`
+        default:
+          return `${other} other ${other === 1 ? 'call' : 'calls'}`
+      }
+    })
+    .join(', ')
 }
 
 /** The tools that look at the code rather than change it, gathered into one row. */
@@ -10511,8 +10625,46 @@ function feedOf(run: RunState): FeedRow[] {
       searches = 0
     }
 
+    // Calls the agent explained, gathered under the explanation: one line of
+    // its own words, and what it did on the strength of them.
+    let told: { why: string; calls: ToolCall[] } | undefined
+
+    const tell = () => {
+      if (!told) {
+        return
+      }
+
+      const failed = told.calls.some(c => c.isError === true)
+      const open = agent.state === 'running' && told.calls.some(c => c.endedMs === undefined)
+
+      rows.push({
+        atMs: told.calls[0]!.startedMs,
+        agent,
+        text: gist(told.why, 400),
+        tail: didOf(told.calls),
+        ...(failed ? { mark: 'failed' as const } : open ? { mark: 'running' as const } : {}),
+      })
+      told = undefined
+    }
+
     for (const call of agent.calls ?? []) {
       const input = subjectOf(call)
+      // An agent that says nothing between calls still says what a command is
+      // for, in the description the shell tool asks for beside it.
+      const why = call.why ?? (call.name === 'Bash' ? descriptionOf(call) : undefined)
+
+      if (why) {
+        if (told?.why !== why) {
+          tell()
+          gather()
+          told = { why, calls: [] }
+        }
+
+        told!.calls.push(call)
+        continue
+      }
+
+      tell()
 
       if (LOOKS.has(call.name)) {
         if (reads.length === 0 && searches === 0) {
@@ -10555,6 +10707,7 @@ function feedOf(run: RunState): FeedRow[] {
       })
     }
 
+    tell()
     gather()
 
     if (agent.verdict && agent.endedMs !== undefined) {
@@ -10605,7 +10758,7 @@ function feedRowsFor(rows: number, asked: number, lines: number): number {
 function paintFeed(c: Canvas, run: RunState, feed: FeedRow[], ruleY: number, rows: number): void {
   const quiet = quietOf(c.background)
   const prose = mix(quiet, COLORS.text, 0.7)
-  const shown = feed.slice(-rows)
+  const done = mix(quiet, COLORS.text, 0.35)
 
   for (let x = 0; x < c.columns; x++) {
     c.put(x, ruleY, RULE_LEFT, quiet)
@@ -10613,15 +10766,68 @@ function paintFeed(c: Canvas, run: RunState, feed: FeedRow[], ruleY: number, row
 
   c.text(2, ruleY, ' activity ', quiet)
 
-  const clocks = shown.map(row => elapsed(Math.max(0, row.atMs - run.startedMs)))
-  const clockW = Math.max(...clocks.map(cells))
-  const nameW = Math.min(18, Math.max(...shown.map(row => cells(nodeLabel(row.agent)))))
+  // The columns are measured over the lines that could be shown, which is no
+  // more than one per row.
+  const near = feed.slice(-rows)
+  const clockOf = (row: FeedRow) => elapsed(Math.max(0, row.atMs - run.startedMs))
+  const clockW = Math.max(...near.map(row => cells(clockOf(row))))
+  const nameW = Math.min(18, Math.max(...near.map(row => cells(nodeLabel(row.agent)))))
+  const textX = 1 + clockW + 2 + 2 + nameW + 2
+  const room = Math.max(0, c.columns - 1 - textX)
 
-  shown.forEach((row, i) => {
-    const y = ruleY + 1 + i
+  /**
+   * One row as the lines it takes: the agent's words over two where they run
+   * past one, since the words are why the strip is there, and what it did after
+   * them in what is left. A tail takes at most this much of a line: it says
+   * what the reader can see in the cards and the dialog already.
+   */
+  const TAIL_MAX = 24
+  const linesOf = (row: FeedRow): { text: string; tail: string }[] => {
+    const tail = row.tail ? ` \u2192 ${row.tail}` : ''
+    const whole = cells(row.text) + cells(tail)
+
+    if (whole <= room || !row.tail) {
+      return cells(row.text) <= room || !row.tail
+        ? [{ text: row.text, tail: whole <= room ? tail : '' }]
+        : [{ text: row.text, tail: '' }]
+    }
+
+    if (cells(row.text) + Math.min(cells(tail), TAIL_MAX) <= room) {
+      return [{ text: row.text, tail: truncate(tail, room - cells(row.text)) }]
+    }
+
+    // The first line broken at a word, and the second all the rest, cut where
+    // it runs out: `wrap` drops what will not fit, and a reason that stops
+    // without saying it stopped reads as the whole reason.
+    const first = wrap(row.text, room, 1)[0] ?? ''
+    const second = row.text.replace(/\s+/g, ' ').trim().slice(first.length).trim()
+    const tailW = cells(second) + cells(tail) <= room ? cells(tail) : Math.min(cells(tail), TAIL_MAX)
+
+    return [
+      { text: first ?? '', tail: '' },
+      { text: truncate(second, room - tailW), tail: tailW >= 10 ? truncate(tail, tailW) : '' },
+    ]
+  }
+
+  // Newest last, and as many whole rows as the strip holds: a row's second line
+  // is never shown without its first, which carries the clock and the name.
+  const shown: { row: FeedRow; lines: { text: string; tail: string }[] }[] = []
+  let used = 0
+
+  for (let i = feed.length - 1; i >= 0 && used < rows; i--) {
+    const lines = linesOf(feed[i]!)
+    const fit = lines.slice(0, rows - used)
+
+    shown.unshift({ row: feed[i]!, lines: fit })
+    used += fit.length
+  }
+
+  let y = ruleY + 1
+
+  for (const { row, lines } of shown) {
     let x = 1
 
-    x += c.text(x, y, clocks[i]!.padStart(clockW), quiet)
+    x += c.text(x, y, clockOf(row).padStart(clockW), quiet)
     x += 2
 
     if (row.mark) {
@@ -10636,8 +10842,16 @@ function paintFeed(c: Canvas, run: RunState, feed: FeedRow[], ruleY: number, row
     }
 
     x += 2
-    x += c.text(x, y, truncate(nodeLabel(row.agent), nameW).padEnd(nameW), colorOf(row.agent.state))
-    x += 2
-    c.text(x, y, truncate(row.text, Math.max(0, c.columns - 1 - x)), prose)
-  })
+    c.text(x, y, truncate(nodeLabel(row.agent), nameW).padEnd(nameW), colorOf(row.agent.state))
+
+    for (const line of lines) {
+      const at = textX + c.text(textX, y, truncate(line.text, room), prose)
+
+      if (line.tail) {
+        c.text(at, y, line.tail, done)
+      }
+
+      y++
+    }
+  }
 }

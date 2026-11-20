@@ -4,14 +4,37 @@ The rows at the foot of the pane, under a rule: what the run has done, one line
 per thing a reader of a pipeline waits to hear about, newest last.
 
 ```
-── activity ──────────────────────────────────────────────────────────────
-  4.0s  ✔ Preflight  passed: plan located, tools ready
-  5.0s    Develop    read 2 files, searched once
- 10.0s    Develop    edited stores/config.ts
- 12.0s  ✖ Develop    ran npm run lint, which failed
- 14.0s    Develop    wrote stores/ai-status.ts
- 16.0s  ▸ Develop    ran npx vitest run
+── activity ─────────────────────────────────────────────────────────────────────────────
+ 17m31s    Develop  Lint clean. Now run the affected unit tests. → ran npx vitest run __tests…
+ 18m51s    Develop  The pill test failures are a mounting artifact: when the pill's root
+                    `v-if` is false it renders as a comment node, so … → read AiStatusPill…
+ 19m24s    Develop  edited header/AiStatusPill.test.ts
+ 19m29s    Develop  Re-run the AiStatusPill test alone → ran npx vitest run __tests__/unit/…
+ 19m47s  ▸ Develop  All 87 pass. Let me run the full unit suite to confirm no regressions
+                    from the shared-file edits (MiddleSlot, bridge). → ran npx vitest run 2…
 ```
+
+## The agent's words first
+
+A line used to be what the agent did — `ran npx vitest run`, `ran git diff` —
+which a reader can see in the cards and the dialog already, and which says
+nothing about why. What a pipeline's reader is asking is what the agent made of
+the last result and what it means to do about it, and the agent says so: in the
+text a model request writes ahead of the calls it issues. Thinking is recorded
+redacted, so that narration is the only reasoning a transcript keeps.
+
+So every call carries the words of the request that issued it (`why` on the
+call — see `hooks/journal.ts`), read from the transcript or, live, from the
+request's own stream as it arrives. Calls one request issued share its words
+and get one line between them: the words, run together onto at most two lines,
+and after an arrow, quieter, what the calls did — `read config.ts, ran npx
+vitest run`. The words keep the line; what was done gives way first, to at most
+a third of it, then to nothing.
+
+An agent that says nothing between calls — a small model sent to commit, say —
+still says what a command is for, in the `description` the shell tool asks for
+beside it, and that stands in for the words. Calls with neither are listed as
+below.
 
 ## Why it is there
 
@@ -22,7 +45,7 @@ command a gate ran and whether it failed, what the last gate said. The detail
 dialog says all of that about one agent; the strip says it about the run, in the
 order it happened, without a press.
 
-## What gets a line
+## What gets a line where the agent said nothing
 
 - A file changed: `edited` for `Edit`, `MultiEdit` and `NotebookEdit`, `wrote`
   for `Write`.

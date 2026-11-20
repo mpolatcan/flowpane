@@ -6,7 +6,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { Canvas } from '../hooks/canvas'
-import type { AgentRow, AgentState, RunState, ToolCall } from '../hooks/journal'
+import { noteCallStart, noteStep, type AgentRow, type AgentState, type RunState, type ToolCall } from '../hooks/journal'
 import { paint } from '../hooks/paint'
 
 const STARTED = 1_700_000_000_000
@@ -57,7 +57,7 @@ function pipeline(): RunState {
       call('Read', '/wt/feature/src/stores/ai-status.ts', 6),
       call('Grep', 'pattern: useAiStatus', 7),
       call('Edit', 'replace_all: false\nfile_path: /wt/feature/src/stores/config.ts\nold_string: a', 10),
-      call('Bash', 'command: cd /wt/feature && npm run lint\ndescription: Lint', 12, { isError: true }),
+      call('Bash', 'cd /wt/feature && npm run lint', 12, { isError: true }),
       call('Write', 'file_path: /wt/feature/src/stores/ai-status.ts\ncontent: export {}', 14),
       call('Bash', 'command: cd "/wt/feature" && npx vitest run', 16, { endedMs: undefined }),
     ]),
@@ -145,4 +145,65 @@ test('the settings dialog reads the strip it is drawn over', () => {
   // say `off` while the strip stood under it.
   expect(text).toContain('[3 rows]')
   expect(text).toContain('activity')
+})
+
+test('an agent that said why it made its calls is quoted, with what it did after the words', () => {
+  const why = 'Lint clean. Now run the affected unit tests.'
+  const run = runOf([
+    agent('Develop', 'running', [
+      call('Read', '/wt/feature/src/stores/config.ts', 5, { why }),
+      call('Bash', 'command: npx vitest run stores\ndescription: Run tests', 6, { why }),
+      call('Bash', 'command: git diff --stat\ndescription: See what changed so far', 8),
+    ]),
+  ])
+  const { lines } = rows(run, 110, 30, 2)
+
+  // Calls one request issued share its words and one line; a call with no words
+  // of its own says what its description says it is for.
+  expect(lines.slice(-2)).toEqual([
+    ' 5.0s    Develop  Lint clean. Now run the affected unit tests. \u2192 read config.ts, ran npx vitest run stores',
+    ' 8.0s    Develop  See what changed so far \u2192 ran git diff --stat',
+  ])
+})
+
+test('words too long for one line take a second under the first, and the strip keeps whole rows', () => {
+  const why = 'The pill test failures are a mounting artifact: when the root v-if is false it renders as a comment node, so the element does not re-point after the flip. The fix is to mount it inside a stable wrapper.'
+  const run = runOf([
+    agent('Develop', 'running', [
+      call('Bash', 'npm run lint', 4),
+      call('Edit', 'file_path: /wt/feature/src/AiStatusPill.test.ts', 6, { why }),
+    ]),
+  ])
+  const { lines } = rows(run, 80, 30, 2)
+
+  expect(lines.slice(-3)).toEqual([
+    `── activity ${'─'.repeat(68)}`,
+    ' 6.0s    Develop  The pill test failures are a mounting artifact: when the root',
+    '                  v-if is false it renders as a commen\u2026 \u2192 edited AiStatusPill.\u2026',
+  ])
+})
+
+test('what a request says before its calls is what those calls are stamped with, live', () => {
+  const run = runOf([agent('Develop', 'running', [])])
+
+  noteStep(run, 'develop', NOW, { kind: 'start' })
+  noteStep(run, 'develop', NOW, { kind: 'text', text: 'Lint clean. ' })
+  noteStep(run, 'develop', NOW, { kind: 'text', text: 'Now run the affected unit tests.' })
+  noteCallStart(run, 'develop', { id: 'x1', name: 'Bash', input: 'npx vitest run' }, NOW)
+
+  expect(run.agents[0]!.calls![0]!.why).toBe('Lint clean. Now run the affected unit tests.')
+
+  // A new request starts with nothing said, so its calls are not stamped with
+  // the last one's words.
+  noteStep(run, 'develop', NOW, { kind: 'start' })
+  noteCallStart(run, 'develop', { id: 'x2', name: 'Bash', input: 'git status' }, NOW)
+
+  expect(run.agents[0]!.calls![1]!.why).toBeUndefined()
+})
+
+test('an agent thinking out loud is quoted in the sentence at the top', () => {
+  const run = runOf([agent('Develop', 'running', [], { isThinking: true, stepSaid: 'The pill test failures are a mounting artifact.' })])
+  const { lines } = rows(run, 120, 30, 0)
+
+  expect(lines[0]).toBe(' In Develop, Develop is thinking: \u201cThe pill test failures are a mounting artifact\u201d.')
 })

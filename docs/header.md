@@ -43,8 +43,11 @@ A call is said with the thing it is working on, taken from its own argument:
 says; a reader watching a pipeline wants to know which file the develop step is
 in and which command a gate is running. A path keeps its file and the folder it
 is in, since a pipeline works in a worktree several folders deep. An agent
-between calls is thinking about the last thing it did, so that is what it is
-said to be thinking after. The files an agent has changed — the distinct paths
+between calls is quoted where it has started saying something — `Develop is
+thinking: “The pill test failures are a mounting artifact”` — since what it
+makes of the last result is the reasoning a reader is watching for. Where it has
+said nothing yet, it is thinking about the last thing it did, so that is what it
+is said to be thinking after. The files an agent has changed — the distinct paths
 its `Edit`, `Write` and `MultiEdit` calls named — are counted after its clause.
 A tool the pane has no verb for is named, since a verb guessed for a tool the
 pane does not know is a claim about what it does.

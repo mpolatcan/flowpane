@@ -46,6 +46,17 @@ export type ToolCall = {
    * amount, so the two say the same thing.
    */
   result?: string
+  /**
+   * What the agent said in the request that issued the call, ahead of it: the
+   * agent's own account of why it is making it.
+   *
+   * The command says what ran, which a reader can see; this is the part they
+   * cannot, and the part a pipeline's reader is asking about — `The bridge files
+   * already exist. I need to understand the actual git state` ahead of a `git
+   * log`. Thinking is recorded redacted, so this narration is the only reasoning
+   * a transcript keeps. Calls one request issued together share it.
+   */
+  why?: string
   /** The model request (1-based) that issued it, and what that request wrote. */
   step?: number
   stepTokens?: number
@@ -90,6 +101,13 @@ export type AgentRow = {
   activeMs?: number
   /** The tail of what the model said in its latest request, from the text chunks. */
   saying?: string
+  /**
+   * The head of the same, up to `WHY_MAX`: what a call the request issues is
+   * stamped with. The tail above is for watching the words arrive; a call
+   * wants how the request began, which is where the agent says what it is about
+   * to do.
+   */
+  stepSaid?: string
   /**
    * What the agent reported about its own work, where its answer says so.
    *
@@ -718,8 +736,10 @@ export function noteCallStart(
     return false
   }
 
+  const why = row.stepSaid?.trim()
+
   row.calls ??= []
-  row.calls.push({ ...call, startedMs: nowMs, step: row.steps })
+  row.calls.push({ ...call, startedMs: nowMs, step: row.steps, ...(why ? { why } : {}) })
 
   return true
 }
@@ -759,6 +779,9 @@ export type StepPart =
 
 /** How much of what the model says the row keeps, for the tail and the detail. */
 const SAYING_MAX = 240
+
+/** How much of a request's own words a call keeps as its reason. */
+const WHY_MAX = 600
 
 /**
  * Records what a model request of one agent is doing, as its stream goes by.
@@ -805,8 +828,13 @@ export function noteStep(run: RunState, agentId: string, nowMs: number, part: St
     row.steps = (row.steps ?? 0) + 1
     row.isThinking = true
     row.saying = ''
+    row.stepSaid = ''
   } else if (part.kind === 'text') {
     const said = `${row.saying ?? ''}${part.text}`
+
+    if ((row.stepSaid ?? '').length < WHY_MAX) {
+      row.stepSaid = `${row.stepSaid ?? ''}${part.text}`.slice(0, WHY_MAX)
+    }
 
     row.saying = said.length > SAYING_MAX ? said.slice(said.length - SAYING_MAX) : said
   } else if (part.kind === 'stop') {
@@ -991,6 +1019,9 @@ export function readAgentTranscript(text: string): {
   let result
   let tokens
   const calls: ToolCall[] = []
+  // What the agent has said since the last answer came back: the reason every
+  // call it issues before the next answer is stamped with.
+  let narration = ''
   const byId = new Map<string, ToolCall>()
 
   for (const raw of text.split('\n')) {
@@ -1036,12 +1067,21 @@ export function readAgentTranscript(text: string): {
     }
 
     for (const part of content) {
+      if (row?.type === 'assistant' && part?.type === 'text' && typeof part.text === 'string') {
+        narration = `${narration}${narration ? '\n' : ''}${part.text}`.slice(0, WHY_MAX)
+      }
+
+      if (part?.type === 'tool_result') {
+        narration = ''
+      }
+
       if (part?.type === 'tool_use' && typeof part.name === 'string') {
         const call: ToolCall = {
           id: typeof part.id === 'string' ? part.id : `call-${calls.length + 1}`,
           name: part.name,
           input: heldOf(payloadOf(part.input)),
           startedMs: at,
+          ...(narration.trim() ? { why: narration.trim() } : {}),
         }
 
         // Tokens belong to a request, not to a call, so every call the same
