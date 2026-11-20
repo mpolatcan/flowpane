@@ -1124,3 +1124,36 @@ test('across, the cards of a column stand one row apart at every height', () => 
     expect(gaps).toEqual([1, 1, 1, 1])
   }
 })
+
+test('across, the strip widens for what the script says about each phase only where the drawing still fits', () => {
+  const bare = runOf([
+    ['Survey', ['paint', 'layout']],
+    ['Review', ['bugs']],
+    ['Verify', []],
+    ['Escalate', []],
+    ['Report', []],
+  ])
+  const said: RunState = {
+    ...bare,
+    plan: [
+      { title: 'Verify', detail: 'one agent per finding, told to refute it' },
+      { title: 'Escalate', detail: 'only what survived as blocking' },
+      { title: 'Report', detail: 'one agent joins the verdicts' },
+    ],
+  }
+
+  const narrow = layout(bare, 120, 30, 'horizontal').ahead?.w ?? 0
+
+  // Room to spare: the strip takes enough of it to carry a line under each
+  // name rather than standing a column of names in a margin.
+  expect(narrow).toBeGreaterThan(0)
+  expect(layout(said, 120, 30, 'horizontal').ahead?.w ?? 0).toBeGreaterThan(narrow)
+
+  // No room to spare: widened, the strip would push the drawing past the left
+  // edge to make room for notes about phases that have not run, so it keeps to
+  // the names.
+  const tight = layout(said, 100, 30, 'horizontal')
+
+  expect(tight.ahead?.w).toBe(layout(bare, 100, 30, 'horizontal').ahead?.w)
+  expect(Math.min(...tight.lanes.map(l => l.x))).toBeGreaterThanOrEqual(0)
+})

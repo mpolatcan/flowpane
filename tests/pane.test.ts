@@ -198,7 +198,12 @@ function renderPane($: any) {
  * `{ value }` or `{ deny }`, so that is the shape a bottom implementation hands
  * back — including for the calls whose value is nothing at all.
  */
-function stubEngine(on: any, opened: { id: string; title?: string }[] = [], stored: Record<string, unknown> = {}) {
+function stubEngine(
+  on: any,
+  opened: { id: string; title?: string }[] = [],
+  stored: Record<string, unknown> = {},
+  files: Record<string, string> = { [`${TRANSCRIPT}/journal.jsonl`]: JOURNAL },
+) {
   on('env.get', () => ({ value: HOME }))
   on('ui.open', ($$: unknown, e: { id: string; title?: string }) => {
     opened.push({ id: e.id, title: e.title })
@@ -213,12 +218,10 @@ function stubEngine(on: any, opened: { id: string; title?: string }[] = [], stor
   on('session.id', () => ({ value: 'test-session' }))
   on('store.get', ($$: unknown, e: { key: string }) => ({ value: stored[e.key] }))
   on('store.set', () => ({ value: undefined }))
-  on('fs.exists', ($$: unknown, e: { path: string }) => ({
-    value: e.path === `${TRANSCRIPT}/journal.jsonl`,
-  }))
+  on('fs.exists', ($$: unknown, e: { path: string }) => ({ value: e.path in files }))
   on('fs.read', ($$: unknown, e: { path: string }) => {
-    if (e.path === `${TRANSCRIPT}/journal.jsonl`) {
-      return { value: JOURNAL }
+    if (e.path in files) {
+      return { value: files[e.path] }
     }
 
     throw new Error(`unexpected read: ${e.path}`)
@@ -453,4 +456,49 @@ test('an activity strip turned off in an earlier session stays off', async ($, o
 
 test('a stored strip size out of its bounds is ignored', async ($, on) => {
   expect(await drawnWithStored($, on, { feedRows: 50 })).toContain(' activity ')
+})
+
+test('a strip the plugin option turns off is off in a new session', { options: { feedRows: 0 } } as never, async ($: any, on: any) => {
+  expect(await drawnWithStored($, on, {})).not.toContain(' activity ')
+})
+
+test('a strip size kept from an earlier session wins over the plugin option', { options: { feedRows: 0 } } as never, async ($: any, on: any) => {
+  // The option is what the strip opens with on a machine that never changed
+  // it; a size set with the command or the settings is the reader's own choice
+  // since, and the option does not take it back.
+  expect(await drawnWithStored($, on, { feedRows: 3 })).toContain(' activity ')
+})
+
+test('a run left behind by a second launch is read again when the run list opens', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  const files: Record<string, string> = { [`${TRANSCRIPT}/journal.jsonl`]: JOURNAL }
+  let next = 'first'
+
+  on('tool.call', { tool: 'Workflow' }, () => ({
+    result: { ...LAUNCH, runId: `wf_${next}`, workflowName: next, transcriptDir: `/session/subagents/workflows/wf_${next}` },
+  }))
+  stubEngine(on, [], {}, files)
+
+  await $.tool.call({ tool: 'Workflow', script: SCRIPT })
+  await clock.advance(600)
+  next = 'second'
+  await $.tool.call({ tool: 'Workflow', script: SCRIPT })
+  await clock.advance(600)
+
+  // The first run fails while the second is on the pane. Nothing reads the
+  // first on the timer, so the list still has it going.
+  files['/session/workflows/wf_first.json'] = JSON.stringify({ status: 'failed', workflowProgress: [] })
+
+  const runs = async () => (await $.command.run({ command: 'flowpane', args: 'runs' }))?.text ?? ''
+
+  expect(await runs()).toMatch(/▸ first/)
+
+  // The run's name on the bar is the press that unrolls the list.
+  await renderPane($)
+  await $.ui.press({ plugin: 'flowpane', key: 'node:@runs', requestId: 'flowpane' })
+
+  // Unrolled, the list says how each run stands now, not how it stood when
+  // the pane last looked at it.
+  expect(await runs()).toMatch(/✖ first/)
+  expect(await runs()).not.toMatch(/▸ first/)
 })

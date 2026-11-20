@@ -25,7 +25,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { Canvas, cross, line } from '../hooks/canvas'
 import type { AgentRow, RunState } from '../hooks/journal'
-import { entryOf, exitOf, layout } from '../hooks/layout'
+import { CARD_H, entryOf, exitOf, layout } from '../hooks/layout'
 import { edgesOf } from '../hooks/shape'
 import { frameOf, paint, quietOf, useTheme } from '../hooks/paint'
 import { DEFAULT_THEME, paletteOf, THEMES } from '../hooks/theme'
@@ -1309,4 +1309,18 @@ test('a barrier on a pane narrower than one card reaches the card it feeds, and 
 
   // The arm down out of the spine ends in an arrowhead against the card below.
   expect((rows[next.nodes[0].y - 1] as string)[entry.x]).toBe(ARROW_DOWN)
+})
+
+test('across, the cards of one wave stand a row apart and the next wave stands two', () => {
+  const view = layout(waved(), 170, 46, 'horizontal')
+  const review = view.lanes.find(l => l.phase === 'Review')
+  const top = (id: string) => review?.nodes.find(n => n.agent.agentId === id)?.y ?? -1
+
+  // The extra row is the one thing on the pane that says the agents above it
+  // finished before the ones below it started; without it a phase that ran in
+  // three steps reads as five agents started together.
+  expect(top('r2') - top('r1')).toBe(CARD_H + 1)
+  expect(top('r3') - top('r2')).toBe(CARD_H + 1)
+  expect(top('r1') - top('r0')).toBe(CARD_H + 2)
+  expect(top('r4') - top('r3')).toBe(CARD_H + 2)
 })
