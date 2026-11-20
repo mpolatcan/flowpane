@@ -469,3 +469,22 @@ test('a wheel over the run list unrolled under the bar moves that list, not the 
   expect(moved).toContain('node:run:wf_00')
   expect(moved).not.toContain(`node:run:wf_${RECOVERED - 1}`)
 })
+
+test('while the wheel turns the drawing is one picture, and its cards can be pressed again once it stops', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  const base = await shownRun($, on, clock)
+  const cards = (keys: string[]) => keys.filter(key => key.startsWith('node:') && !key.startsWith('node:@'))
+
+  expect(cards(keysOf(await renderPane($))).length).toBeGreaterThan(0)
+
+  await $.ui.scroll({ requestId: 'flowpane', by: 1, pointer: { row: railRow(base) - 3 } })
+  await $.ui.scroll({ requestId: 'flowpane', by: 1, pointer: { row: railRow(base) - 3 } })
+
+  // A cut at every label is a cut that moves with the scroll, and a cut that
+  // moves is a tree built again on every step.
+  expect(cards(keysOf(await renderPane($)))).toEqual([])
+
+  await clock.advance(400)
+
+  expect(cards(keysOf(await renderPane($))).length).toBeGreaterThan(0)
+})

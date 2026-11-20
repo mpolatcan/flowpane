@@ -80,6 +80,10 @@ const READ_EVERY = 4
  * expensive path, so it runs on every third frame rather than on each one.
  */
 const REDRAW_EVERY = 3
+/** How long the wheel's steps are gathered before one paint answers them all. */
+const WHEEL_MS = 24
+/** How long the wheel has to be still before the cards can be pressed again. */
+const SETTLE_MS = 200
 /** What the detail dialog's height is allowed to be, at the controls and at `/flowpane detail`. */
 /** The pane's opaque backdrop: the theme's own ground. */
 function backdropOf(): number {
@@ -140,6 +144,15 @@ const state: {
    */
   sent: Map<string, string>
   timer: Timer | null
+  /**
+   * Whether the wheel is turning. While it is, the drawing is one Raster with
+   * nothing to press; see `ui.scroll`.
+   */
+  scrolling: boolean
+  /** The paint the wheel has asked for, while it is still to come. */
+  wheelFrame: Timer | null
+  /** The render that gives the cards back their Buttons once the wheel stops. */
+  settle: Timer | null
   tick: number
   isPaneOpen: boolean
   size: { columns: number; rows: number } | null
@@ -217,6 +230,9 @@ const state: {
   bands: [],
   sent: new Map(),
   timer: null,
+  scrolling: false,
+  wheelFrame: null,
+  settle: null,
   tick: 0,
   isPaneOpen: false,
   size: null,
@@ -705,7 +721,7 @@ function repaint($: EngineInterface, run: RunState, nowMs: number): void {
   // puts a node's label on a different row, those Rasters no longer cover the
   // rows they did, so the tree has to be built again before anything is written
   // into it.
-  const bands = bandsOf(state.canvas.rows, state.hotspots)
+  const bands = bandsOf(state.canvas.rows, pressable())
 
   if (!sameBands(bands, state.bands)) {
     // The Rasters this frame would have written into are about to be replaced,
@@ -745,6 +761,20 @@ function repaint($: EngineInterface, run: RunState, nowMs: number): void {
   if (state.tick % REDRAW_EVERY === 0 && bands.some(b => !b.key)) {
     $.ui.invalidate('ui.render')
   }
+}
+
+/**
+ * The hotspots the picture is cut at: none while the wheel is turning.
+ *
+ * A label is a Button on a row of its own, so the picture is cut at every row
+ * that carries one, and a scroll moves those rows. A cut that moves is a tree
+ * built again, so every step of the wheel cost a render — 320 ms a frame
+ * against a blit's 120 — and a quick turn queued several in a row. While the
+ * wheel turns, the drawing is one Raster that only blits; the Buttons come back
+ * with one render once it stops.
+ */
+function pressable(): Hotspot[] {
+  return state.scrolling ? [] : state.hotspots
 }
 
 /** Whether two cuts name the same Rasters over the same rows. */
@@ -1386,7 +1416,7 @@ export function register(on: On, options: PluginOptions) {
     // `pictureOf` cuts it at the rows that carry a node's label and draws those
     // as elements, where the label becomes a Button; the cut comes back with it
     // so the next frame blits the same Rasters.
-    const picture = pictureOf(state.canvas, { Box, Text, Button, Raster }, state.hotspots, pressNode)
+    const picture = pictureOf(state.canvas, { Box, Text, Button, Raster }, pressable(), pressNode)
 
     state.bands = picture.bands
     // These Rasters are mounted with the cells this paint produced, so what a
@@ -1476,14 +1506,36 @@ export function register(on: On, options: PluginOptions) {
       e.pointer?.row,
     )
 
-    state.nowMs = await $.clock.now()
+    // A list of runs is itself a column of Buttons, so it keeps them: drawn
+    // without, it would be a picture of a list nobody can pick from.
+    if (state.shown && !state.picking) {
+      state.scrolling = true
+      state.settle?.cancel()
+      state.settle = $.clock.after(SETTLE_MS, () => {
+        state.settle = null
+        state.scrolling = false
+        state.sent.clear()
+        $.ui.invalidate('ui.render')
+      })
+    }
 
-    if (state.shown) {
-      repaint($, state.shown, state.nowMs)
-    } else {
-      // The idle pane has no Rasters to blit into: its list is rows of Buttons,
-      // so moving it is a re-render rather than a write into mounted cells.
-      $.ui.invalidate('ui.render')
+    // Steps that arrive together are answered by one paint: the scroll has
+    // already moved by all of them, so painting each would draw frames nobody
+    // sees.
+    if (!state.wheelFrame) {
+      state.wheelFrame = $.clock.after(WHEEL_MS, async () => {
+        state.wheelFrame = null
+        state.nowMs = await $.clock.now()
+
+        if (state.shown) {
+          repaint($, state.shown, state.nowMs)
+        } else {
+          // The idle pane has no Rasters to blit into: its list is rows of
+          // Buttons, so moving it is a re-render rather than a write into
+          // mounted cells.
+          $.ui.invalidate('ui.render')
+        }
+      })
     }
 
     return {}

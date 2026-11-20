@@ -148,6 +148,12 @@ export type Band = {
  */
 export function bandsOf(rows: number, hotspots: Hotspot[]): Band[] {
   const pressable = [...new Set(hotspots.map(h => h.y))].filter(y => y >= 0 && y < rows).sort((a, b) => a - b)
+
+  // The same one Raster `pictureOf` mounts when there is nothing to press, under
+  // the same key, so a frame with no hotspots blits rather than rebuilding.
+  if (hotspots.length === 0) {
+    return [{ key: 'dag', from: 0, rows }]
+  }
   const bands: Band[] = []
   let from = 0
 

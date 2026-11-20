@@ -22,6 +22,13 @@ What the function-hooks API allows, and what it does not.
   blit does not touch, so they are re-rendered on every third frame. When the
   next picture would put a label on a different row, the cut has changed and the
   whole tree is rendered again rather than blitted into the old one.
+- **A scroll moves the cut, so the wheel draws without one.** Every step of the
+  wheel moves the labels to other rows, and a cut that moves is a render: 320 ms
+  a frame against a blit's 120, and a quick turn queued several in a row. So
+  while the wheel turns over the drawing, the drawing is one Raster with nothing
+  to press, and the steps that arrive within 24 ms of each other are answered by
+  one paint. 200 ms after the last step, one render puts the Buttons back. A
+  list of runs keeps its Buttons, since there the Buttons are the list.
 - **A row is as wide as the drawing, not as wide as the seat.** A `Raster` is
   born with its `columns`, but a `Box` left to itself stretches to the pane's
   own width. The canvas is made at the `bodyColumns` the render reports, which

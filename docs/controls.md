@@ -86,6 +86,9 @@ rest one row and a burst more, so it is used as given rather than multiplied up
 to the arrow's step: an arrow is pressed once for a deliberate move, a wheel is
 turned until the reader sees what they want.
 
+While the wheel turns, the cards cannot be pressed; they can again a fifth of a
+second after it stops. See [engine.md](engine.md) for why.
+
 The arrows in the margin stay. A wheel is what a reader reaches for without
 looking; a control that can be pressed is what says the drawing goes on past the
 edge of the pane at all.
