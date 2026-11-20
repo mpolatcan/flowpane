@@ -25,6 +25,13 @@
 #
 # The engine installs its own copy under the manifest's version, and an install
 # over a version already installed is a no-op, so the cached copy goes first.
+# The dev build is installed at local scope, so it loads only in sessions opened
+# in this repository, and the released build is disabled at local scope in the
+# same place. Both installed for the whole user, every Workflow launch in every
+# project opened two panes, one per build, each drawing the same run. Scoped to
+# the repository, a session here draws the tree and a session anywhere else
+# draws the release, one pane each.
+#
 # Restart the session afterwards — hooks are read once, when it starts.
 #
 #   sh dev/reload.sh
@@ -64,9 +71,15 @@ JSON
 # Every cached version, not the one about to be installed: the engine treats a
 # plugin already in its list as installed whatever version the marketplace now
 # offers, so the old copy has to stop existing and the record has to go with it.
+# Local scope is keyed off the working directory, so every install and disable
+# below runs from the repository root. The user-scope uninstall clears an install
+# an earlier version of this script made.
+cd "$root"
 rm -rf "$HOME/.claude/plugins/cache/flowpane-dev/flowpane-dev"
 claude plugin uninstall flowpane-dev@flowpane-dev --scope user >/dev/null 2>&1 || true
+claude plugin uninstall flowpane-dev@flowpane-dev --scope local >/dev/null 2>&1 || true
 claude plugin marketplace update flowpane-dev >/dev/null
-claude plugin install flowpane-dev@flowpane-dev --scope user -y
+claude plugin install flowpane-dev@flowpane-dev --scope local -y
+claude plugin disable flowpane@cc-plugins --scope local >/dev/null 2>&1 || true
 
-echo "flowpane-dev $version from $root — /flowpane-dev in a new session"
+echo "flowpane-dev $version from $root — /flowpane-dev in a new session opened here"

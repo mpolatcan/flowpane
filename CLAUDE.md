@@ -34,7 +34,7 @@ bun dev/recover.ts <sessionId> [home]              # what a session's runs rebui
 bun dev/dryrun.ts <workflow>                       # a workflow's control flow, stubbed, no agents spent
 bun dev/checkmeta.ts                               # the version the pane falls back to is the one the manifest ships
 bun dev/checktokens.ts [--all]                     # the live token figure lands on the one the summary reports
-sh  dev/reload.sh                                 # install this tree as flowpane-dev, beside the released build
+sh  dev/reload.sh                                 # install this tree as flowpane-dev, for this repo only
 ```
 
 ## Testing a change against real runs
@@ -91,8 +91,11 @@ since an install over a version already installed is a no-op. Restart the sessio
 afterwards: hooks are read once, when it starts.
 
 Both builds watch the same journals and both open a pane on a Workflow launch,
-so with the two enabled a live run draws twice. `/flowpane` toggles the released
-one shut.
+so with the two enabled a live run draws twice. So the reload installs the dev
+build at local scope and disables the released one at local scope, both from the
+repository root: a session opened here loads only `flowpane-dev`, and a session
+anywhere else loads only the release. The choice is written to
+`.claude/settings.local.json`, which git ignores.
 
 ## The version is the cache key
 
