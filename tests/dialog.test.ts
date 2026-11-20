@@ -1530,3 +1530,38 @@ test('the dialog is titled with the version the manifest this install came by st
   expect(text).toContain(`${NAME} 9.9.9`)
   expect(text).not.toContain(`${NAME} ${VERSION}`)
 })
+
+test('an agent that changed files has a tab listing them, last of the tabs', () => {
+  const run = runOf()
+
+  run.agents[2].calls = [
+    { id: 'e0', name: 'Read', input: '/wt/feature/src/stores/config.ts', startedMs: STARTED + 5_000, endedMs: STARTED + 5_100 },
+    { id: 'e1', name: 'Edit', input: '/wt/feature/src/stores/config.ts', startedMs: STARTED + 5_200, endedMs: STARTED + 5_300 },
+    { id: 'e2', name: 'Edit', input: 'file_path: /wt/feature/src/stores/config.ts', startedMs: STARTED + 5_400, endedMs: STARTED + 5_500 },
+    { id: 'e3', name: 'Write', input: '/wt/feature/src/stores/ai-status.ts', startedMs: STARTED + 5_600, endedMs: STARTED + 5_700 },
+    { id: 'e4', name: 'Edit', input: '/wt/feature/README.md', startedMs: STARTED + 5_800, endedMs: STARTED + 5_900, isError: true },
+  ]
+
+  const canvas = new Canvas(127, 34)
+
+  // Past the last tab: the dialog keeps the tab by its place and clamps it, so
+  // this opens on whichever tab is last.
+  paint(canvas, run, {
+    nowMs: STARTED + 20_000,
+    tick: 0,
+    orientation: 'vertical',
+    selectedId: 'r1',
+    detailRows: 24,
+    detailTab: 99,
+  })
+
+  const rows = rowsOf(canvas)
+  const text = rows.join('\n')
+
+  expect(text).toContain('Changes (3)')
+  expect(text).toContain('2 files changed, in 3 calls')
+  expect(rows.some(row => /2 edits\s+\/wt\/feature\/src\/stores\/config\.ts/.test(row))).toBe(true)
+  expect(rows.some(row => /written\s+\/wt\/feature\/src\/stores\/ai-status\.ts/.test(row))).toBe(true)
+  // An edit that failed changed nothing, and is said to have failed.
+  expect(rows.some(row => /0 edits\s+\/wt\/feature\/README\.md\s+1 failed/.test(row))).toBe(true)
+})

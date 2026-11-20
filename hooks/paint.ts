@@ -7884,6 +7884,42 @@ function paintDetail(
     })
   }
 
+  // What the agent changed, file by file: the question a reader of a pipeline's
+  // develop step opens it to answer, and one the call list answers only after
+  // the reader has picked the edits out from among the reads and the commands.
+  // Last among the tabs, because the open tab is kept by its place as the
+  // reader moves from agent to agent, and most agents change nothing.
+  const changes = changesOf(calls)
+
+  if (changes.length > 0) {
+    const edits = changes.reduce((sum, file) => sum + file.edits, 0)
+    // A file whose every edit failed is listed, since the attempt is news, but
+    // not counted as changed: nothing in it is different.
+    const changed = changes.filter(file => file.edits > 0).length
+
+    sections.push({
+      tab: `Changes (${changes.length})`,
+      short: 'Changes',
+      lines: w => [
+        {
+          text: `${changed} ${changed === 1 ? 'file' : 'files'} changed, in ${edits} ${edits === 1 ? 'call' : 'calls'}`,
+          color: COLORS.dim,
+        },
+        { text: '', color: COLORS.dim },
+        ...changes.map(file => {
+          const label = file.wrote && file.edits === 1 ? 'written' : `${file.edits} ${file.edits === 1 ? 'edit' : 'edits'}`
+          const failed = file.failed > 0 ? `  ${file.failed} failed` : ''
+          const head = `${label.padEnd(9)}`
+
+          return {
+            text: `${head}${tailPath(file.path, Math.max(8, w - head.length - failed.length))}${failed}`,
+            color: file.failed > 0 ? mix(COLORS.text, COLORS.failed, 0.4) : COLORS.text,
+          }
+        }),
+      ],
+    })
+  }
+
   // One row of chrome for the tabs, not two: the strip is set into the rule that
   // used to close the title off from the reading, so naming the blocks costs
   // nothing a five-row dialog cannot pay.
@@ -9934,17 +9970,43 @@ function callPhrase(call: ToolCall, tight: boolean): string {
   }
 }
 
-/** The distinct files an agent has changed, in the order it first changed them. */
-function changedFiles(agent: AgentRow): string[] {
-  const seen: string[] = []
+/** One file an agent changed: how many calls changed it, whether one wrote it whole, how many failed. */
+type FileChange = { path: string; edits: number; wrote: boolean; failed: number }
 
-  for (const call of agent.calls ?? []) {
-    if (CHANGES.has(call.name) && !call.isError && call.input && !seen.includes(call.input)) {
-      seen.push(call.input)
+/** Every file the calls changed, in the order each was first changed. */
+function changesOf(calls: ToolCall[]): FileChange[] {
+  const files: FileChange[] = []
+
+  for (const call of calls) {
+    if (!CHANGES.has(call.name) || !call.input) {
+      continue
     }
+
+    const path = call.input.replace(/^[a-z_][a-z0-9_]*:\s+/i, '').split('\n')[0]!.trim()
+    let file = files.find(f => f.path === path)
+
+    if (!file) {
+      file = { path, edits: 0, wrote: false, failed: 0 }
+      files.push(file)
+    }
+
+    if (call.isError) {
+      file.failed++
+      continue
+    }
+
+    file.edits++
+    file.wrote ||= call.name === 'Write'
   }
 
-  return seen
+  return files.filter(f => f.edits > 0 || f.failed > 0)
+}
+
+/** The distinct files an agent has changed, in the order it first changed them. */
+function changedFiles(agent: AgentRow): string[] {
+  return changesOf(agent.calls ?? [])
+    .filter(file => file.edits > 0)
+    .map(file => file.path)
 }
 
 /**

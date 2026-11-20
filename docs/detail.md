@@ -207,6 +207,26 @@ The panes are the same four they always were:
   figure. Both ends of a call are stamped in the recording, so a call read back
   from a transcript states its own duration like one this plugin watched.
 - **Thinking** while a request runs, **Response** once there is an answer.
+- **Changes**, for an agent that edited or wrote a file: every file it changed,
+  in the order it first changed it, with how many calls changed it — `written`
+  where one `Write` made it whole — and how many of its edits failed.
+
+  ```
+  2 files changed, in 3 calls
+
+  2 edits  /wt/feature/src/stores/config.ts
+  written  /wt/feature/src/stores/ai-status.ts
+  0 edits  /wt/feature/README.md  1 failed
+  ```
+
+  It answers the question a reader of a pipeline's develop step opens the
+  dialog for, which the call list answers only once the edits have been picked
+  out from among the reads and the commands. It is the last tab, because the
+  open tab is kept by its place as the reader moves from agent to agent and most
+  agents change nothing; a tab that came and went in the middle would move the
+  ones after it. A file whose every edit failed is listed, since the attempt is
+  news, and not counted as changed. The sentence above the bar counts the same
+  files the same way.
 
 ## A prompt is read as the document it was written as
 
