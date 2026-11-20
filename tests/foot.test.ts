@@ -144,18 +144,19 @@ test('the row says what the pane is set to, in the dialog own words', async ($, 
   const { texts } = footOf(nodes)
   const state = texts.find(t => t.includes('│')) ?? ''
 
-  // Every fact is named, in the dialog's own word for it: `tokyo-night` alone
-  // is an answer to a question that is not on screen, and a reader who has not
-  // opened the dialog has no way to tell which word is the setting and which
-  // the value.
-  expect(state).toContain('Layout: fits')
-  expect(state).toContain('Theme: tokyo-night')
-  expect(state).toContain('Detail height: 24 rows')
+  // The dialog's own word for each, and nothing else: the row is read beside
+  // the dialog rather than instead of it, so a value that matches the word the
+  // dialog offers is the whole of what the row has to say. Naming each setting
+  // as well spent half the row repeating the question.
+  expect(state).toContain('fits')
+  expect(state).toContain('tokyo-night')
+  expect(state).toContain('24 rows')
 
   // In the order the dialog lists them: a footer that reads down while the
-  // dialog reads across is two names for one setting.
-  expect(state.indexOf('Theme')).toBeGreaterThan(state.indexOf('Layout'))
-  expect(state.indexOf('Detail height')).toBeGreaterThan(state.indexOf('Theme'))
+  // dialog reads across is two names for one setting, and with the names gone
+  // the order is what says which value belongs to which.
+  expect(state.indexOf('tokyo-night')).toBeGreaterThan(state.indexOf('fits'))
+  expect(state.indexOf('24 rows')).toBeGreaterThan(state.indexOf('tokyo-night'))
 
   // One rule before each fact, the same rule the top bar divides with: three
   // facts, three rules. Spaced instead, the row read as one sentence with no
@@ -201,16 +202,16 @@ test('what will not fit is dropped from the end, and the name goes last', async 
   stubEngine(on)
 
   const wide = footOf(flatten(await renderPane($, 88)))
-  const middle = footOf(flatten(await renderPane($, 60)))
+  const middle = footOf(flatten(await renderPane($, 52)))
   const narrow = footOf(flatten(await renderPane($, 30)))
 
   const stateOf = (texts: string[]) => texts.find(t => t.includes('│')) ?? ''
 
-  expect(stateOf(wide.texts)).toContain('Detail height: 24 rows')
+  expect(stateOf(wide.texts)).toContain('24 rows')
   // The detail height is the first to go: it matters while a node is open, and
   // the layout is the one a reader changes most.
-  expect(stateOf(middle.texts)).not.toContain('Detail height')
-  expect(stateOf(middle.texts)).toContain('Layout: fits')
+  expect(stateOf(middle.texts)).not.toContain('24 rows')
+  expect(stateOf(middle.texts)).toContain('fits')
   expect(stateOf(narrow.texts)).toBe('')
 
   // The name outlasts every fact, because a pane that will not say what it is
@@ -268,7 +269,7 @@ test('the row says the layout a session picked up from the store', async ($, on)
   const { texts } = footOf(flatten(await renderPane($, 90)))
   const state = texts.find(t => t.includes('\u2502')) ?? ''
 
-  expect(state).toContain('Layout: vertical')
+  expect(state).toContain('vertical')
 })
 
 test('the name at the far right is stamped with the version the manifest states', async ($, on) => {
@@ -338,4 +339,43 @@ test('a session that never read a manifest stamps the row with the version the b
   const { buttons } = footOf(flatten(await renderPane($)))
 
   expect(String(buttons[1]?.props?.label ?? '')).toBe(`${NAME} ${VERSION}`)
+})
+
+test('the middle of the row says what else the session has run, and says nothing of one run', async ($, on) => {
+  mock.clock(on, { now: 1_000 })
+  stubEngine(on)
+
+  const launch = (runId: string) => ({
+    status: 'async_launched',
+    taskId: runId,
+    taskType: 'local_workflow',
+    runId,
+    workflowName: 'probe',
+    summary: 'a probe',
+    transcriptDir: `/session/subagents/workflows/${runId}`,
+  })
+
+  let next = 'wf_one'
+
+  on('tool.call', { tool: 'Workflow' }, () => ({ result: launch(next) }))
+
+  await $.tool.call({ tool: 'Workflow', script: 'export const meta = { name: "probe", description: "a probe" }' })
+
+  const alone = footOf(flatten(await renderPane($, 110))).texts.join(' ')
+
+  // One run is not a list, and a row saying `1 run` beside a name that opens
+  // nothing is a reader sent to press it.
+  expect(alone).not.toContain('run this session')
+  expect(alone).not.toContain('runs this session')
+
+  next = 'wf_two'
+
+  await $.tool.call({ tool: 'Workflow', script: 'export const meta = { name: "probe", description: "a probe" }' })
+
+  const both = footOf(flatten(await renderPane($, 110))).texts.join(' ')
+
+  // The one thing the pane knows here that nothing else on screen says while a
+  // run is drawing — and the way to the rest of them, which is the run's own
+  // name up in the bar.
+  expect(both).toContain('2 runs this session')
 })

@@ -14,6 +14,7 @@
  *   bun dev/preview.ts --settings            with the settings dialog open
  *   bun dev/preview.ts --menu theme          with that setting's list unrolled
  *   bun dev/preview.ts --about               with the About dialog open
+ *   bun dev/preview.ts --zoom 4              the timeline at four panes of axis
  *   bun dev/preview.ts --scrolly 12          the drawing scrolled down 12 cells
  *   bun dev/preview.ts --follow              the window on the phase the run is in
  *   bun dev/preview.ts --open '▸ name'       with that nested run unfolded
@@ -137,6 +138,7 @@ if (has('animate')) {
     fromRun: arg('fromrun'),
     bodyScroll: { x: Number(arg('scrollx', '0')), y: Number(arg('scrolly', '0')) },
     follow: has('follow'),
+    zoom: Number(arg('zoom', '1')),
     // A step inside a nested run is keyed with a null between the run's name and
     // the step's number, which nothing can type. `--open '▸ name#2'` says
     // the same thing.

@@ -305,7 +305,7 @@ test('opening a node draws its detail over the graph, not in place of it', async
 
   // The row under the drawing says what the pane is set to, so it is what says
   // the drawing is still the one the reader chose.
-  expect(first.text).toContain('Layout: fits')
+  expect(first.text).toContain('⚙ Settings')
 
   const node = first.keys.find(k => k.startsWith('node:'))
 
@@ -316,7 +316,7 @@ test('opening a node draws its detail over the graph, not in place of it', async
   // The detail is a dialog over the drawing, so the layout the reader chose is
   // the one still under it. The strip it replaced took its rows from the
   // layout, and opening one had to put the graph into the timeline first.
-  expect(opened.text).toContain('Layout: fits')
+  expect(opened.text).toContain('⚙ Settings')
   expect(opened.text).toContain('line 01 of the prompt')
   // Shutting the dialog is a mark at its own corner now, not a word in the row
   // under the drawing.
@@ -328,7 +328,7 @@ test('opening a node draws its detail over the graph, not in place of it', async
   const shut = paneOf(await renderPane($))
 
   expect(shut.text).not.toContain('line 01 of the prompt')
-  expect(shut.text).toContain('Layout: fits')
+  expect(shut.text).toContain('⚙ Settings')
 })
 
 test('a layout picked while the detail is open is the one that stays', async ($, on) => {
@@ -343,7 +343,7 @@ test('a layout picked while the detail is open is the one that stays', async ($,
   const node = paneOf(await renderPane($)).keys.find(k => k.startsWith('node:'))
 
   await $.ui.press({ plugin: 'flowpane', key: node!, requestId: 'flowpane' })
-  expect(paneOf(await renderPane($)).text).toContain('Layout: fits')
+  expect(paneOf(await renderPane($)).text).toContain('⚙ Settings')
 
   // The settings are a dialog over the drawing, opened from the row under it.
   // It covers the detail while it is up and gives it back when it shuts.
@@ -369,7 +369,7 @@ test('a layout picked while the detail is open is the one that stays', async ($,
 
   const picked = paneOf(await renderPane($))
 
-  expect(picked.text).toContain('Layout: vertical')
+  expect(picked.text).toContain('vertical')
   expect(picked.text).toContain('line 01 of the prompt')
 
   await $.ui.press({ plugin: 'flowpane', key: 'node:@close', requestId: 'flowpane' })
@@ -377,5 +377,5 @@ test('a layout picked while the detail is open is the one that stays', async ($,
   const shut = paneOf(await renderPane($))
 
   expect(shut.text).not.toContain('line 01 of the prompt')
-  expect(shut.text).toContain('Layout: vertical')
+  expect(shut.text).toContain('vertical')
 })

@@ -699,6 +699,7 @@ test('every rail the pane draws has somewhere to go, and every overrun has a rai
     }
   }
 
+  if (wrong.length) console.log('WRONG ' + wrong.length + '\n' + wrong.slice(0, 12).join('\n'))
   expect(wrong.slice(0, 5)).toEqual([])
 })
 
@@ -893,23 +894,38 @@ test('the timeline rules a time axis, and carries its ticks down the rows', () =
   expect(rows.slice(ruler + 1).some(row => row[tick] === '┆')).toBe(true)
 })
 
-test('a timeline too fine for the pane scrolls sideways along its own scale', () => {
+test('a timeline opens with the whole run in the pane, and nothing to scroll along', () => {
   const run = traced()
   const canvas = new Canvas(110, 24)
   const drawn = paint(canvas, run, {
     nowMs: STARTED + 280_000, tick: -1, orientation: 'timeline', follow: false,
   })
 
-  // Squeezed into whatever the pane had left, an agent that took a second and
-  // one that took two minutes were the same two cells. The axis takes the cells
-  // the run needs instead, and the body scrolls to the rest of it.
+  // The axis used to open at whatever scale gave the shortest agent a cell of
+  // its own, which on this run is four panes wide: two thirds of the rows had
+  // no bar in the window at all. A trace whose rows do not carry bars is not a
+  // trace, so the run is fitted and the resolution is a press.
+  expect(drawn.body?.spanX ?? 0).toBe(0)
+  expect(rowsOf(canvas)[canvas.rows - 1]).not.toContain('▸')
+})
+
+test('zoomed, the timeline scrolls sideways along a scale the pane is a window on', () => {
+  const run = traced()
+  const canvas = new Canvas(110, 24)
+  const drawn = paint(canvas, run, {
+    nowMs: STARTED + 280_000, tick: -1, orientation: 'timeline', follow: false, zoom: 4,
+  })
+
+  // Asked for, the finer scale is what it always was: an agent that took a
+  // second and one that took two minutes stop being the same two cells, and the
+  // body scrolls to the rest of the axis.
   expect(drawn.body?.spanX ?? 0).toBeGreaterThan(0)
   expect(rowsOf(canvas)[canvas.rows - 1]).toContain('▸')
 
   const moved = new Canvas(110, 24)
 
   paint(moved, run, {
-    nowMs: STARTED + 280_000, tick: -1, orientation: 'timeline', follow: false,
+    nowMs: STARTED + 280_000, tick: -1, orientation: 'timeline', follow: false, zoom: 4,
     bodyScroll: { x: drawn.body?.spanX ?? 0, y: 0 },
   })
 

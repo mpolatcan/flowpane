@@ -190,6 +190,8 @@ const state: {
   bodyView: BodyScroll | null
   /** Whether the body follows the phase the run is working in. */
   following: boolean
+  /** How far the timeline is zoomed in, as panes of axis. */
+  zoom: number
   /** The phase the last paint said the run was working in, to see it change. */
   front: string | null
   /** True while the run name's list is unrolled under the top bar. */
@@ -240,6 +242,7 @@ const state: {
   opened: [],
   bodyView: null,
   following: true,
+  zoom: 1,
   front: null,
   picking: false,
   runScroll: null,
@@ -668,6 +671,7 @@ function paintOptions(nowMs: number): PaintOptions {
     detailTab: state.detailTab,
     bodyScroll: state.bodyScroll,
     follow: state.following,
+    zoom: state.zoom,
     opened: state.opened,
     runPicker: canPickRun() ? (state.picking ? 'open' : 'shut') : undefined,
     runs: state.picking ? state.runs.map(runEntry) : undefined,
@@ -1614,15 +1618,14 @@ const RULE_ACROSS = '\u2500'
  *
  * The settings are a dialog now, and the row is built like the bar at the top
  * of the pane, which is the other row a reader reads rather than looks at: the
- * control in the left gutter, the quiet facts in the middle, and the identity
- * at the far right.
+ * control in the left gutter, the quiet state beside it, what the session has
+ * run in the middle, and the identity at the far right.
  *
- * Each fact is named and every one is divided from the next by the same rule
- * the top bar uses — `Layout: across │ Theme: gruvbox` — so a reader who has
- * never opened the dialog can still tell which word is the setting and which is
- * the value. Unnamed and spaced, the row read as a list of four words from a
- * vocabulary nobody has been taught: `fits  gruvbox  24-row detail` is three
- * answers to three questions that are not on screen.
+ * Every fact is divided from the next by the same rule the top bar uses —
+ * `vertical │ gruvbox │ 24 rows` — so the boundaries a reader needs are the
+ * ones that are drawn. Spaced instead, the row read as one sentence with
+ * nothing to say where one setting ended and the next began. What each fact is a value *of* is the
+ * dialog's business: see `settingsFacts`.
  *
  * The name at the right is the About button. An `i` in a circle is two cells
  * wide in some terminals and one in others, and the row is a grid; what a
@@ -1651,7 +1654,9 @@ function footerRow(Box: Element, Text: Element, Button: Element | undefined): un
       // reads as quiet next to two buttons that are dim at rest and light under
       // the pointer. A hue here would compete with the things to press.
       Text({ dimColor: true, children: row.state }),
-      Text({ children: ' '.repeat(row.gap) }),
+      Text({ children: ' '.repeat(row.leftGap) }),
+      ...(row.session === '' ? [] : [Text({ dimColor: true, children: row.session })]),
+      ...(row.rightGap > 0 ? [Text({ children: ' '.repeat(row.rightGap) })] : []),
       ...(row.stamp ? [control(Button, ABOUT, stamp, pressAbout)] : []),
     ],
   })
@@ -1673,19 +1678,26 @@ function footerWidths(
   columns: number,
   labelW: number,
   stampW: number,
-): { state: string; gap: number; stamp: boolean } {
+): { state: string; session: string; leftGap: number; rightGap: number; stamp: boolean } {
   const facts = settingsFacts()
+  const fact = sessionFact()
 
   if (columns <= 0) {
-    return { state: ` ${RULE} ${facts.join(` ${RULE} `)}`, gap: 3, stamp: true }
+    return {
+      state: ` ${RULE} ${facts.join(` ${RULE} `)}`,
+      session: '',
+      leftGap: 3,
+      rightGap: 0,
+      stamp: true,
+    }
   }
 
   const stamp = columns - labelW >= stampW + FOOTER_GAP
   let room = columns - labelW - (stamp ? stampW + FOOTER_GAP : 0)
   let state = ''
 
-  for (const fact of facts) {
-    const next = ` ${RULE} ${fact}`
+  for (const value of facts) {
+    const next = ` ${RULE} ${value}`
 
     if (next.length > room) {
       break
@@ -1695,9 +1707,18 @@ function footerWidths(
     room -= next.length
   }
 
+  // The session's fact is the first thing to give way, and it takes the room
+  // the settings left rather than room of its own: it is worth a glance where
+  // there is nothing else in those cells, and never worth a setting's word.
+  const session = fact !== '' && room >= fact.length + FOOTER_GAP * 2 ? fact : ''
+  const spare = columns - labelW - state.length - session.length - (stamp ? stampW : 0)
+  const rightGap = session === '' ? 0 : FOOTER_GAP
+
   return {
     state,
-    gap: Math.max(stamp ? FOOTER_GAP : 0, columns - labelW - state.length - (stamp ? stampW : 0)),
+    session,
+    leftGap: Math.max(stamp || session !== '' ? FOOTER_GAP : 0, spare - rightGap),
+    rightGap,
     stamp,
   }
 }
@@ -1713,17 +1734,46 @@ const FOOTER_GAP = 2
  * and in the order the dialog lists them.
  *
  * The row says the state and the dialog changes it, so the two have to agree
- * word for word: a footer reading `Layout: vertical` beside a dialog offering
- * `horizontal vertical timeline list fits` is two names for one setting. They agree on the
- * order as well, so a reader scanning the row and a reader scanning the dialog
- * are reading the same list.
+ * word for word: a footer reading `vertical` beside a dialog offering
+ * `horizontal vertical timeline list fits` is two names for one setting. They
+ * agree on the order as well, so a reader scanning the row and a reader
+ * scanning the dialog are reading the same list.
+ *
+ * The values used to carry their settings' names — `Layout: vertical │ Theme:
+ * monokai │ Detail height: 24 rows` — on the grounds that three unnamed words
+ * are three answers to questions that are not on screen. They spent half the
+ * row saying what the dialog says the moment it opens, and the row is read
+ * beside that dialog rather than instead of it: the order is the dialog's
+ * order, so the first word is the layout wherever the reader learned that, and
+ * `24 rows` names its own unit. What the names bought was a first reading, at
+ * the price of every reading after it.
  */
 function settingsFacts(): string[] {
-  return [
-    `Layout: ${layoutWord()}`,
-    `Theme: ${state.theme}`,
-    `Detail height: ${state.detailRows} rows`,
-  ]
+  return [layoutWord(), state.theme, `${state.detailRows} rows`]
+}
+
+/**
+ * What the session has run, for the room the settings leave in the middle.
+ *
+ * The row's whole middle was a stretch of spaces holding the two ends apart.
+ * The pane knows one thing there that nothing else on screen says while a run
+ * is drawing — how many other runs this session has left behind — and that is
+ * also the way to them: the run's name up in the bar opens the list. A reader
+ * who does not know there is a list has no reason to press a name.
+ *
+ * One run is not a list, so it says nothing at all rather than `1 run`.
+ */
+function sessionFact(): string {
+  const runs = state.runs.length
+
+  if (runs < 2) {
+    return ''
+  }
+
+  const running = state.runs.filter(r => r.status === 'running').length
+  const tally = `${runs} runs this session`
+
+  return running > 0 ? `${running} running ${RULE} ${tally}` : tally
 }
 
 /** The same facts as one line, for a seat that draws no buttons to divide them. */

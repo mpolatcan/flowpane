@@ -8,7 +8,7 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | --- | --- |
 | A node's label | opens that agent's detail dialog; click again to close |
 | ⚙ Settings | opens the settings dialog over the drawing |
-| `flowpane 0.10.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
+| `FlowPane 0.11.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
 | A setting's value | unrolls that setting's list where it stands; press it again to roll the list up |
 | The graph, with any dialog open | takes no presses — it is pushed back behind the dialog until the dialog shuts |
 | Layout | horizontal, vertical, timeline, list, or fits the shape — picked by name |
@@ -29,7 +29,7 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | The `▾ 6 agents` on a step of an opened nested run | folds the rows that ran at once in that step into one row saying how many; press it again to stand them out. Only a step holding more than one row carries it, and only inside a nested run: a phase of the calling run that fanned out to six agents is six cards either way. Folding the run itself back forgets every fold made inside it |
 | A row of the Tool Calls list | opens that call in a dialog of its own, over the agent's: what it was passed and what came back, each in a compartment of the box with its own shelf, its own bar and its own place kept, and the middle of a long value left out and counted. The wheel moves whichever compartment the pointer is over. `◂ Back` in the top corner returns to the list at the row it was left on; `✕` shuts the reading altogether |
 | ◂ / ▸ (on the pane's last row) | scrolls the drawing eight cells sideways, where it is wider than the body. On the timeline this moves the time axis, which has a scale of its own and is usually wider than the pane; the labels and the figures stay put |
-| The run's name | opens the session's other runs as a menu under it, once there is more than one; grouped by state, most recent first, each with the second it started on. Unscrolled it opens on the run the pane is drawing, which is the one the list was opened to move off. Picking one moves the drawing to it, live or finished |
+| The run's name | opens the session's other runs as a menu under it, once there is more than one; grouped by state, most recent first, each with the second it started on. Unscrolled it opens on the run the pane is drawing, which is the one the list was opened to move off. Picking one moves the drawing to it, live or finished. It stands twelve rows at every size of pane and scrolls to the rest: grown to the height of the pane it covered the run it was opened from, so a reader choosing between two runs had neither of them on screen to choose by |
 | ▴ / ▾ (down a run list) | scrolls the session's runs three rows, wherever the list is drawn — the menu under the bar, or the idle pane. Grey at either end, with a thumb between them saying how much of the list is on screen. The wheel over an open list moves it too |
 | A run on the idle pane | draws it. With nothing running the pane lists the session's runs in place of the graph, grouped and timed the same way |
 
@@ -176,8 +176,8 @@ The way in at one end, what the pane is at the other, and the state between
 them.
 
 ```
-────────────────────────────────────────────────────────────────────────────────────────
-⚙ Settings │ Layout: fits │ Theme: tokyo-night │ Detail height: 24 rows   flowpane 0.10.0
+────────────────────────────────────────────────────────────────────────────────────────────────
+⚙ Settings │ fits │ tokyo-night │ 24 rows       3 running │ 3 runs this session  FlowPane 0.11.0
 ```
 
 A line divides it from the drawing. Everything above the line is one canvas and
@@ -200,37 +200,52 @@ and still could not show them what they were choosing.
 
 What replaced it is the part worth having on screen the whole time: what the
 pane is currently set to, in the same words the dialog offers and in the order
-the dialog lists them. A footer reading `Layout: vertical` beside a dialog offering
+the dialog lists them. A footer reading `down` beside a dialog offering
 `horizontal vertical timeline list fits` would be two names for one setting, and a
 footer reading them back in a different order would be two lists.
 
-Each fact is named, in the dialog's own word for it. `tokyo-night` on its own is
-an answer to a question that is not on screen: a reader who has never opened the
-dialog has no way to tell which of those words is a setting and which a value,
-and `fits` beside it could be anything. `Theme: tokyo-night` costs seven cells
-and says what it is.
+The values stand bare. They carried their settings' names until 0.11.0 —
+`Layout: fits │ Theme: tokyo-night │ Detail height: 24 rows` — on the grounds
+that three unnamed words are three answers to questions that are not on screen.
+What the names bought was a first reading, at the price of every reading after
+it: they spent half the row saying what the dialog says the moment it opens, and
+the row is read beside that dialog rather than instead of it. The order is the
+dialog's order, so the first word is the layout wherever a reader learned that,
+and `24 rows` names its own unit.
 
 The row is built like the bar at the top of the pane, which is the other row a
 reader reads rather than looks at: the control in the left gutter, the quiet
-facts in the middle, the identity at the far right. One rule stands before each
+state beside it, the identity at the far right. One rule stands before each
 fact — the same rule the top bar divides with — so the boundaries a reader
 needs are the ones that are drawn. Spaced instead, the row read as one sentence
 with nothing to say where one setting ended and the next began.
 
-**It never wraps.** A footer one cell wider than the pane costs the drawing a
-row and puts half the state under the graph, so what will not fit is dropped
-from the end — the detail height first, which matters while a node is open,
-then the palette, which can be read off the pane itself, and last the layout,
-which is the one a reader changes most.
+The middle was a stretch of spaces holding those two ends apart. It says what
+the session has run instead — `3 runs this session`, and how many of them are
+still going while any are. That is the one thing the pane knows there that
+nothing else on screen says while a run is drawing, and it is also the way to
+the rest of them: the run's name in the top bar opens the list, and a reader who
+does not know there is a list has no reason to press a name. One run is not a
+list, so a session with one says nothing at all rather than `1 run`.
 
-The same pane at 88, 72, 44, 30 and 22 columns:
+**It never wraps.** A footer one cell wider than the pane costs the drawing a
+row and puts half the state under the graph, so what will not fit is dropped.
+The session's tally goes first, and it takes only the room the settings left
+over — it is worth a glance where there is nothing else in those cells, and
+never worth a setting's word. Then the state gives way from its end: the detail
+height, which matters while a node is open, then the palette, which can be read
+off the pane itself, and last the layout, which is the one a reader changes
+most.
+
+The same pane at 96, 88, 72, 44, 30 and 22 columns:
 
 ```
-⚙ Settings │ Layout: fits │ Theme: tokyo-night │ Detail height: 24 rows   flowpane 0.10.0
-⚙ Settings │ Layout: fits │ Theme: tokyo-night            flowpane 0.10.0
-⚙ Settings │ Layout: fits     flowpane 0.10.0
-⚙ Settings      flowpane 0.10.0
-⚙ Settings            
+⚙ Settings │ fits │ tokyo-night │ 24 rows       3 running │ 3 runs this session  FlowPane 0.11.0
+⚙ Settings │ fits │ tokyo-night │ 24 rows                                FlowPane 0.11.0
+⚙ Settings │ fits │ tokyo-night │ 24 rows                FlowPane 0.11.0
+⚙ Settings │ fits            FlowPane 0.11.0
+⚙ Settings     FlowPane 0.11.0
+⚙ Settings │ fits     
 ```
 
 The name has first call on that width. A pane that will not say what it is has
@@ -255,7 +270,7 @@ reader presses to find out what this is, is what it is called.
 ## What the pane is
 
 ```
-╭─────────────────── flowpane 0.10.0 ───────────────────── ✕ ─╮
+╭─────────────────── FlowPane 0.11.0 ───────────────────── ✕ ─╮
 │                                                            │
 │ A live picture of the agents a workflow runs: what each    │
 │ one is doing, what it has spent, and what it answered.     │

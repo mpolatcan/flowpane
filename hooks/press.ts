@@ -35,6 +35,9 @@ import {
   SETTINGS,
   SETTINGS_CLOSE,
   useTheme,
+  ZOOM_IN,
+  ZOOM_OUT,
+  ZOOMS,
   type BodyScroll,
   type DetailView,
   type RunWindow,
@@ -45,7 +48,7 @@ import { nextTheme, THEMES } from './theme'
 // The bounds belong to the dialog they size, and the settings dialog greys out
 // a step that would go past either of them. Re-exported so the plugin still has
 // one place to read what a press can do.
-export { BAND_OPEN, MAX_DETAIL, MIN_DETAIL, SETTING_MENUS, type BodyScroll, type SettingMenu } from './paint'
+export { BAND_OPEN, MAX_DETAIL, MIN_DETAIL, SETTING_MENUS, ZOOM_IN, ZOOM_OUT, ZOOMS, type BodyScroll, type SettingMenu } from './paint'
 
 /** Everything a press can change. The plugin's own state is a superset of it. */
 export type PaneView = {
@@ -105,6 +108,16 @@ export type PaneView = {
    * reader has to remember to leave.
    */
   following: boolean
+  /**
+   * How far the timeline is zoomed in, as panes of axis.
+   *
+   * `1` is the whole run in one pane, which is where every run starts: a
+   * timeline a reader has to scroll before it says anything is a timeline that
+   * opens on a detail of a run they have not seen the shape of yet. The steps
+   * above it give the scale more cells than the pane holds, for the spans one
+   * pane draws as a sliver.
+   */
+  zoom: number
   /** The phase the last paint said the run was working in, to see it change. */
   front: string | null
   /**
@@ -393,6 +406,23 @@ export function applyPress(
 ): PressResult {
   if (pressed === 'runs-up' || pressed === 'runs-down') {
     scrollRuns(view, context.runList ?? null, pressed === 'runs-up' ? -RUNS_STEP : RUNS_STEP)
+
+    return {}
+  }
+
+  // The scale steps rather than slides: three stops a reader can press through
+  // and back, where a free zoom would need a number in front of them and a way
+  // to type it.
+  if (pressed === ZOOM_IN || pressed === ZOOM_OUT) {
+    const at = ZOOMS.indexOf(view.zoom)
+    const from = at === -1 ? 0 : at
+    const to = Math.max(0, Math.min(ZOOMS.length - 1, from + (pressed === ZOOM_IN ? 1 : -1)))
+
+    view.zoom = ZOOMS[to] ?? 1
+    // The cells moved under the offset, so the column the reader was parked on
+    // is not the moment it was. Back to the start of the run, which is the one
+    // column that means the same thing at every scale.
+    view.bodyScroll = { x: 0, y: view.bodyScroll.y }
 
     return {}
   }

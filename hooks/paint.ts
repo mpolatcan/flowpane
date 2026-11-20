@@ -279,6 +279,49 @@ const REQUEST_MARK = '\u21c4'
 /** How many agents: two of a thing joined, because that is what it counts. */
 const FLEET_MARK = '\u29c9'
 
+/**
+ * The timeline's own three marks: the wait before a bar, a span shorter than
+ * the scale can draw, and the chain that set how long the run took.
+ *
+ * A dot is not a dash. The grid's ticks run down the drawing and the leader
+ * runs along a row, so the two are told apart by direction before they are told
+ * apart by tone — which matters, because they are drawn in the same grey and
+ * cross each other on every row.
+ */
+const LEAD = 0x00b7
+const SLIVER = 0x258f
+const CRITICAL = 0x2503
+
+/**
+ * The gutter the critical chain is drawn in, and the cell of air after it.
+ *
+ * Every row of the timeline starts this far in, so the chain has a column of
+ * its own. It cannot share the one the state marks stand in: a Button carries
+ * no colour, so a mark inside a name's hotspot comes out in the label's plain
+ * text — and a mark drawn hard against the state mark reads as part of it. The
+ * column costs one cell of every name; it buys the one reading a trace is
+ * opened for that a column of durations cannot give.
+ */
+const CHAIN_W = 2
+
+/**
+ * The least rule a phase heading leaves standing after its name.
+ *
+ * Enough to read a fill against: the stroke says how much of the phase has
+ * landed, and a stroke of one cell is either full or empty whatever has.
+ */
+const HEAD_RULE = 4
+
+/**
+ * What a phase heading holds back for its fold handle.
+ *
+ * The shortest rung that still says something — the mark, a count of two
+ * digits, and the blank the handle clears beside itself. A nested run whose
+ * name took the gutter whole was drawn with no handle at all, which is a run
+ * the reader cannot open.
+ */
+const HANDLE_W = 5
+
 /** Where a phase seam hangs off that rule. */
 const TEE_DONE = 0x252f
 const TEE_LEFT = 0x252c
@@ -327,6 +370,18 @@ export const SETTINGS = '@settings'
 
 /** The hotspot key the settings dialog's close mark carries. */
 export const SETTINGS_CLOSE = '@settings-close'
+
+/**
+ * The two presses that change the timeline's scale, and the cells they take.
+ *
+ * A zoom is a control a reader reaches for while reading, so it stands on the
+ * drawing rather than in the settings dialog: the axis is what it changes and
+ * the axis is what they are looking at.
+ */
+export const ZOOM_IN = '@zoom-in'
+export const ZOOM_OUT = '@zoom-out'
+const ZOOM_W = 7
+const DASH_LESS = '\u2212'
 
 /**
  * The hotspot key the pane's own name carries, at the far end of the foot row.
@@ -394,6 +449,13 @@ export type PaintOptions = {
    * the pane shows when it is off.
    */
   follow?: boolean
+  /**
+   * How far into the run the timeline is zoomed, as panes of axis: `1` fits the
+   * whole run in the pane, and the steps above it give the scale more cells
+   * than the pane has and let the reader scroll along it. Read only by the
+   * timeline; see {@link ZOOMS}.
+   */
+  zoom?: number
   /**
    * Whether the run's name opens the list of the session's other runs, and
    * whether that list is open. Absent where there is nothing to choose between.
@@ -3248,6 +3310,7 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
       options.bodyScroll?.y ?? 0,
       options.bodyScroll?.x ?? 0,
       options.follow !== false,
+      options.zoom ?? 1,
     )
 
     onCanvas(c, hotspots, c.rows)
@@ -4606,6 +4669,16 @@ function paintAheadRow(c: Canvas, phases: string[], row: number, over: boolean):
 }
 
 /**
+ * The most rows of the session's runs the menu stands at once.
+ *
+ * Four headings and eight runs: a session's recent work, which is what the
+ * menu is reached for. The rest is a scroll away, and the list is grouped, so
+ * what a reader is looking for is in the pile its mark names rather than
+ * somewhere down a page of forty.
+ */
+const MENU_ROWS = 12
+
+/**
  * The list the run's name opens, unrolled from under the name itself.
  *
  * It is drawn into the canvas rather than mounted as a chooser under the
@@ -4633,7 +4706,14 @@ function paintRunMenu(
   // What the menu can show is what stands below the bar — and it leaves the
   // last row alone, where the graph says how much of itself it had to leave
   // out. A pane with no room for one entry and its frame gets no menu.
-  const room = c.rows - top - 3
+  //
+  // Past `MENU_ROWS` it stops growing and scrolls instead. It used to take
+  // every row there was, so on a tall pane the menu covered the run it was
+  // opened from: a reader picking between two runs had nothing of either on
+  // screen to pick by, and a list of six stood in a box built for thirty-seven
+  // with the rest of it empty. One height at every size of pane, and the bar
+  // down its side for the rest — the bargain the drawing itself already makes.
+  const room = Math.min(MENU_ROWS, c.rows - top - 3)
   const across = c.columns - 4
 
   if (room < 1 || across < 6) {
@@ -6059,6 +6139,60 @@ function paintRuler(
  * back. It is structure rather than a line anything travels along, so it stops
  * wherever a bar or a word already stands and picks up again underneath.
  */
+/**
+ * The whole run in one row, with the part the pane is over drawn bright.
+ *
+ * Zoomed in, the window is a pane or two of an axis several panes wide, and
+ * every other row is inside that window: nothing on the drawing says whether
+ * the reader is at the start of the run or the end of it, or how much of it
+ * they have not seen. The ribbon is the run laid out whole at whatever scale
+ * one row allows — how many agents were going at each moment, as shading — and
+ * the window is simply the stretch of it that is lit.
+ *
+ * Grey, at two weights, because it is furniture: what has colour on this
+ * drawing is the agents.
+ */
+function paintRibbon(
+  c: Canvas,
+  y: number,
+  axisX: number,
+  axisW: number,
+  run: RunState,
+  startMs: number,
+  span: number,
+  openEnd: number,
+  atX: number,
+  axisSpan: number,
+  tone: Rgb,
+  lit: Rgb,
+): void {
+  const SHADES = [0x2591, 0x2592, 0x2593, 0x2588]
+  const busy = new Array(axisW).fill(0)
+
+  for (const agent of run.agents) {
+    const from = Math.floor(((agent.startedMs - startMs) / span) * axisW)
+    const to = Math.floor((((agent.endedMs ?? openEnd) - startMs) / span) * axisW)
+
+    for (let i = Math.max(0, from); i <= Math.min(axisW - 1, to); i++) {
+      busy[i] += 1
+    }
+  }
+
+  const most = Math.max(1, ...busy)
+  // Where the pane sits on the whole axis, in the ribbon's own cells.
+  const from = Math.floor((atX / axisSpan) * axisW)
+  const to = Math.min(axisW - 1, Math.ceil(((atX + axisW) / axisSpan) * axisW) - 1)
+
+  for (let i = 0; i < axisW; i++) {
+    const count = busy[i] ?? 0
+    const shade = count === 0
+      ? 0x20
+      : SHADES[Math.min(SHADES.length - 1, Math.floor(((count - 1) / most) * SHADES.length))]
+
+    c.put(axisX + i, y, shade, i >= from && i <= to ? lit : tone)
+  }
+}
+
 function paintGrid(
   c: Canvas,
   from: number,
@@ -6081,12 +6215,152 @@ function paintGrid(
     for (let y = from; y < to; y++) {
       const cell = c.at(x, y)
 
-      if (cell === 0 || cell === 0x20) {
+      // A leader gives the cell up to a tick. Both are furniture, but the tick
+      // is the scale every bar is read against and the leader only says how
+      // long this one row waited — and a tick with a hole in it where a row
+      // happened to be waiting is a scale a reader cannot follow down the page.
+      if (cell === 0 || cell === 0x20 || cell === LEAD) {
         c.put(x, y, DASH_V, tone)
       }
     }
   }
 }
+
+/**
+ * The chain of agents that decided how long the run took.
+ *
+ * Walked back from whichever agent landed last: the latest-landing agent that
+ * was already done when this one started is what this one waited for, and the
+ * walk repeats from there. It is the trace reading of the run — every other
+ * agent could have taken longer without the run taking longer, and these could
+ * not.
+ *
+ * Read off the clocks rather than off `sourcesOf`, because what a trace asks is
+ * not who fed whom but who was waited on: two agents in the same wave can feed
+ * the same phase, and only the one that landed last held it up. An agent
+ * nothing preceded ends the chain.
+ */
+function criticalOf(run: RunState, openEnd: number): Set<string> {
+  const endOf = (agent: AgentRow) => agent.endedMs ?? openEnd
+  const chain = new Set<string>()
+
+  let at = run.agents.reduce<AgentRow | undefined>(
+    (last, agent) => (last === undefined || endOf(agent) > endOf(last) ? agent : last),
+    undefined,
+  )
+
+  while (at !== undefined) {
+    chain.add(at.agentId)
+
+    const started = at.startedMs
+    const before = run.agents.reduce<AgentRow | undefined>(
+      (best, agent) =>
+        agent.agentId === at?.agentId || chain.has(agent.agentId) || endOf(agent) > started
+          ? best
+          : best === undefined || endOf(agent) > endOf(best)
+            ? agent
+            : best,
+      undefined,
+    )
+
+    at = before
+  }
+
+  return chain
+}
+
+/**
+ * A phase's heading on the timeline: its name over the column the labels
+ * already own, with the rule after it filled as far as the phase has landed.
+ *
+ * Every other layout rules a band the width of the pane and sets the caption
+ * into it. On a timeline that rule crosses the one field the layout exists for.
+ * A bar cannot be compared with a bar in the phase above it when a stroke of
+ * structure runs between them, and the reading a trace is opened for — which
+ * agent held the run up, and what was waiting while it ran — is exactly a
+ * reading across those boundaries. So the phase names stand in the gutter and
+ * the time field is left to the bars.
+ */
+function paintPhaseHead(
+  c: Canvas,
+  x: number,
+  y: number,
+  width: number,
+  facts: PhaseFacts,
+  reserve: number,
+): { x: number; used: number } {
+  // The rule is not what is left over after the name. A phase called
+  // `▸ code-review:ai-review` takes a gutter whole, and the stroke that went
+  // missing behind it was carrying two things a name does not say: how much of
+  // the phase has landed, and whether the phase is this run's work at all. So
+  // the caption is cut to leave the rule its minimum, and a name too long for
+  // what is left is a name the reader opens the phase to read in full.
+  const room = Math.max(1, width - x - reserve)
+  const count: Field[] = facts.count ? [{ text: facts.count, color: COLORS.dim }] : []
+  const loop: Field[] = facts.loop
+    ? [{ text: facts.loop, color: mix(COLORS.dim, COLORS.accent, 0.5) }]
+    : []
+  // The name is the last thing to give way, and the count is the first: the
+  // rule beside it already draws how much of the phase has landed, where the
+  // name is the only thing on the row that says which phase this is. Cutting
+  // from the end instead left `Survey 1/1` as `S… 1/1` on a narrow gutter,
+  // which is a row saying nothing twice.
+  const widthOfRung = (rung: Field[]) => rung.reduce((w, f) => w + cells(f.text) + 1, 0)
+  const rungs: Field[][] = [[...count, ...loop], [...loop], []]
+  const kept = rungs.find(rung => cells(facts.name) + widthOfRung(rung) <= room) ?? []
+  const fields: Field[] = [
+    { text: runName(facts.name, Math.max(1, room - widthOfRung(kept))), color: facts.tone },
+    ...kept,
+  ]
+  const used = Math.min(room, widthOf(fields, 1))
+
+  drawFields(c, x, y, room, fields, 1)
+
+  return { x, used }
+}
+
+/** The rule that runs from a timeline heading to the end of the gutter. */
+function paintHeadRule(
+  c: Canvas,
+  from: number,
+  y: number,
+  to: number,
+  landed: number,
+  total: number,
+  nested: boolean,
+  tone: Rgb,
+): void {
+  const room = Math.max(0, to - from)
+  const filled = total > 0 ? Math.round((landed / total) * room) : 0
+
+  for (let i = 0; i < room; i++) {
+    c.put(from + i, y, ruleOf(nested, i < filled), tone)
+  }
+
+  // The cell either side, kept empty on purpose: the rule starts after the
+  // caption and stops before the time field rather than running into either,
+  // and a cell left blank by the drawing is how this canvas says a line ends
+  // here — the fold handle clears the cells around itself for the same reason.
+  if (room > 0) {
+    c.put(from - 1, y, 0x20, tone)
+    c.put(from + room, y, 0x20, tone)
+  }
+}
+
+/**
+ * How far in the reader has zoomed, as panes of axis.
+ *
+ * One is the whole run in the pane, which is where it starts: a trace whose
+ * rows do not all carry a bar is not a trace, and the axis used to open at
+ * whatever scale gave the shortest agent a cell of its own — four panes wide on
+ * the run that prompted it, so two thirds of the rows were blank and the bars
+ * that did land could not be compared with the ones that did not.
+ *
+ * The resolution that scale bought is still worth having, so it is a press
+ * instead of a default: the reader who wants to separate six sub-second agents
+ * asks for it, and everybody else sees the run.
+ */
+export const ZOOMS = [1, 2, 4]
 
 function paintTimeline(
   c: Canvas,
@@ -6101,6 +6375,7 @@ function paintTimeline(
   scrollY = 0,
   scrollX = 0,
   follow = true,
+  zoom = 1,
 ): { hotspots: Hotspot[]; body?: BodyScroll; front?: string } {
   const hotspots: Hotspot[] = []
   const lanes = orderedLanes(run, opened)
@@ -6176,24 +6451,40 @@ function paintTimeline(
     1,
     Math.min(...run.agents.map(agent => (agent.endedMs ?? openEnd) - agent.startedMs)),
   )
+  /** The agents that held the run up, for the mark down the gutter. */
+  const critical = criticalOf(run, openEnd)
 
   /**
-   * How wide the axis is, which is no longer how wide the pane is.
+   * How wide the axis is: the pane, until the reader asks for more.
    *
-   * Squeezed into whatever the pane had left, a run of an hour drew every agent
-   * that took under a minute as the same two cells — so a column of bars all
-   * the same length said the agents all took the same time, which was the one
-   * thing the drawing was there to disprove. The axis is a measurement, and a
-   * measurement too coarse to separate its readings is not one.
+   * Zoomed, it takes as many panes as the reader asked for, held to the scale
+   * the run can actually use — past one cell for the shortest span on it, a
+   * wider axis separates nothing and only adds cells to scroll through.
    *
-   * So it takes the cells the run needs: enough that the shortest span on it is
-   * a cell of its own, and the body scrolls sideways to the rest. Capped,
-   * because a single short agent in an hour-long run would otherwise ask for
-   * thousands of columns to be scrolled through at a dozen cells a press.
+   * It opened at that finest scale until 0.12.0, on the argument that an hour
+   * long run squeezed into a pane drew every agent under a minute as the same
+   * two cells. True, and it cost more than it bought: four panes of axis on a
+   * ten-minute run left two thirds of the rows with no bar in the window at
+   * all, and a bar clipped at the window's edge reads as a shorter bar rather
+   * than as a longer one. A trace whose rows do not carry bars is not a trace.
    */
   const AXIS_PANES = 4
+  const level = ZOOMS.includes(zoom) ? zoom : 1
   const axisSpanOf = (axisW: number) =>
-    Math.max(axisW, Math.min(Math.ceil(span / shortest), axisW * AXIS_PANES))
+    level === 1
+      ? axisW
+      : Math.max(
+          axisW,
+          Math.min(Math.ceil(span / shortest), axisW * Math.min(level, AXIS_PANES)),
+        )
+  /**
+   * The ribbon that stands for the whole run while the pane is over part of it.
+   *
+   * Zoomed in, the window is a few panes' worth of a run that may be many, and
+   * nothing else on the drawing says which few. It costs a row and only a
+   * zoomed reader pays it.
+   */
+  const ribboned = level > 1
 
   /**
    * The rails cost a row and a column, and each changes what the other has to
@@ -6207,8 +6498,9 @@ function paintTimeline(
     const floor = bottom - aheadRows
     // The ruler stands under the bar and does not scroll with the bands: a time
     // axis that scrolls off the top is a scale the reader can no longer read
-    // the bars against.
-    const top = barRows + 1
+    // the bars against. The ribbon, where there is one, stands over the ruler
+    // for the same reason and in the same still rows.
+    const top = barRows + (ribboned ? 1 : 0) + 1
     const shown = Math.max(1, floor - top)
     const spanY = Math.max(0, content - shown)
     const railed = spanY > 0 && shown >= 2 + RAIL_MIN && columns >= RAIL_W + 24
@@ -6224,7 +6516,33 @@ function paintTimeline(
     // for the longest name it has to carry and is held to a share of the row,
     // because the bar beside it is the other half of what a reader came here to
     // read.
-    const wants = Math.max(0, ...run.agents.map(a => cells(a.label))) + 3 + INSET_W
+    //
+    // Measured off the rows the drawing actually stands, not off `run.agents`:
+    // a shut nested run stands one row a trip, under a label of its own that no
+    // agent carries, and a column measured on the agents cut every one of those
+    // rows. The headings are measured too — a phase whose name does not fit is
+    // a band the reader cannot name, and the rule after it says less than the
+    // name does.
+    const named =
+      Math.max(
+        0,
+        ...lanes.flatMap(lane =>
+          rowsOf(lane).map(
+            row => cells(row.label) + (lane.nested === true && lane.shut !== true ? INSET_W : 0),
+          ),
+        ),
+      ) +
+      CHAIN_W +
+      2
+    const headed =
+      Math.max(
+        0,
+        ...lanes.map(lane => cells(lane.phase) + (lane.nested === true ? HANDLE_GAP + HANDLE_W : 0)),
+      ) +
+      CHAIN_W +
+      HEAD_RULE +
+      1
+    const wants = Math.max(named, headed)
     const ceiling = Math.max(10, Math.min(Math.floor(width * 0.45), width - 44))
     const labelW = Math.max(10, Math.min(wants, Math.max(Math.floor(width / 3), ceiling)))
     const axisX = labelW + 1
@@ -6297,7 +6615,49 @@ function paintTimeline(
   const step = STEPS.find(ms => ms >= perCell * 12) ?? STEPS[STEPS.length - 1]
   const quiet = quietOf(c.background)
 
-  paintRuler(c, barRows, axisX, axisW, startMs, span, step, cellOf, quiet)
+  const rulerY = top - 1
+  const grid = mix(COLORS.track, COLORS.text, 0.14)
+  const lit = mix(COLORS.track, COLORS.text, 0.45)
+
+  paintRuler(c, rulerY, axisX, axisW, startMs, span, step, cellOf, quiet)
+
+  if (ribboned) {
+    paintRibbon(c, rulerY - 1, axisX, axisW, run, startMs, span, openEnd, atX, axisSpan, grid, lit)
+    c.text(CHAIN_W, rulerY - 1, truncate('whole run', Math.max(0, labelW - CHAIN_W - 1)), COLORS.dim)
+  }
+
+  // The zoom, in the cells of the gutter the ruler leaves empty. It is two
+  // presses and the scale between them, which is the whole of what a reader
+  // does with a trace's axis: spread the short agents apart, or put the run
+  // back in one pane.
+  if (labelW >= ZOOM_W + CHAIN_W + 1) {
+    c.text(CHAIN_W, rulerY, DASH_LESS, level > 1 ? COLORS.text : COLORS.dim)
+    c.text(CHAIN_W + 2, rulerY, `${level}\u00d7`, COLORS.dim)
+    c.text(CHAIN_W + 5, rulerY, '+', level < AXIS_PANES ? COLORS.text : COLORS.dim)
+    hotspots.push({ agentId: ZOOM_OUT, x: CHAIN_W, y: rulerY, w: 1 })
+    hotspots.push({ agentId: ZOOM_IN, x: CHAIN_W + 5, y: rulerY, w: 1 })
+  }
+
+  // What the chain of waiting adds up to, beside the mark that draws it. The
+  // figure is the run's own floor: no arrangement of the other agents makes the
+  // run shorter than this, which is the one number a reader opens a trace to
+  // find and the only thing on the drawing that names the mark.
+  const criticalMs = run.agents
+    .filter(agent => critical.has(agent.agentId))
+    .reduce((sum, agent) => sum + ((agent.endedMs ?? openEnd) - agent.startedMs), 0)
+
+  if (facts.width > 0 && critical.size > 0) {
+    const ladder = [
+      `${String.fromCodePoint(CRITICAL)} critical path ${elapsed(criticalMs)}`,
+      `${String.fromCodePoint(CRITICAL)} critical ${elapsed(criticalMs)}`,
+      `${String.fromCodePoint(CRITICAL)} ${elapsed(criticalMs)}`,
+    ]
+    const said = ladder.find(text => cells(text) <= facts.width) ?? ''
+
+    if (said !== '') {
+      c.text(width - cells(said), rulerY, said, COLORS.dim)
+    }
+  }
 
   let y = top - atY
   /** Where the bar's own presses end: everything after this can scroll away. */
@@ -6314,9 +6674,9 @@ function paintTimeline(
       continue
     }
 
-    // The same rule a stacked band opens with, for the same reason: it says
-    // where a phase starts, what it is called and how far it has got, and the
-    // rows under it are that phase's agents.
+    // What a stacked band's rule says — where a phase starts, what it is called
+    // and how far it has got — said in the gutter the labels already own. The
+    // rule stops at the axis: see `paintPhaseHead`.
     const open = lane.nested === true && lane.shut !== true
     const indent = open ? INSET_W : 0
     const band = phaseFactsOf(
@@ -6326,46 +6686,51 @@ function paintTimeline(
       passes,
       overOf(run),
     )
-    const filled = band.total > 0 ? Math.round((band.landed / band.total) * width) : 0
-
-    for (let x = 0; x < width; x++) {
-      c.put(x, y, ruleOf(lane.nested === true, x < filled), quiet)
-    }
-
-    const handle = lane.nested === true ? foldHandle(!open, lane.agents.length, width) : ''
-    // Centred, like every other band rule that runs the width of the pane.
-    const label = paintPhaseLabel(
+    // Three things are cut from one gutter, and each is held to a floor rather
+    // than taking what the one before it left: the caption is capped so the
+    // handle and the rule have somewhere to stand, and the handle is offered
+    // what is left minus the rule's own minimum. Fitted in plain order, a long
+    // phase name took the gutter whole and a nested run came out with no handle
+    // to press.
+    const label = paintPhaseHead(
       c,
-      0,
+      CHAIN_W,
       y,
-      width,
+      labelW,
       band,
-      2,
-      handle.length > 0 ? HANDLE_GAP + handle.length + 1 : 0,
+      HEAD_RULE + (lane.nested ? HANDLE_GAP + HANDLE_W : 0),
     )
-
-    c.put(label.x - 1, y, 0x20, quiet)
-    c.put(label.x + label.used, y, 0x20, quiet)
+    let ruleFrom = label.x + label.used + 1
 
     // The handle that opens the run and folds it back, after the caption,
     // exactly where the other two layouts put it.
     if (lane.nested) {
-      const drew = paintFoldHandle(
+      const room = labelW - ruleFrom - HANDLE_GAP - HEAD_RULE
+      const handle = foldHandle(!open, lane.agents.length, room)
+
+      const drew = handle !== '' && paintFoldHandle(
         c,
         lane.phase,
-        label.x + label.used + HANDLE_GAP,
+        ruleFrom + HANDLE_GAP,
         y,
-        width - label.x - label.used - HANDLE_GAP,
+        room,
         quiet,
         !open,
         lane.agents.length,
         hotspots,
       )
 
-      if (!drew) {
+      if (drew) {
+        // The handle clears a blank either side of itself, and the rule starts
+        // after the far one: written over it, the rule ran into the handle and
+        // the two read as one token with a line through it.
+        ruleFrom += HANDLE_GAP + cells(handle) + 1
+      } else {
         hotspots.push(markSpot(lane.phase, label.x, y, 0))
       }
     }
+
+    paintHeadRule(c, ruleFrom + 1, y, labelW, band.landed, band.total, lane.nested === true, quiet)
 
     y++
 
@@ -6377,7 +6742,7 @@ function paintTimeline(
       const isSelected = key === selectedId
       const color = colorOf(agent.state)
       const took = (agent.endedMs ?? openEnd) - agent.startedMs
-      const room = labelW - 3 - indent
+      const room = labelW - CHAIN_W - 2 - indent
 
       const moving = agent.state === 'running' || isSelected
 
@@ -6386,26 +6751,60 @@ function paintTimeline(
       // scrolling a trace of a hundred rows can see at a glance which of them
       // belong to this run and which to a workflow it called.
       if (indent > 0) {
-        c.put(1, y, SEAM_V, quiet)
+        c.put(CHAIN_W, y, SEAM_V, quiet)
       }
 
-      c.put(1 + indent, y, markOf(agent.state, tick), color)
+      c.put(CHAIN_W + indent, y, markOf(agent.state, tick), color)
       c.text(
-        3 + indent,
+        CHAIN_W + 2 + indent,
         y,
         moving ? slide(agent.label, room, tick) : truncate(agent.label, room),
         isSelected ? COLORS.accent : COLORS.text,
       )
-      hotspots.push({ agentId: key, x: 3 + indent, y, w: Math.min(room, cells(agent.label)) })
+      hotspots.push({ agentId: key, x: CHAIN_W + 2 + indent, y, w: Math.min(room, cells(agent.label)) })
 
       const x0 = cellOf(agent.startedMs)
       const x1 = cellOf(agent.endedMs ?? openEnd)
       const length = x1 - x0 + 1
-      // The axis is wider than the pane, so a bar can start before the window
-      // and end after it. Clipped rather than moved: a bar drawn at the edge it
-      // ran off is a bar in the wrong place on the scale.
+      // Zoomed, the axis is wider than the pane, so a bar can start before the
+      // window and end after it. Clipped rather than moved: a bar drawn at the
+      // edge it ran off is a bar in the wrong place on the scale.
       const from = Math.max(x0, axisX)
       const to = Math.min(x1, axisX + axisW - 1)
+      const last = axisX + axisW - 1
+
+      // The mark that says this row is on the chain that decided how long the
+      // run took. In the gutter column nothing else uses, and grey, because it
+      // is a reading of the run rather than a state of the agent — the two
+      // meanings colour already carries.
+      if (critical.has(agent.agentId)) {
+        c.put(0, y, CRITICAL, lit)
+      }
+
+      // The wait before the bar, drawn rather than left blank. A row whose
+      // agent started late used to open with an empty stretch, which is the
+      // same picture as a row whose bar is off the window — and the waiting is
+      // the one thing a trace says that a column of durations does not.
+      // It leaves out the cells an arrow below is about to take: a bar that
+      // starts past the window, or a live bar whose clock ends on or before the
+      // cell it started in, points from inside the wait.
+      for (let x = axisX; x < Math.min(from, axisX + axisW); x++) {
+        if ((x0 > last && x === last) || (agent.state === 'running' && x === x1)) {
+          continue
+        }
+
+        c.put(x, y, LEAD, grid)
+      }
+
+      // A bar that lies wholly outside the window leaves an arrow at the edge
+      // it ran off. Blank, the row said the agent had no bar at all.
+      if (x1 < axisX) {
+        c.put(axisX, y, ARROW_LEFT, color)
+      }
+
+      if (x0 > last) {
+        c.put(last, y, ARROW_RIGHT, color)
+      }
       const isLive = agent.state === 'running'
       const glow = glowOf()
 
@@ -6421,15 +6820,27 @@ function paintTimeline(
       // finished — a solid block reaching the marker read as a measurement, and
       // the measurement it seemed to give grew every second.
       const block = cut ? 0x2591 : isLive ? 0x2592 : 0x2588
+      // A span the scale cannot draw is drawn as the sliver it is rather than
+      // as a full cell. With the run in one pane, a four-second agent in a ten
+      // minute run rounds up to a cell, and a cell of solid block beside a cell
+      // of solid block says the two agents took the same time. This says one of
+      // them took less than the scale can show; the zoom is how much less.
+      // Sub-cell is measured against the scale, not against the rounding: a
+      // four-second agent whose start and end round either side of a cell
+      // boundary is drawn as two solid cells by the same arithmetic that draws
+      // a five-minute agent as two, so the sliver collapses it back to the one
+      // cell it began in.
+      const sliver = !isLive && took * axisSpan < span
+      const end = sliver ? from : to
 
-      for (let x = from; x <= to; x++) {
+      for (let x = from; x <= end; x++) {
         const tone = isLive
           ? mix(color, glow, pulse(x - x0, Math.max(2, length * 2), tick))
           : isSelected
             ? mix(color, COLORS.accent, 0.35)
             : color
 
-        c.put(x, y, block, tone)
+        c.put(x, y, sliver ? SLIVER : block, tone)
       }
 
       if (isLive && onAxis(x1)) {

@@ -563,7 +563,9 @@ test('the timeline stands a shut nested run one bar a trip, not one an agent', (
   paint(canvas, run, { nowMs: STARTED + 40_000, tick: -1, orientation: 'timeline' })
 
   const rows = rowsOf(canvas)
-  const bars = rows.filter(row => row.startsWith(' ✔ code-r'))
+  // Past the gutter the critical chain is drawn in, which every row of the
+  // timeline opens with and only the rows on that chain have anything in.
+  const bars = rows.filter(row => /^.\s✔ code-r/.test(row))
 
   // A run entered twice is two stretches of clock with the calling run's own
   // work in the gap. One bar spanning both would draw over a gap the nested run

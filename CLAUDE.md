@@ -11,7 +11,7 @@ workflow writes, and everything it says has to fit in cells.
 ## Commands
 
 ```bash
-claude plugin test .          # the test suite — 361 tests across 23 files
+claude plugin test .          # the test suite — 363 tests across 22 files
 bunx tsc --noEmit             # typecheck (hooks/ and types/ only; see tsconfig.json)
 ```
 
@@ -111,7 +111,7 @@ same pass, rather than at some later release. Five places carry it:
 | `hooks/about.ts` `VERSION` | what the pane falls back to when the manifest could not be read |
 | `hooks/about.ts` `RELEASED` | the day it went out |
 | `tests/about.test.ts` `LAST_RELEASE` | the release before this one, which the two above are read against |
-| `README.md` and `docs/controls.md` | the bottom row, written out as `flowpane <version>` |
+| `README.md` and `docs/controls.md` | the bottom row, written out as `FlowPane <version>` |
 
 `bun dev/checkmeta.ts` holds the first two together, which is the pair that can
 disagree in silence. Several versions can go out on one day — 0.6.0, 0.7.0 and

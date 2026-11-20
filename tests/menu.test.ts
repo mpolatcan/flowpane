@@ -417,3 +417,48 @@ test('a list far longer than its window still shows a thumb', () => {
   expect(runList?.visible).toBe(13)
   expect(trackOf(lines)).toBe('█││││││││││')
 })
+
+test('the menu stops growing with the pane, and the run it was opened from is still drawn under it', () => {
+  // A pane with room for thirty-odd rows of list. The menu used to take all of
+  // them, so the run the reader opened it from was covered by the list of runs
+  // they were choosing between.
+  const tall = menuPaint(pile(40), 'wf_a', 44)
+  const short = menuPaint(pile(40), 'wf_a', 20)
+
+  expect(tall.runList?.total).toBeGreaterThan(12)
+  expect(tall.runList?.visible).toBe(12)
+
+  // The same height on a pane half as tall, where twelve rows still fit: one
+  // size, and the bar down its side for the rest of the list.
+  expect(short.runList?.visible).toBe(12)
+  expect(tall.lines.length).toBe(12)
+
+  // What the menu is about is still on screen under it — the box ends well
+  // above the foot of a tall pane rather than running to it.
+  const canvas = new Canvas(80, 44)
+
+  paint(canvas, shownRun('wf_a'), {
+    nowMs: NOW,
+    tick: 0,
+    orientation: 'horizontal',
+    runPicker: 'open',
+    runs: pile(40),
+  })
+
+  const rows: string[] = []
+
+  for (let y = 0; y < canvas.rows; y++) {
+    let line = ''
+
+    for (let x = 0; x < canvas.columns; x++) {
+      line += String.fromCodePoint(canvas.at(x, y) || 0x20)
+    }
+
+    rows.push(line)
+  }
+
+  const foot = rows.findIndex(line => line.includes('╰'))
+
+  expect(foot).toBeGreaterThan(0)
+  expect(rows.slice(foot + 1).join('\n')).toContain('one')
+})
