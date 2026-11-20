@@ -6,7 +6,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { Canvas } from '../hooks/canvas'
-import { applyJournal, verdictOf, type AgentRow, type AgentState, type RunState } from '../hooks/journal'
+import { applyJournal, applyRunFile, verdictOf, type AgentRow, type AgentState, type RunState } from '../hooks/journal'
 import { paint } from '../hooks/paint'
 
 const STARTED = 1_700_000_000_000
@@ -109,4 +109,43 @@ test('a gate that has landed says its verdict on its card, where the model was',
 
   expect(feet.some(row => row.includes(' tree not clean '))).toBe(true)
   expect(feet.some(row => row.includes(' Haiku 4.5 '))).toBe(true)
+})
+
+test('an agent that errored is failed, with the first line of the error as its verdict', () => {
+  const run = runOf('running', [], { phases: ['Review'] })
+
+  applyJournal(
+    run,
+    [
+      JSON.stringify({ type: 'started', agentId: 'a1', label: 'Review', phase: 'Review' }),
+      JSON.stringify({ type: 'error', agentId: 'a1', error: 'boom\nstack' }),
+    ].join('\n'),
+    NOW,
+  )
+
+  expect(run.agents[0]!.state).toBe('failed')
+  expect(run.agents[0]!.verdict).toEqual({ passed: false, summary: 'boom' })
+})
+
+test('a gate that answered passed: false stays failed when the engine says it is done', () => {
+  const run = runOf('running', [], { phases: ['Commit (tests)'] })
+
+  applyJournal(
+    run,
+    [
+      JSON.stringify({ type: 'started', agentId: 'g1', label: 'Commit (tests)', phase: 'Commit (tests)' }),
+      JSON.stringify({ type: 'result', agentId: 'g1', result: { passed: false, summary: 'tree not clean after commit' } }),
+    ].join('\n'),
+    NOW,
+  )
+  applyRunFile(
+    run,
+    JSON.stringify({
+      status: 'running',
+      workflowProgress: [{ type: 'workflow_agent', agentId: 'g1', label: 'Commit (tests)', phaseTitle: 'Commit (tests)', state: 'done' }],
+    }),
+    NOW,
+  )
+
+  expect(run.agents[0]!.state).toBe('failed')
 })

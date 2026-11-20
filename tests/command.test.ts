@@ -67,7 +67,11 @@ const JOURNAL = [
  * than a reply: the registration is the one line of the command a reader meets
  * before typing anything, and nothing renders it back.
  */
-function stubEngine(on: any, seen?: { register?: { name?: string; description?: string } }): void {
+function stubEngine(
+  on: any,
+  seen?: { register?: { name?: string; description?: string } },
+  kept?: { key: string; value: unknown }[],
+): void {
   on('env.get', () => ({ value: HOME }))
   on('ui.open', () => ({ value: undefined }))
   on('ui.close', () => ({ value: undefined }))
@@ -82,7 +86,11 @@ function stubEngine(on: any, seen?: { register?: { name?: string; description?: 
   })
   on('session.id', () => ({ value: 'test-session' }))
   on('store.get', () => ({ value: undefined }))
-  on('store.set', () => ({ value: undefined }))
+  on('store.set', ($$: unknown, e: { key: string; value: unknown }) => {
+    kept?.push(e)
+
+    return { value: undefined }
+  })
   on('fs.exists', ($$: unknown, e: { path: string }) => ({
     value: e.path === `${TRANSCRIPT}/journal.jsonl`,
   }))
@@ -361,4 +369,17 @@ test('the word the command takes for the list selects the list, not the axis it 
   // is the one the reply cannot show.
   expect(orientationOf('list')).toBe('list')
   expect(orientationOf('list')).not.toBe('vertical')
+})
+
+test('the activity strip is sized by the command, held to its bounds, and the size is kept', async ($, on) => {
+  mock.clock(on, { now: 0 })
+
+  const kept: { key: string; value: unknown }[] = []
+
+  stubEngine(on, undefined, kept)
+
+  expect(await reply($, 'activity 3')).toBe('Activity strip 3 rows.')
+  expect(await reply($, 'activity off')).toBe('Activity strip off.')
+  expect(await reply($, 'activity 99')).toBe('Activity strip 10 rows.')
+  expect(kept.filter(e => e.key === 'feedRows').map(e => e.value)).toEqual([3, 0, 10])
 })

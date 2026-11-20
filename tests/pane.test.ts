@@ -198,7 +198,7 @@ function renderPane($: any) {
  * `{ value }` or `{ deny }`, so that is the shape a bottom implementation hands
  * back — including for the calls whose value is nothing at all.
  */
-function stubEngine(on: any, opened: { id: string; title?: string }[] = []) {
+function stubEngine(on: any, opened: { id: string; title?: string }[] = [], stored: Record<string, unknown> = {}) {
   on('env.get', () => ({ value: HOME }))
   on('ui.open', ($$: unknown, e: { id: string; title?: string }) => {
     opened.push({ id: e.id, title: e.title })
@@ -211,7 +211,7 @@ function stubEngine(on: any, opened: { id: string; title?: string }[] = []) {
   on('command.register', () => ({ value: { command: 'flowpane' } }))
   on('command.run', () => ({ text: '' }))
   on('session.id', () => ({ value: 'test-session' }))
-  on('store.get', () => ({ value: undefined }))
+  on('store.get', ($$: unknown, e: { key: string }) => ({ value: stored[e.key] }))
   on('store.set', () => ({ value: undefined }))
   on('fs.exists', ($$: unknown, e: { path: string }) => ({
     value: e.path === `${TRANSCRIPT}/journal.jsonl`,
@@ -424,4 +424,33 @@ test('a node counts what its agent holds, not what every request added up to', a
   // request. The node shows what the agent is holding now.
   expect(text).toContain('21.3k')
   expect(text).not.toContain('127')
+})
+
+async function drawnWithStored($: any, on: any, stored: Record<string, unknown>): Promise<string> {
+  const clock = mock.clock(on, { now: 1_000 })
+
+  on('session.start', ($$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
+  on('tool.call', { tool: 'Workflow' }, () => ({ result: LAUNCH }))
+  on('tool.call', { tool: 'Bash' }, () => ({ result: 'ok' }))
+  stubEngine(on, [], stored)
+
+  await $.session.start({ cwd: HOME, surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Workflow', script: SCRIPT })
+  await clock.advance(600)
+  await $.tool.call({ tool: 'Bash', agentId: 'a2', tool_use_id: 'c1', command: 'ls' })
+  await clock.advance(600)
+
+  return paneOf(await renderPane($)).lines.join('\n')
+}
+
+test('a run with calls draws the activity strip at the size it opens with', async ($, on) => {
+  expect(await drawnWithStored($, on, {})).toContain(' activity ')
+})
+
+test('an activity strip turned off in an earlier session stays off', async ($, on) => {
+  expect(await drawnWithStored($, on, { feedRows: 0 })).not.toContain(' activity ')
+})
+
+test('a stored strip size out of its bounds is ignored', async ($, on) => {
+  expect(await drawnWithStored($, on, { feedRows: 50 })).toContain(' activity ')
 })

@@ -53,3 +53,11 @@ test('a function the script defines is not said again where it is called', () =>
 test('a wrapper that only proxies the command is looked through', () => {
   expect(past('rtk proxy git status')).toBe('checked the git status')
 })
+
+test('a sed that edits in place is an edit of the file, not a read of it', () => {
+  expect(past("sed -i 's/a/b/' src/x.ts")).toBe('edited x.ts')
+})
+
+test('a sed with no range and no file in place rewrites text', () => {
+  expect(past("sed 's/a/b/'")).toBe('rewrote some text')
+})

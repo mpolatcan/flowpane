@@ -13,10 +13,13 @@ import {
   applyPress,
   drew,
   MAX_DETAIL,
+  MAX_FEED,
   MIN_DETAIL,
   nextOrientation,
   scrollDetail,
   wheel,
+  ZOOM_IN,
+  ZOOM_OUT,
   type PaneView,
 } from '../hooks/press'
 
@@ -674,4 +677,44 @@ test('the wheel steps from the row the paint drew at, not from the top', () => {
   wheel(v, { runList: { total: 30, visible: 8, scroll: 10 } }, 2)
 
   expect(v.runScroll).toBe(12)
+})
+
+test('zooming in steps the scale through its stops, and back to the start of the run each time', () => {
+  const v: PaneView = { ...view(), zoom: 1, bodyScroll: { x: 9, y: 3 } }
+
+  applyPress(v, ZOOM_IN, { hasRun: true })
+
+  expect(v.zoom).toBe(2)
+  expect(v.bodyScroll).toEqual({ x: 0, y: 3 })
+
+  v.bodyScroll = { x: 9, y: 3 }
+  applyPress(v, ZOOM_IN, { hasRun: true })
+
+  expect(v.zoom).toBe(4)
+  expect(v.bodyScroll).toEqual({ x: 0, y: 3 })
+
+  applyPress(v, ZOOM_IN, { hasRun: true })
+
+  expect(v.zoom).toBe(4)
+})
+
+test('zooming out from the whole run stays on the whole run', () => {
+  const v: PaneView = { ...view(), zoom: 1, bodyScroll: { x: 9, y: 3 } }
+
+  applyPress(v, ZOOM_OUT, { hasRun: true })
+
+  expect(v.zoom).toBe(1)
+  expect(v.bodyScroll).toEqual({ x: 0, y: 3 })
+})
+
+test('the activity strip grows and shrinks only within its bounds, and the size is kept', () => {
+  const full: PaneView = { ...view(), feedRows: MAX_FEED }
+
+  expect(applyPress(full, 'feed-more', { hasRun: true })).toEqual({ store: ['feedRows'] })
+  expect(full.feedRows).toBe(MAX_FEED)
+
+  const none: PaneView = { ...view(), feedRows: 0 }
+
+  expect(applyPress(none, 'feed-fewer', { hasRun: true })).toEqual({ store: ['feedRows'] })
+  expect(none.feedRows).toBe(0)
 })

@@ -39,3 +39,24 @@ test('a call is read once, from the conversation, not again from the copy of the
 
   expect(read.calls.map(c => c.input)).toEqual(['wc -l README.md'])
 })
+
+test('a call carries what the agent said before it, until an answer comes back', () => {
+  const read = readAgentTranscript(
+    lines(
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'text', text: 'Check lint.' },
+            { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'npm run lint' } },
+          ],
+        },
+      },
+      { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'clean' }] } },
+      { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't2', name: 'Bash', input: { command: 'ls' } }] } },
+    ),
+  )
+
+  expect(read.calls[0]!.why).toBe('Check lint.')
+  expect(read.calls[1]!.why).toBeUndefined()
+})
