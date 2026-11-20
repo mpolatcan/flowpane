@@ -29,13 +29,33 @@ function stepsOf(command: string): string[][] {
   // A stage after a pipe is filtering what the first one printed — `| tail -25`,
   // `| grep FAIL` — and says nothing about what the step did.
   let piped = false
+  // The words that end the heredocs opened on this line. What comes between is
+  // a script handed to the command — Python, a PR body — and read as shell it
+  // said `ran import`.
+  const heredocs: string[] = []
+  // Inside a `case`, a step starts with a pattern — `CLAUDE.md|REVIEW.md)` —
+  // whose bars are not pipes and whose words are not a command.
+  let cases = 0
+  let pattern = false
 
   const endWord = () => {
     if (word !== '' && !piped) {
       words.push(word)
     }
 
+    if (word === 'esac') {
+      cases = Math.max(0, cases - 1)
+    }
+
+    const opensCase = word === 'in' && words[0] === 'case'
+
     word = ''
+
+    if (opensCase) {
+      cases++
+      endStep()
+      pattern = true
+    }
   }
 
   const endStep = () => {
@@ -53,6 +73,19 @@ function stepsOf(command: string): string[][] {
     const ch = command[i]!
     const next = command[i + 1]
 
+    if (pattern && words.length === 0 && word === '' && !/\s/.test(ch)) {
+      pattern = false
+
+      if (ch !== 'e' || !command.startsWith('esac', i)) {
+        const close = command.indexOf(')', i)
+
+        if (close >= 0) {
+          i = close
+          continue
+        }
+      }
+    }
+
     if (quote) {
       if (ch === quote) {
         quote = null
@@ -66,6 +99,33 @@ function stepsOf(command: string): string[][] {
     if (ch === "'" || ch === '"') {
       quote = ch
       continue
+    }
+
+    // A line continued is one line.
+    if (ch === '\\' && next === '\n') {
+      endWord()
+      i++
+      continue
+    }
+
+    // A comment runs to the end of its line; `#` inside a word is part of it.
+    if (ch === '#' && word === '') {
+      while (i + 1 < command.length && command[i + 1] !== '\n') {
+        i++
+      }
+
+      continue
+    }
+
+    // An array assigned — `CTX=(CLAUDE.md REVIEW.md)` — is values, not a step.
+    if (ch === '(' && /^[A-Za-z_][A-Za-z0-9_]*\+?=$/.test(word)) {
+      const close = command.indexOf(')', i)
+
+      if (close >= 0) {
+        word += '()'
+        i = close
+        continue
+      }
     }
 
     if (ch === '$' && next === '(') {
@@ -87,6 +147,35 @@ function stepsOf(command: string): string[][] {
     if ((ch === '&' && next === '&') || (ch === '|' && next === '|')) {
       endStep()
       i++
+      continue
+    }
+
+    if (ch === '<' && next === '<') {
+      const opened = /^<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/.exec(command.slice(i))
+
+      if (opened) {
+        heredocs.push(opened[2]!)
+      }
+    }
+
+    if (ch === '\n' && heredocs.length > 0) {
+      endStep()
+
+      for (const tag of heredocs.splice(0)) {
+        const lines = command.slice(i + 1).split('\n')
+        const end = lines.findIndex(line => line.trim() === tag)
+        const skipped = end < 0 ? lines.length : end + 1
+
+        i += lines.slice(0, skipped).reduce((sum, line) => sum + line.length + 1, 0)
+      }
+
+      continue
+    }
+
+    if (ch === ';' && next === ';') {
+      endStep()
+      i++
+      pattern = cases > 0
       continue
     }
 
@@ -155,14 +244,30 @@ function plain(args: string[]): string[] {
 
 /** `a`, `a and b`, or `3 files`. */
 function files(paths: string[]): string {
+  // A path held in a variable — `cat "$f"` in a loop — names no file a reader knows.
+  if (paths.some(path => path.startsWith('$'))) {
+    return paths.length === 1 ? 'a file' : `${paths.length} files`
+  }
+
   return paths.length <= 2 ? paths.map(base).join(' and ') : `${paths.length} files`
 }
 
 /** Prefixes that change how a command runs, not what it does. */
-const WRAPPERS = new Set(['sudo', 'time', 'env', 'exec', 'nice', 'nohup', 'command', 'npx', 'bunx', 'xargs'])
+const WRAPPERS = new Set(['sudo', 'time', 'env', 'exec', 'nice', 'nohup', 'command', 'npx', 'bunx', 'xargs', 'rtk'])
 
 /** Commands that do nothing a reader is waiting to hear about. */
-const QUIET = new Set(['echo', 'printf', 'true', 'false', ':', 'sleep', 'export', 'set', 'unset', 'cd', 'pwd', 'source', '.', 'exit', 'test', '[', '[[', 'read', 'wait', 'clear'])
+/**
+ * The shell's own grammar, which says how the commands run rather than what
+ * they are. A keyword that comes before a command — `then npm test`, `do rm
+ * "$f"` — is taken off it; the ones that open a loop or a match over values —
+ * `for f in *.ts`, `case $x in` — take their whole step with them, since what
+ * follows them is a list of words, not a command.
+ */
+const KEYWORDS = new Set(['if', 'then', 'else', 'elif', 'do', 'while', 'until', '!', '{', '(', 'time'])
+const CLAUSES = new Set(['for', 'case', 'select', 'function'])
+const CLOSERS = new Set(['fi', 'done', 'esac', '}', ')', ';;'])
+
+const QUIET = new Set(['echo', 'printf', 'true', 'false', ':', 'sleep', 'export', 'set', 'unset', 'cd', 'pwd', 'source', '.', 'exit', 'test', '[', '[[', 'read', 'wait', 'clear', 'date', 'realpath', 'basename', 'dirname', 'sort', 'uniq', 'tr', 'cut', 'tee', 'mktemp', 'trap', 'local', 'return', 'shift', 'declare', 'readonly', 'let', 'eval', 'break', 'continue'])
 
 /** A package script's name in words. */
 function scriptOf(name: string): Phrase {
@@ -257,6 +362,8 @@ function gitOf(args: string[]): Phrase {
         : p(`switched to ${named[0] ?? 'another branch'}`, `switching to ${named[0] ?? 'another branch'}`)
     case 'branch':
       return p('listed the branches', 'listing the branches')
+    case 'ls-files':
+      return p('listed the tracked files', 'listing the tracked files')
     case 'rev-parse':
     case 'merge-base':
     case 'rev-list':
@@ -282,8 +389,22 @@ function gitOf(args: string[]): Phrase {
 function stepOf(step: string[]): Phrase | null {
   let words = [...step]
 
-  while (words.length > 0 && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0]!) || WRAPPERS.has(words[0]!))) {
+  while (
+    words.length > 0 &&
+    (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0]!) || WRAPPERS.has(words[0]!) || KEYWORDS.has(words[0]!) || CLOSERS.has(words[0]!))
+  ) {
     words.shift()
+
+    // `rtk proxy <command>` runs the command as it is.
+    if (words[0] === 'proxy') {
+      words.shift()
+    }
+  }
+
+  // A loop's or a match's head, a function being defined, a case's pattern:
+  // none of them is a command.
+  if (words.length === 0 || CLAUSES.has(words[0]!) || /^[^$(]*\)$/.test(words[0]!) || /\(\)\{?$/.test(words[0]!)) {
+    return null
   }
 
   if (words[0] === 'timeout' || words[0] === 'gtimeout') {
@@ -382,6 +503,18 @@ function stepOf(step: string[]): Phrase | null {
 
       return targets.length > 0 ? p(`read ${files(targets)}`, `reading ${files(targets)}`) : null
     }
+    case 'awk':
+    case 'gawk':
+    case 'perl': {
+      const targets = named.slice(1)
+
+      return targets.length > 0 ? p(`read ${files(targets)}`, `reading ${files(targets)}`) : null
+    }
+    case 'which':
+    case 'type':
+      return p(`checked ${named[0] ?? 'a tool'} is installed`, `checking ${named[0] ?? 'a tool'} is installed`)
+    case 'lsof':
+      return p('checked the open ports', 'checking the open ports')
     case 'wc':
       return p(`counted the lines in ${named.length > 0 ? files(named) : 'the output'}`, `counting the lines in ${named.length > 0 ? files(named) : 'the output'}`)
     case 'od':
@@ -439,6 +572,12 @@ function stepOf(step: string[]): Phrase | null {
       if (area === 'pr') {
         return act === 'create'
           ? p('opened a pull request', 'opening a pull request')
+          : act === 'edit'
+            ? p('updated the pull request', 'updating the pull request')
+          : act === 'comment' || act === 'review'
+            ? p('commented on the pull request', 'commenting on the pull request')
+          : act === 'merge'
+            ? p('merged the pull request', 'merging the pull request')
           : act === 'checks'
             ? p('checked the CI', 'checking the CI')
             : p('read the pull request', 'reading the pull request')
@@ -472,7 +611,8 @@ function stepOf(step: string[]): Phrase | null {
     case 'ruby': {
       const script = named[0]
 
-      return args.includes('-c') || args.includes('-e') || !script
+      // `-` is the script read from stdin, which is where a heredoc puts it.
+      return args.includes('-c') || args.includes('-e') || args[0] === '-' || !script
         ? p('ran some inline code', 'running some inline code')
         : p(`ran ${base(script)}`, `running ${base(script)}`)
     }
@@ -490,8 +630,23 @@ function stepOf(step: string[]): Phrase | null {
  */
 export function describe(command: string): Phrase | undefined {
   const said: Phrase[] = []
+  // A function the script defines is its own shorthand: what it does was said
+  // where its body ran, and its name — `emit`, `enc` — says nothing.
+  const defined = new Set<string>()
 
   for (const step of stepsOf(command)) {
+    const head =
+      step[0] === 'function' ? step[1] : /^[A-Za-z_][\w-]*\(\)/.test(step[0]!) || step[1]?.startsWith('()') ? step[0] : undefined
+
+    if (head) {
+      defined.add(head.replace(/\(\).*$/, ''))
+      continue
+    }
+
+    if (defined.has(step[0]!)) {
+      continue
+    }
+
     const phrase = stepOf(step)
 
     if (phrase && !said.some(s => s.past === phrase.past)) {

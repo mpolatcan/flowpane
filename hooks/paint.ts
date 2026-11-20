@@ -9566,6 +9566,10 @@ function paintRunLine(
     // the cells it cost were the ones the run's name wanted.
     state.push({ text: `\u2714 ${done}/${run.agents.length}`, color: COLORS.dim })
 
+    if (failed > 0) {
+      state.push({ text: `\u2716 ${failed} failed`, color: COLORS.failed })
+    }
+
     if (live > 0) {
       state.push({ text: `\u25b8 ${live} running`, color: COLORS.running })
     }
@@ -9582,14 +9586,19 @@ function paintRunLine(
       state.push({ text: `${quiet} quiet`, color: mix(COLORS.failed, COLORS.running, 0.5) })
     }
   } else {
+    // The count is of the agents that finished, as the sentence above counts
+    // them. It used to count every agent that ended, failed or not, so a run
+    // with a failure read `completed 18/18` under a sentence saying one of the
+    // eighteen had failed, and the field that said so was the first to give
+    // way on a narrow pane.
     state.push({
-      text: `${run.status} ${done + failed}/${run.agents.length}`,
+      text: `${run.status} ${done}/${run.agents.length}`,
       color,
     })
-  }
 
-  if (failed > 0) {
-    state.push({ text: `\u2716 ${failed} failed`, color: COLORS.failed })
+    if (failed > 0) {
+      state.push({ text: `\u2716 ${failed} failed`, color: COLORS.failed })
+    }
   }
 
   // How many agents, and what they ran on, as one measurement rather than
@@ -9658,7 +9667,10 @@ function paintRunLine(
   // and saying what it spent should say which run this is. Past that the
   // figures have the line, and the rest of the state gives way to them.
   const name = truncate(run.name, 24)
-  const floor = Math.min(38, name.length + (state[0] ? 3 + state[0].text.length : 0))
+  // A failure is held with the count it qualifies: a figure gives way before
+  // the row stops saying that something failed.
+  const firm = state.slice(0, failed > 0 ? 2 : 1)
+  const floor = Math.min(38 + (failed > 0 ? 12 : 0), name.length + firm.reduce((sum, f) => sum + 3 + f.text.length, 0))
   const edgeX = columns
   const worded = figures.map(g =>
     g.drop === 1
@@ -10006,6 +10018,24 @@ function subjectOf(call: ToolCall): string {
 }
 
 /**
+ * A command in words, or as written where none of it is known: one line is
+ * short enough to read, and a script of twenty is not.
+ */
+function commandPhrase(command: string, tense: 'past' | 'ing', max: number): string {
+  const said = describe(command)
+
+  if (said) {
+    return said[tense]
+  }
+
+  if (command.trim().includes('\n')) {
+    return tense === 'past' ? 'ran a shell script' : 'running a shell script'
+  }
+
+  return tense === 'past' ? `ran ${clipped(command, max)}` : `running \`${clipped(command, max)}\``
+}
+
+/**
  * What one call is doing, with the thing it is doing it to: `editing
  * stores/config.ts`, `running \`npm run lint\``, `searching for 'storyOf'`.
  *
@@ -10034,7 +10064,7 @@ function callPhrase(call: ToolCall, tight: boolean): string {
     case 'Write':
       return `writing ${path}`
     case 'Bash':
-      return describe(input)?.ing ?? `running \`${clipped(input, tight ? 24 : 48)}\``
+      return commandPhrase(input, 'ing', tight ? 24 : 48)
     case 'Grep':
       return `searching for '${clipped(input, tight ? 16 : 32)}'`
     case 'Glob':
@@ -10582,7 +10612,7 @@ function didOf(calls: ToolCall[]): string {
         case 'write':
           return files('wrote', writes)
         case 'ran': {
-          const said = [...new Set(commands.map(command => describe(command)?.past ?? `ran ${clipped(command, 40)}`))]
+          const said = [...new Set(commands.map(command => commandPhrase(command, 'past', 40)))]
 
           return said.length <= 2 ? said.join(', ') : `ran ${commands.length} commands`
         }
@@ -10693,7 +10723,7 @@ function feedOf(run: RunState): FeedRow[] {
       if (CHANGES.has(call.name) && input) {
         text = `${call.name === 'Write' ? 'wrote' : 'edited'} ${shortPath(input)}`
       } else if (call.name === 'Bash' && input) {
-        text = describe(input)?.past ?? `ran ${clipped(input, 120)}`
+        text = commandPhrase(input, 'past', 120)
       } else if (call.name === 'Agent' || call.name === 'Task') {
         text = input ? `started a subagent: ${clipped(input, 80)}` : 'started a subagent'
       }

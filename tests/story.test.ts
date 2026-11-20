@@ -200,3 +200,22 @@ test('an answer with no verdict leaves the agent as it landed', () => {
   expect(verdictOf('{"ok": true, "headline": "clean"}')).toEqual({ passed: true, summary: 'clean' })
   expect(verdictOf('passed: false')).toBeUndefined()
 })
+
+test('a finished run counts the agents that finished, and the one that failed keeps its place on a narrow row', () => {
+  const run = runOf('completed', [agent('r1', 'Review', 'bugs', 'done'), agent('v1', 'Verify', 'tests', 'failed')])
+
+  for (const columns of [110, 70]) {
+    const canvas = new Canvas(columns, 26)
+
+    paint(canvas, run, { nowMs: NOW, tick: -1, orientation: 'horizontal' })
+
+    let header = ''
+
+    for (let x = 0; x < columns; x++) {
+      header += String.fromCodePoint(canvas.at(x, 2) || 0x20)
+    }
+
+    expect(header).toContain('completed 1/2')
+    expect(header).toContain('✖ 1 failed')
+  }
+})

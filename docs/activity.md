@@ -46,7 +46,18 @@ most (`hooks/shell.ts`). Each step of the line is said once and in order, and
 what is not a step is left out: an `echo` marker, a redirect, a variable set in
 front, the stage after a pipe that only filters what the first one printed. A
 program the table does not know is named — `ran terraform` — rather than
-guessed at, and a line with no step worth saying is shown as written.
+guessed at. A line with no step worth saying is shown as written where it is
+one line, and as `ran a shell script` where it is several, since twenty lines of
+shell clipped to the width of a row is a row nobody can read.
+
+Pipelines run scripts, not one-liners, and a script is read as shell only where
+it is shell. A heredoc's body is the script handed to the command — read as
+shell, a Python body said `ran import` — so it is skipped. Comments, continued
+lines, arrays assigned, a `case` pattern, the keywords around a loop and a
+function the script defines and then calls are grammar, not steps, and say
+nothing. A path held in a variable is `a file`. Swept over twenty-one thousand
+commands from real runs, what is left as `ran <name>` is the scripts a pipeline
+calls by name.
 
 A table rather than a small model. A model would describe more, and say what a
 command was looking for as well as what it read, but it would bill every run

@@ -121,7 +121,12 @@ carries the mark the rest of the pane gives the same thing — `✔ 6/10` for wh
 landed, `▸ 2 running`, `⚙ 1 using tools`, `◌ 1 thinking`, `✖ 1 failed` — and the
 word stays only where no mark already stands for it: nothing in the drawing
 means quiet, and a finished run says `stopped 9/13` in words because `⊘` is a
-glyph a reader would have to be taught. On the right, what it has
+glyph a reader would have to be taught. That count is of the agents that
+finished, as the sentence above counts them; it used to count every agent that
+ended, so a run with a failure read `completed 18/18` under a sentence saying
+one had failed. `✖ 1 failed` comes straight after the count and is held with
+it, so a narrow row gives up a figure before it stops saying that something
+failed. On the right, what it has
 cost, in a fixed order, pinned to the right edge. A figure that slides sideways
 every time the status word changes length is a figure that has to be found again
 on every frame; against the edge it stays in the cells the eye last left it.

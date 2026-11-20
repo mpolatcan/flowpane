@@ -35,3 +35,21 @@ test('markers, redirects and variables are not steps', () => {
 test('a program the table does not know is named, not guessed at', () => {
   expect(past('terraform plan -out tf.plan')).toBe('ran terraform')
 })
+
+test('a script is read as shell only where it is shell', () => {
+  // A heredoc's body is a script handed to the command, not steps of its own.
+  expect(past("python3 - \"$DIR/body.txt\" <<'PY'\nimport sys\nbody = open(sys.argv[1]).read()\nPY\ngh pr edit 3 --body-file x")).toBe(
+    'ran some inline code and updated the pull request',
+  )
+  // Comments, continued lines, arrays and the shell's own keywords say nothing.
+  expect(past('# context files\nCTX=(CLAUDE.md REVIEW.md)\nfor f in "${CTX[@]}"; do\n  cat "$f" \\\n    | head -5\ndone')).toBe('read a file')
+  expect(past('case "$f" in\n  CLAUDE.md|REVIEW.md) git add "$f" ;;\n  *) rm "$f" ;;\nesac')).toBe('staged a file and deleted a file')
+})
+
+test('a function the script defines is not said again where it is called', () => {
+  expect(past('emit() {\n  echo "$1"\n}\nemit start\nnpm test\nemit end')).toBe('ran the tests')
+})
+
+test('a wrapper that only proxies the command is looked through', () => {
+  expect(past('rtk proxy git status')).toBe('checked the git status')
+})
