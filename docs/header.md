@@ -32,14 +32,15 @@ those agents is doing and to what, which agents have failed and why, the last
 gate to report and what it said, and the phase that comes next:
 
 ```
- In Develop, Develop is running `npm run lint` (2 files changed). Preflight: plan located, tools ready. Verify comes next.
- In Develop, Develop is thinking, after running `npm run type-check` (2 files changed). Verify comes next.
+ In Develop, Develop is running the linter (2 files changed). Preflight: plan located, tools ready. Verify comes next.
+ In Develop, Develop is thinking, after type-checking the code (2 files changed). Verify comes next.
  In Develop, Develop is editing config.ts. Verify comes next.
 ```
 
 A call is said with the thing it is working on, taken from its own argument:
-`editing stores/config.ts`, ``running `npm run lint` ``, `searching for
-'storyOf'`. The verb alone said the agent was busy, which the spinner already
+`editing stores/config.ts`, `running the linter`, `searching for 'storyOf'`. A
+command is said by what it does, as the strip says it (see
+[activity.md](activity.md)), and shown as written where nothing in it is known. The verb alone said the agent was busy, which the spinner already
 says; a reader watching a pipeline wants to know which file the develop step is
 in and which command a gate is running. A path keeps its file and the folder it
 is in, since a pipeline works in a worktree several folders deep. An agent

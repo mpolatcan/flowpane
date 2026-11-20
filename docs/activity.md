@@ -27,14 +27,33 @@ So every call carries the words of the request that issued it (`why` on the
 call — see `hooks/journal.ts`), read from the transcript or, live, from the
 request's own stream as it arrives. Calls one request issued share its words
 and get one line between them: the words, run together onto at most two lines,
-and after an arrow, quieter, what the calls did — `read config.ts, ran npx
-vitest run`. The words keep the line; what was done gives way first, to at most
+and after an arrow, quieter, what the calls did — `read config.ts, ran the
+tests for stores`. The words keep the line; what was done gives way first, to at most
 a third of it, then to nothing.
 
 An agent that says nothing between calls — a small model sent to commit, say —
 still says what a command is for, in the `description` the shell tool asks for
 beside it, and that stands in for the words. Calls with neither are listed as
 below.
+
+## A command in words
+
+A command line says what ran to a reader who reads shell, and an agent that says
+nothing about its calls leaves a strip of them: `ran sed -n '81,131p'
+README.md; ls -a`. So a command is said by what it does — `read lines 81–131 of
+README.md and listed the files` — from a table of the programs a pipeline runs
+most (`hooks/shell.ts`). Each step of the line is said once and in order, and
+what is not a step is left out: an `echo` marker, a redirect, a variable set in
+front, the stage after a pipe that only filters what the first one printed. A
+program the table does not know is named — `ran terraform` — rather than
+guessed at, and a line with no step worth saying is shown as written.
+
+A table rather than a small model. A model would describe more, and say what a
+command was looking for as well as what it read, but it would bill every run
+for a few dozen requests the reader did not ask for, and draw each line twice:
+the command, then the words a second later. Where an agent writes why it runs a
+command, the strip leads with that, and that is what no table or model could
+supply; the table is for the agents that do not.
 
 ## Why it is there
 
@@ -49,9 +68,8 @@ order it happened, without a press.
 
 - A file changed: `edited` for `Edit`, `MultiEdit` and `NotebookEdit`, `wrote`
   for `Write`.
-- A command run, without the `cd <worktree> &&` a pipeline puts in front of every
-  one: that prefix is the same on all of them, and the command is what tells
-  them apart.
+- A command run, in words (see above), without the `cd <worktree> &&` a
+  pipeline puts in front of every one.
 - A subagent started.
 - A gate's verdict, as the agent lands: `passed` or `failed`, and the summary
   the gate gave. See the verdicts in [nodes.md](nodes.md).

@@ -156,13 +156,13 @@ test('a running agent is said to be at the file or command its call names, with 
   const open = { id: 'c5', name: 'Bash', input: 'command: npm run lint', startedMs: NOW - 200 }
 
   expect(firstRow(developing(open), 160).text).toBe(
-    ' In Develop, Develop is running `npm run lint` (2 files changed). Preflight: plan located, tools ready. Verify comes next.',
+    ' In Develop, Develop is running the linter (2 files changed). Preflight: plan located, tools ready. Verify comes next.',
   )
 })
 
 test('an agent between calls is thinking about the last thing it did', () => {
   expect(firstRow(developing(undefined, true), 120).text).toBe(
-    ' In Develop, Develop is thinking, after running `npm run type-check` (2 files changed). Verify comes next.',
+    ' In Develop, Develop is thinking, after type-checking the code (2 files changed). Verify comes next.',
   )
 })
 

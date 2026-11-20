@@ -92,16 +92,16 @@ test('the strip says what the run did, newest last, under a rule at the foot', (
     '  4.0s  ✔ Preflight  passed: plan located, tools ready',
     '  5.0s    Develop    read 2 files, searched once',
     ' 10.0s    Develop    edited stores/config.ts',
-    ' 12.0s  ✖ Develop    ran npm run lint, which failed',
+    ' 12.0s  ✖ Develop    ran the linter, which failed',
     ' 14.0s    Develop    wrote stores/ai-status.ts',
-    ' 16.0s  ▸ Develop    ran npx vitest run',
+    ' 16.0s  ▸ Develop    ran the tests',
   ])
 })
 
 test('only the newest lines are kept where there are more than the strip holds', () => {
   const { lines } = rows(pipeline(), 100, 30, 2)
 
-  expect(lines.slice(-2)).toEqual([' 14.0s    Develop  wrote stores/ai-status.ts', ' 16.0s  ▸ Develop  ran npx vitest run'])
+  expect(lines.slice(-2)).toEqual([' 14.0s    Develop  wrote stores/ai-status.ts', ' 16.0s  ▸ Develop  ran the tests'])
 })
 
 test('the mark and the name carry the state, and the words stay grey', () => {
@@ -161,8 +161,8 @@ test('an agent that said why it made its calls is quoted, with what it did after
   // Calls one request issued share its words and one line; a call with no words
   // of its own says what its description says it is for.
   expect(lines.slice(-2)).toEqual([
-    ' 5.0s    Develop  Lint clean. Now run the affected unit tests. \u2192 read config.ts, ran npx vitest run stores',
-    ' 8.0s    Develop  See what changed so far \u2192 ran git diff --stat',
+    ' 5.0s    Develop  Lint clean. Now run the affected unit tests. \u2192 read config.ts, ran the tests for stores',
+    ' 8.0s    Develop  See what changed so far \u2192 looked at the changes',
   ])
 })
 

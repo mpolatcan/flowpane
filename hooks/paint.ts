@@ -29,6 +29,7 @@ import {
 import { aboutRows, NAME, shippedVersion, TAGLINE, type AboutRow } from './about'
 import { modelName, type AgentRow, type RunState, type RunStatus, type Step, type ToolCall } from './journal'
 import { DEFAULT_THEME, paletteOf, themeOf, THEMES, type Palette, type Theme } from './theme'
+import { describe } from './shell'
 import {
   aheadDepth,
   barRowsOf,
@@ -10033,7 +10034,7 @@ function callPhrase(call: ToolCall, tight: boolean): string {
     case 'Write':
       return `writing ${path}`
     case 'Bash':
-      return `running \`${clipped(input, tight ? 24 : 48)}\``
+      return describe(input)?.ing ?? `running \`${clipped(input, tight ? 24 : 48)}\``
     case 'Grep':
       return `searching for '${clipped(input, tight ? 16 : 32)}'`
     case 'Glob':
@@ -10580,8 +10581,11 @@ function didOf(calls: ToolCall[]): string {
           return files('edited', edits)
         case 'write':
           return files('wrote', writes)
-        case 'ran':
-          return commands.length === 1 ? `ran ${clipped(commands[0]!, 40)}` : `ran ${commands.length} commands`
+        case 'ran': {
+          const said = [...new Set(commands.map(command => describe(command)?.past ?? `ran ${clipped(command, 40)}`))]
+
+          return said.length <= 2 ? said.join(', ') : `ran ${commands.length} commands`
+        }
         default:
           return `${other} other ${other === 1 ? 'call' : 'calls'}`
       }
@@ -10689,7 +10693,7 @@ function feedOf(run: RunState): FeedRow[] {
       if (CHANGES.has(call.name) && input) {
         text = `${call.name === 'Write' ? 'wrote' : 'edited'} ${shortPath(input)}`
       } else if (call.name === 'Bash' && input) {
-        text = `ran ${clipped(input, 120)}`
+        text = describe(input)?.past ?? `ran ${clipped(input, 120)}`
       } else if (call.name === 'Agent' || call.name === 'Task') {
         text = input ? `started a subagent: ${clipped(input, 80)}` : 'started a subagent'
       }
