@@ -221,3 +221,15 @@ test('a run that failed after every agent landed closes the strip with what the 
 
   expect(strip).toEqual(['  5.0s    Gate  ran the tests', ' 40.0s  ✖ run   gate tests failed: 3 tests failed'])
 })
+
+test('a subagent an agent started is told by the description it was given, or bare without one', () => {
+  const run = runOf([
+    agent('Develop', 'done', [
+      call('Agent', 'description: review the diff\nprompt: read the staged diff and list what breaks', 5),
+      call('Agent', '', 9),
+    ]),
+  ])
+  const { lines } = rows(run, 100, 30, 2)
+
+  expect(lines.slice(-2)).toEqual([' 5.0s    Develop  started a subagent: review the diff', ' 9.0s    Develop  started a subagent'])
+})

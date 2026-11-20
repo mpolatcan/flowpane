@@ -126,3 +126,46 @@ test('the ruler carries the zoom presses in its gutter', () => {
   expect(spots.find(h => h.agentId === ZOOM_OUT)?.x).toBe(2)
   expect(spots.find(h => h.agentId === ZOOM_IN)?.x).toBe(7)
 })
+
+test('the wait before a late bar is a row of dots, and a bar that starts with the run has none', () => {
+  const { rows } = drawn(TRACE(), 1)
+  const ruler = rows.find(row => row.includes('1×')) ?? ''
+  const axisX = ruler.indexOf('┬')
+  const charlie = rows.find(row => row.includes('charlie')) ?? ''
+  const alpha = rows.find(row => row.includes('alpha')) ?? ''
+  const bar = charlie.indexOf('█', axisX)
+
+  expect(axisX).toBeGreaterThan(0)
+  expect(bar).toBeGreaterThan(axisX + 1)
+  expect([...charlie.slice(axisX + 1, bar)].every(ch => ch === '·')).toBe(true)
+  expect(alpha.slice(axisX)).not.toContain('·')
+})
+
+test('a bar that starts past the window keeps its arrow cell clear of the dots of its wait', () => {
+  const written = new Map<string, number[]>()
+
+  class Recording extends Canvas {
+    override put(...args: Parameters<Canvas['put']>): ReturnType<Canvas['put']> {
+      const [x, y, code] = args
+      const key = `${x},${y}`
+
+      written.set(key, [...(written.get(key) ?? []), code])
+
+      return super.put(...args)
+    }
+  }
+
+  const canvas = new Recording(110, 24)
+
+  paint(canvas, SHORT(), {
+    nowMs: ENDED, tick: -1, orientation: 'timeline', follow: false, zoom: 4, bodyScroll: { x: 0, y: 0 },
+  })
+
+  const rows = rowsOf(canvas)
+  const y = rows.findIndex(row => row.includes('charlie'))
+  const arrow = rows[y]!.indexOf('▸')
+
+  expect(arrow).toBeGreaterThan(0)
+  expect(rows[y]![arrow - 1]).toBe('·')
+  expect(written.get(`${arrow},${y}`)).not.toContain(0x00b7)
+})

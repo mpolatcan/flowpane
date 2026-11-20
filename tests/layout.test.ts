@@ -1157,3 +1157,54 @@ test('across, the strip widens for what the script says about each phase only wh
   expect(tight.ahead?.w).toBe(layout(bare, 100, 30, 'horizontal').ahead?.w)
   expect(Math.min(...tight.lanes.map(l => l.x))).toBeGreaterThanOrEqual(0)
 })
+
+/** One phase that ran, and six that nothing has entered yet. */
+const SIX_AHEAD = runOf([
+  ['Survey', ['paint', 'layout']],
+  ['Verify', []],
+  ['Escalate', []],
+  ['Report', []],
+  ['Publish', []],
+  ['Notify', []],
+  ['Archive', []],
+])
+
+test('down the pane, more phases ahead than the band has rows close on a heading counting the rest', () => {
+  const canvas = new Canvas(90, 22)
+
+  paint(canvas, SIX_AHEAD, {
+    nowMs: STARTED + 20_000,
+    tick: 0,
+    orientation: 'vertical',
+    follow: false,
+    bodyScroll: { x: 0, y: 99 },
+  })
+
+  const headings = rowsOf(canvas)
+    .map(line => line.trimEnd())
+    .filter(line => /^ ○ /.test(line))
+
+  expect(headings).toEqual([
+    expect.stringMatching(/^ ○ Verify ╌+$/),
+    expect.stringMatching(/^ ○ Escalate ╌+$/),
+    expect.stringMatching(/^ ○ Report ╌+$/),
+    expect.stringMatching(/^ ○ Publish ╌+$/),
+    expect.stringMatching(/^ ○ 2 more ╌+$/),
+  ])
+})
+
+test('across, a strip with more phases ahead than rows stops at its foot on a heading counting the rest', () => {
+  const view = layout(SIX_AHEAD, 120, 10, 'horizontal')
+  const canvas = new Canvas(120, 10)
+
+  paint(canvas, SIX_AHEAD, { nowMs: STARTED + 20_000, tick: 0, orientation: 'horizontal' })
+
+  const strip = rowsOf(canvas)
+    .slice(view.headerRows)
+    .map(line => /\u25cb (\d+ more|\w+)/.exec(line.slice(view.ahead?.x ?? 0))?.[1])
+    .filter((name): name is string => name !== undefined)
+
+  expect(strip.length).toBeLessThan(6)
+  expect(strip[strip.length - 1]).toBe(`${7 - strip.length} more`)
+  expect(strip.slice(0, -1)).toEqual(['Verify', 'Escalate', 'Report', 'Publish', 'Notify'].slice(0, strip.length - 1))
+})

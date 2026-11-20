@@ -379,3 +379,70 @@ test('the middle of the row says what else the session has run, and says nothing
   // name up in the bar.
   expect(both).toContain('2 runs this session')
 })
+
+/**
+ * Launches one probe run per id, each one already over when its id is in `ended`,
+ * and hands back the text in the middle of the row that names the session's runs.
+ */
+async function sessionMiddle($: any, on: any, ids: string[], ended: string[]): Promise<string[]> {
+  mock.clock(on, { now: 1_000 })
+
+  const files: Record<string, string> = {}
+
+  for (const runId of ended) {
+    files[`/session/workflows/${runId}.json`] = JSON.stringify({ status: 'completed', startTime: 1_000 })
+  }
+
+  on('env.get', () => ({ value: HOME }))
+  on('ui.open', () => ({ value: undefined }))
+  on('ui.close', () => ({ value: undefined }))
+  on('ui.blit', () => ({ value: { requestId: 'flowpane' } }))
+  on('ui.invalidate', () => ({ value: undefined }))
+  on('command.register', () => ({ value: { command: 'flowpane' } }))
+  on('session.id', () => ({ value: 'test-session' }))
+  on('store.get', () => ({ value: undefined }))
+  on('store.set', () => ({ value: undefined }))
+  on('fs.exists', ($$: unknown, e: { path: string }) => ({ value: e.path in files }))
+  on('fs.read', ($$: unknown, e: { path: string }) => {
+    if (e.path in files) {
+      return { value: files[e.path] }
+    }
+
+    throw new Error(`unexpected read: ${e.path}`)
+  })
+
+  let next = ids[0]
+
+  on('tool.call', { tool: 'Workflow' }, () => ({
+    result: {
+      status: 'async_launched',
+      taskId: next,
+      taskType: 'local_workflow',
+      runId: next,
+      workflowName: 'probe',
+      summary: 'a probe',
+      transcriptDir: `/session/subagents/workflows/${next}`,
+    },
+  }))
+
+  for (const runId of ids) {
+    next = runId
+    await $.tool.call({ tool: 'Workflow', script: 'export const meta = { name: "probe", description: "a probe" }' })
+  }
+
+  return footOf(flatten(await renderPane($, 110)))
+    .texts.map(t => t.trim())
+    .filter(t => t.includes('this session'))
+}
+
+test('the middle of the row counts the runs still going beside the runs of the session', async ($, on) => {
+  const middle = await sessionMiddle($, on, ['wf_done', 'wf_going'], ['wf_done'])
+
+  expect(middle).toEqual(['1 running \u2502 2 runs this session'])
+})
+
+test('the middle of the row is the tally alone once every run of the session is over', async ($, on) => {
+  const middle = await sessionMiddle($, on, ['wf_first', 'wf_second'], ['wf_first', 'wf_second'])
+
+  expect(middle).toEqual(['2 runs this session'])
+})
