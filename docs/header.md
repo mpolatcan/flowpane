@@ -283,6 +283,15 @@ decoded against the row under it before it says anything — and what it said
 then was which phase spent the most, which the row of names and counts says in
 words.
 
+Where the row has room to spare, the counts say what they count: `∑ 489.3k
+tokens`, `⚙ 33 tool calls`, `⧉ 13 agents`. The marks are the pane's own
+shorthand, and a reader meeting it for the first time has no key to them. The
+words are all said or none — one group in words beside another in marks is one
+row in two vocabularies — and they are tried against the whole of the state on
+the left, not its floor, so spelling a unit out never costs the row a count of
+what the run is doing. In practice that is a finished run, whose state is short,
+or a pane near two hundred columns wide.
+
 Narrow, the figures give way by rank rather than by position, and in two steps:
 first a figure says less where it has a shorter form — the fleet drops its
 model breakdown and keeps `⧉ 13` — and only then does a whole figure go.

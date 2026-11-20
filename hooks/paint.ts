@@ -9519,6 +9519,17 @@ function paintRunLine(
     })),
   ]
 
+  // Where the pane is wide enough, each count says what it counts. The marks
+  // are the pane's own shorthand, and a reader meeting it for the first time
+  // has no key to them: `⚙ 17` and `⧉ 6` are two numbers with two symbols,
+  // where `⚙ 17 tool calls` and `⧉ 6 agents` read without one. The words are
+  // all said or none: one group in words beside another in marks is the same
+  // row in two vocabularies, and a pane that has to give a breakdown up gives
+  // the words up first.
+  const calls = tools[0] ? Number(tools[0].text.slice(cells(TOOL_MARK) + 1)) : 0
+  const named = (fields: Field[], unit: string): Field[] =>
+    fields.length > 0 ? [{ ...fields[0]!, text: `${fields[0]!.text} ${unit}` }, ...fields.slice(1)] : fields
+
   // Both figures are marked, and this is where the pane teaches the marks the
   // cards use: the widest row it has, with a clear cell between each mark and
   // its figure. Squeezed, the space goes and the pair closes up the way a card
@@ -9562,7 +9573,21 @@ function paintRunLine(
   const name = truncate(run.name, 24)
   const floor = Math.min(38, name.length + (state[0] ? 3 + state[0].text.length : 0))
   const edgeX = columns
-  const kept = fitted(figures, edgeX - (2 + floor + 2))
+  const worded = figures.map(g =>
+    g.drop === 1
+      ? { ...g, fields: [{ ...g.fields[0]!, text: `${tokensWide(spent)} tokens` }] }
+      : g.drop === 2
+        ? { ...g, fields: named(g.fields, run.agents.length === 1 ? 'agent' : 'agents') }
+        : g.drop === 3
+          ? { ...g, fields: named(g.fields, calls === 1 ? 'tool call' : 'tool calls') }
+          : g,
+  )
+  // The words are the last thing the row has room for: they are tried against
+  // the whole of the state on the left, not its floor, so spelling a unit out
+  // never costs the row a count of what the run is doing.
+  const said = name.length + 2 + state.reduce((sum, f) => sum + 3 + cells(f.text), 0)
+  const space = edgeX - (2 + floor + 2)
+  const kept = widthOf(ruled(worded), 0) <= edgeX - (2 + said + 2) ? worded : fitted(figures, space)
   const figuresX = kept.length > 0 ? drawRight(c, edgeX, y, ruled(kept), 0) : edgeX
 
   let x = 2

@@ -271,7 +271,10 @@ test('the run line says what the agents called, and gives the names up first', (
 
   // The total, then the two called most, divided from each other by spacing
   // alone — the strokes say where one measurement ends and the next begins.
-  expect(runLineOf(wide)).toContain('⚙ 9  5×Read  3×Bash')
+  // With room to spare the counts say what they count.
+  expect(runLineOf(wide)).toContain('⚙ 9 tool calls  5×Read  3×Bash')
+  expect(runLineOf(wide)).toContain('⧉ 6 agents')
+  expect(runLineOf(wide)).toMatch(/∑ [\d.]+[km]? tokens/)
   expect(runLineOf(wide)).not.toContain('Grep')
 
   // Squeezed, the breakdown is given up a name at a time while the models are
@@ -282,6 +285,9 @@ test('the run line says what the agents called, and gives the names up first', (
 
   const line = runLineOf(narrow)
 
+  // The words are the first thing the row gives up, and all of them at once.
+  expect(line).not.toContain('tool calls')
+  expect(line).not.toContain('agents')
   expect(line).toContain('⚙ 9  5×Read')
   expect(line).not.toContain('3×Bash')
   expect(line).toContain('Haiku 4.5')
