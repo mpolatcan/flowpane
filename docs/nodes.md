@@ -74,6 +74,12 @@ The model goes in the bottom edge rather than queueing behind the clock and the
 tokens for the middle row and losing. That is how a card twenty cells wide came
 to say nothing about its model while half its bottom edge was strokes.
 
+A gate that has landed puts what it said there instead — `╰─ tree not clean
+after commit ╯` — cut to the edge. The verdict used to be said only in the strip
+at the foot, which keeps the newest few lines, so a gate that failed twenty
+minutes ago had scrolled out of it and its card said `Haiku 4.5`, which the run
+line says already. The card is where a reader looks to see why a gate failed.
+
 A card whose edge is spoken for says nothing about its model at all, and the
 phase decides that together the way it decides everything else it writes. The
 pass count takes the right-hand end of the edge from the second pass on, and a

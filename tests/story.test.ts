@@ -219,3 +219,30 @@ test('a finished run counts the agents that finished, and the one that failed ke
     expect(header).toContain('✖ 1 failed')
   }
 })
+
+test('a gate that has landed says its verdict on its card, where the model was', () => {
+  const run = runOf('completed', [
+    agent('g1', 'Review', 'lint', 'failed', { model: 'claude-haiku-4-5', verdict: { passed: false, summary: 'tree not clean' } }),
+    agent('g2', 'Review', 'tests', 'done', { model: 'claude-haiku-4-5' }),
+  ])
+  const canvas = new Canvas(110, 26)
+
+  paint(canvas, run, { nowMs: NOW, tick: -1, orientation: 'horizontal' })
+
+  const feet: string[] = []
+
+  for (let y = 0; y < 26; y++) {
+    let row = ''
+
+    for (let x = 0; x < 110; x++) {
+      row += String.fromCodePoint(canvas.at(x, y) || 0x20)
+    }
+
+    if (row.includes('╰')) {
+      feet.push(row)
+    }
+  }
+
+  expect(feet.some(row => row.includes(' tree not clean '))).toBe(true)
+  expect(feet.some(row => row.includes(' Haiku 4.5 '))).toBe(true)
+})

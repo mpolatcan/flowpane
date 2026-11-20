@@ -1468,13 +1468,28 @@ function footFits(
   const edgeEnd = right - 1 - (repeat.length > 0 ? repeat.length + 1 : 0)
   const edgeRoom = Math.max(0, edgeEnd - (box.x + 3))
   const doing = truncate(doingOf(agent, nowMs), edgeRoom)
-  const named = doing || scale.model(agent.model ?? model)
+  const named = doing || verdictFoot(agent, edgeRoom) || scale.model(agent.model ?? model)
   const edgeAt = Math.min(
     box.x + 2 + Math.max(1, Math.floor((inner - 2 - named.length) / 2)),
     edgeEnd - named.length,
   )
 
   return named.length > 0 && edgeAt >= box.x + 3
+}
+
+/**
+ * What a gate said, for the foot of its card once it has landed.
+ *
+ * The verdict used to be said only in the strip, which keeps the newest few
+ * lines: a gate that failed twenty minutes ago had scrolled out of it, and its
+ * card said `Haiku 4.5` — the one fact the run line says already. A gate's
+ * card is where a reader looks to see why it failed, so the summary takes the
+ * model's place there; the model is still in the run line and the dialog.
+ */
+function verdictFoot(agent: AgentRow, room: number): string {
+  const summary = agent.verdict?.summary?.trim()
+
+  return summary && agent.state !== 'running' ? truncate(summary.split('\n')[0]!, room) : ''
 }
 
 /**
@@ -1992,7 +2007,8 @@ function paintNode(
   // `alone`.
   const inside =
     box.inside?.alone === true ? truncate(`${FOLD_SHUT}${box.inside.agents} agents`, edgeRoom) : ''
-  const named = doing || inside || scale.model(agent.model ?? model)
+  const said = verdictFoot(agent, edgeRoom)
+  const named = doing || inside || said || scale.model(agent.model ?? model)
   const edgeAt = Math.min(
     box.x + 2 + Math.max(1, Math.floor((inner - 2 - named.length) / 2)),
     edgeEnd - named.length,
@@ -2001,7 +2017,7 @@ function paintNode(
 
   if (wrote) {
     c.put(edgeAt - 1, last, 0x20, frame)
-    c.text(edgeAt, last, named, mix(doing ? color : COLORS.model, frame, 0.25))
+    c.text(edgeAt, last, named, mix(doing || named === said ? color : COLORS.model, frame, 0.25))
     c.put(edgeAt + named.length, last, 0x20, frame)
 
     // A wave's own way back out, on the card's bottom edge because the band's
