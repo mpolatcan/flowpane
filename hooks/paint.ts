@@ -9793,6 +9793,217 @@ function paintTitle(c: Canvas, tick: number, columns: number): void {
   }
 }
 
+/** A piece of the run's sentence, and the colour it is set in when it has one of its own. */
+type Words = { text: string; color?: Rgb }
+
+/**
+ * What a running agent is doing, as a verb a reader would use.
+ *
+ * The card's bottom edge says `⚙ Read`, which is the tool's own name and the
+ * pane's own mark; a sentence that said `bugs is Read` would be the card again
+ * with the grammar knocked out of it. The tools an agent calls most often get a
+ * verb, and any other is named, since a verb guessed for a tool the pane does
+ * not know is a claim about what it does.
+ */
+function verbOf(tool: string, short: boolean): string {
+  switch (tool) {
+    case 'Read':
+      return short ? 'reading' : 'reading a file'
+    case 'Grep':
+    case 'Glob':
+      return short ? 'searching' : 'searching the code'
+    case 'Bash':
+      return short ? 'in a shell' : 'running a command'
+    case 'Edit':
+    case 'MultiEdit':
+    case 'Write':
+    case 'NotebookEdit':
+      return short ? 'editing' : 'editing a file'
+    case 'WebFetch':
+      return short ? 'fetching' : 'fetching a page'
+    case 'WebSearch':
+      return short ? 'searching' : 'searching the web'
+    case 'Agent':
+    case 'Task':
+      return short ? 'delegating' : 'waiting on a subagent'
+    default:
+      return short ? tool : `calling ${tool}`
+  }
+}
+
+/** A running agent's activity, for the sentence: the full clause, or the word that stands for it. */
+function activityOf(agent: AgentRow, nowMs: number, short: boolean): string {
+  const busy = agent.tools.find(t => t.isRunning)
+
+  if (busy) {
+    return short ? verbOf(busy.name, true) : `is ${verbOf(busy.name, false)}`
+  }
+
+  if (agent.isThinking) {
+    return short ? 'thinking' : 'is thinking'
+  }
+
+  const quiet = quietFor(agent, nowMs)
+
+  if (quiet > 0) {
+    return short ? `quiet ${elapsed(quiet)}` : `has said nothing for ${elapsed(quiet)}`
+  }
+
+  return short ? 'working' : 'is working'
+}
+
+/** `a`, `a and b`, `a, b and c`, with the names in their own colours and the joins in the prose's. */
+function listed(items: Words[][], prose: Rgb): Words[] {
+  return items.flatMap((item, i) => [
+    ...(i === 0 ? [] : [{ text: i === items.length - 1 ? ' and ' : ', ', color: prose }]),
+    ...item,
+  ])
+}
+
+/**
+ * The run in one sentence, from the most it can say down to the least, for the
+ * row above the bar to pick the first that fits.
+ *
+ * The run line is figures with marks, and the drawing is a diagram with no key:
+ * between them a reader can work out what is happening, and on a narrow pane
+ * the phase doing the work is often scrolled out past the edge. This says it in
+ * words — which phase, what each of its agents is doing, what failed, what comes
+ * next — and once the run is over, how it ended.
+ *
+ * Agent names are set in their state's colour and nothing else is coloured, so
+ * the sentence keeps the pane's rule that colour says state. It is a list of
+ * spellings rather than one string cut to fit because a sentence cut off at the
+ * edge says less than a shorter sentence and reads as a fault in the pane.
+ */
+function storyOf(run: RunState, nowMs: number, prose: Rgb, plain: Rgb): Words[][] {
+  const say = (text: string): Words => ({ text, color: prose })
+  const name = (agent: AgentRow): Words => ({ text: nodeLabel(agent), color: colorOf(agent.state) })
+  const phase = (title: string): Words => ({ text: title, color: plain })
+  const took = elapsed((run.endedMs ?? nowMs) - run.startedMs)
+  const failed = run.agents.filter(a => a.state === 'failed')
+  const finished = run.agents.filter(a => a.state === 'done').length
+  const total = run.agents.length
+  const failures = (where: string[]): Words[] => {
+    if (failed.length === 0) {
+      return []
+    }
+
+    if (failed.length > 3) {
+      return [say(`${failed.length} agents failed`)]
+    }
+
+    const elsewhere = failed.every(a => !where.includes(a.phase)) && failed.every(a => a.phase === failed[0]!.phase)
+
+    return [
+      ...listed(failed.map(a => [name(a)]), prose),
+      say(' failed'),
+      ...(elsewhere ? [say(' in '), phase(failed[0]!.phase)] : []),
+    ]
+  }
+
+  if (run.status !== 'running') {
+    const failedRun = run.status === 'failed'
+    // A run that did not finish is told where it gave out: the phase of the
+    // first agent that did not land, or else the last phase it entered.
+    const cut = run.agents.find(a => a.state !== 'done')?.phase ?? run.agents[run.agents.length - 1]?.phase
+    const opening =
+      run.status === 'completed'
+        ? `Done in ${took}`
+        : `${failedRun ? 'Failed' : 'Stopped'} after ${took}${cut ? ` in ${cut}` : ''}`
+    const error = failedRun ? run.error?.split('\n')[0]?.trim() : undefined
+    const counted =
+      total === 0
+        ? 'No agents ran'
+        : finished === total
+          ? total === 1
+            ? 'Its one agent finished'
+            : total === 2
+              ? 'Both agents finished'
+              : `All ${total} agents finished`
+          : `${finished} of ${total} agents finished`
+    const lost = failures([])
+
+    return [
+      error
+        ? [say(`${opening}: ${error}`)]
+        : [say(`${opening}. ${counted}`), ...(lost.length > 0 ? [say('; '), ...lost] : []), say('.')],
+      [say(`${opening}. ${finished} of ${total} finished${failed.length > 0 ? `, ${failed.length} failed` : ''}.`)],
+      [say(`${opening}.`)],
+    ]
+  }
+
+  const running = run.agents.filter(a => a.state === 'running')
+  const where = run.phases.filter(p => running.some(a => a.phase === p))
+  const entered = run.phases.filter(p => run.agents.some(a => a.phase === p))
+  const last = entered.length > 0 ? run.phases.indexOf(entered[entered.length - 1]!) : -1
+  const next = last >= 0 ? run.phases[last + 1] : run.phases[0]
+  const here = where.length > 0 ? where : entered.slice(-1)
+  const lost = failures(here)
+
+  if (running.length === 0) {
+    const waiting = here.length > 0 ? [say('Between phases, after '), phase(here[0]!)] : [say('Starting')]
+
+    return [
+      [...waiting, ...(lost.length > 0 ? [say('. '), ...lost] : []), say('.')],
+      [say(here.length > 0 ? 'Between phases.' : 'Starting.')],
+    ]
+  }
+
+  const phases = listed(here.map(p => [phase(p)]), prose)
+  const few = running.length <= 3
+  const thinking = running.filter(a => a.isThinking && !a.tools.some(t => t.isRunning)).length
+  const doing = few
+    ? listed(running.map(a => [name(a), say(` ${activityOf(a, nowMs, false)}`)]), prose)
+    : [say(`${running.length} agents are running${thinking > 0 ? `, ${thinking} of them thinking` : ''}`)]
+  const doingShort = few
+    ? listed(running.map(a => [name(a), say(` ${activityOf(a, nowMs, true)}`)]), prose)
+    : [say(`${running.length} running`)]
+  const ahead = next ? [say(' '), phase(next), say(' comes next.')] : []
+  const aheadShort = next ? [say(' Next: '), phase(next), say('.')] : []
+  const counts = `${running.length} running${failed.length > 0 ? `, ${failed.length} failed` : ''}`
+
+  return [
+    [say('In '), ...phases, say(', '), ...doing, say('.'), ...(lost.length > 0 ? [say(' '), ...lost, say('.')] : []), ...ahead],
+    [...phases, say(': '), ...doingShort, say('.'), ...(lost.length > 0 ? [say(' '), ...lost, say('.')] : []), ...aheadShort],
+    [...phases, say(': '), ...doingShort, say('.'), ...(lost.length > 0 ? [say(' '), ...lost, say('.')] : [])],
+    [...phases, say(': '), ...doingShort, say(failed.length > 0 ? `. ${failed.length} failed.` : '.')],
+    [...phases, say(`: ${counts}`)],
+    [say(counts)],
+  ]
+}
+
+/**
+ * The run's sentence across the pane's first row, where the pane's name used to
+ * stand while a run was shown.
+ *
+ * The name said the same thing on every frame, and once a run is on screen the
+ * reader already knows what the pane is: the row is worth more saying what the
+ * run is doing. The name stays on the idle pane, where nobody yet knows what
+ * this is, and in the line at the foot.
+ *
+ * Ragged left, a cell in from the edge, because it is a sentence to be read
+ * rather than a heading to be found; and quieter than the figures under it, as
+ * the name was, so the run line stays the loudest thing at the top.
+ */
+function paintStory(c: Canvas, run: RunState, nowMs: number, columns: number): void {
+  const prose = mix(quietOf(c.background), COLORS.text, 0.7)
+  const room = columns - 2
+
+  for (const words of storyOf(run, nowMs, prose, COLORS.text)) {
+    if (words.reduce((sum, w) => sum + cells(w.text), 0) > room) {
+      continue
+    }
+
+    let x = 1
+
+    for (const w of words) {
+      x += c.text(x, 0, w.text, w.color ?? prose)
+    }
+
+    return
+  }
+}
+
 function paintBar(
   c: Canvas,
   run: RunState,
@@ -9808,7 +10019,7 @@ function paintBar(
   const top = barRows >= 4 ? 1 : 0
 
   if (top > 0) {
-    paintTitle(c, tick, columns)
+    paintStory(c, run, nowMs, columns)
   }
 
   if (barRows - top >= 3) {

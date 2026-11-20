@@ -96,9 +96,10 @@ test('the bar is a rule, the run line, and a rule', () => {
 
   const rows = rowsOf(canvas)
 
-  // A pane this size carries the title as well: the name, then the bar.
+  // A pane this size carries a row above the bar as well: the run in a
+  // sentence, where the idle pane carries its name.
   expect(barRowsOf(canvas.rows, canvas.columns)).toBe(4)
-  expect(rows[0]?.trim()).toBe('FlowPane - Dynamic Workflow Visualizer')
+  expect(rows[0]?.trim()).toBe('Done in 20.0s. All 6 agents finished.')
   // The lid stops short of the corner the surface draws its own close control
   // over; the foot runs the whole way, because it is the block's border.
   expect(rows[1]?.trimEnd()).toMatch(/^─+$/)

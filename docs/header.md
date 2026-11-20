@@ -3,7 +3,7 @@
 The run line, the phase names, the rule under them, the borders between phases, and what moves.
 
 ```
-                                         FlowPane - Dynamic Workflow Visualizer
+ Stopped after 2m56s in Review. 9 of 13 agents finished.
 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 ▮ wf_65ed0255-65c │ stopped 9/13        ⧖ 2m56s │ ∑ 489.3k tkns │ ⚙ 33  13×Bash  11×Read │ ⧉ 13  7×Haiku 4.5  6×Sonnet 5
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -11,32 +11,57 @@ The run line, the phase names, the rule under them, the borders between phases, 
 ─━━━━━━━━━━━━━━━┯─────━━━━━━━────────┬─────━━━━━━━────────┬────────────────────┬────────────────────┬───────────────────
 ```
 
-## The title row
+## The sentence row
 
-`FlowPane - Dynamic Workflow Visualizer`, centred, above everything else. A
-reader meeting this pane for the first time is looking at a diagram drawn in
-glyphs with no key; the title is the one row that says what the thing is before
-any of the rest is worked out. Centred because it names the whole pane rather
-than anything in a column — ragged left it reads as a label stuck to the top
-edge.
+The row above the bar says what the run is doing, in words. The run line is
+figures with marks and the drawing is a diagram with no key: between them a
+reader can work out what is happening, and on a narrow pane the phase doing the
+work is often scrolled out past the edge. This row says it outright.
 
-It is drawn quieter than the run line under it. A heading that outshouts the
-figures it heads is a heading read twice and a measurement read once, and the
-figures are what changes.
+```
+ In Verify, bugs is reading a file and perf is thinking. tests failed. Report comes next.
+ Verify: bugs reading and perf thinking. tests failed. Next: Report.
+ Verify: bugs reading and perf thinking. tests failed.
+ Verify: bugs reading and perf thinking. 1 failed.
+ Verify: 2 running, 1 failed
+ 2 running, 1 failed
+```
 
-What it can afford instead is a shine: one cell at a time lifted toward the
-accent, two cells of falloff behind it, sweeping left to right and then resting
-for a stretch before the next pass. The rest is the whole point — a highlight
-that restarts the instant it finishes reads as a bar filling, which is a claim
-about progress this row has no business making. On a finished run, painted at
-`tick = -1`, the sweep stops with everything else the pane animates.
+A live run is told by the phase or phases with agents running, what each of
+those agents is doing, which agents have failed, and the phase that comes next.
+A tool an agent is running is said as a verb where the pane knows one —
+`reading a file` for `Read`, `running a command` for `Bash` — and named
+otherwise, since a verb guessed for a tool the pane does not know is a claim
+about what it does. An agent nothing has been heard from for 45 seconds is said
+to have said nothing, and for how long. More than three agents at work are
+counted rather than listed.
+
+A finished run is told by how it ended: `Done in 8.0s. All 6 agents finished.`,
+`Stopped after 17m35s in Develop. 3 of 4 agents finished.`, or a failed run's
+first line of error.
+
+It is a list of spellings, from the most the row can say to the least, and the
+row takes the first that fits. A sentence cut off at the edge says less than a
+shorter sentence and reads as a fault in the pane. The spellings are built in
+`storyOf`.
+
+Agent names are set in their state's colour and nothing else in the row is
+coloured, so the row keeps the rule that colour says state. The prose is drawn
+quieter than the run line under it, so the figures stay the loudest thing at
+the top. It is ragged left, a cell in from the edge, because it is a sentence to
+read rather than a heading to find. Nothing in it moves: it changes when the run
+does.
+
+The row used to carry the pane's own name, `FlowPane - Dynamic Workflow
+Visualizer`, centred, with a light sweeping through it. Once a run is on screen
+the reader already knows what the pane is, and a row that says the same thing on
+every frame is worth less than one that says what the run is doing. The idle
+pane still carries the name, with its sweep, because a session with nothing
+running is where somebody asks what this is; the foot names it in every view.
 
 The row is taken only where the pane can spare it: sixteen rows and forty-six
-columns, in `titledPane`. Below either, the title is not drawn and the row is
-not reserved — the title says the same thing on every frame, and a row that
-never changes is the first a short pane should give back to one that does. The
-idle pane carries it on the same terms, which is where it earns its cells most:
-a session with nothing running is exactly where somebody asks what this is.
+columns, in `titledPane`. Below either it is not drawn and the row is not
+reserved.
 
 The header is a block, not a line. Each piece of the run line is divided from
 the next by a stroke, and the block closes on a rule across the pane — so a
