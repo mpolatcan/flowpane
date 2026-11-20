@@ -265,8 +265,12 @@ test('a tab opens its own pane, and the arrow moves the pane that is open', asyn
   // The dialog opens on the prompt, across the whole pane rather than in a
   // column beside the calls. A one-line prompt has nowhere to go, and says so
   // by having no arrows of its own.
+  // Read above the activity strip, which repeats the newest calls whichever
+  // tab is open.
+  const above = (text: string) => text.split('\u2500\u2500 activity')[0]!
+
   expect(opened.text).toContain('Say red.')
-  expect(opened.text).not.toContain('call 20 of the list')
+  expect(above(opened.text)).not.toContain('call 20 of the list')
   expect(opened.keys).not.toContain('node:detail-down:0')
   expect(opened.keys).toContain('node:@tab:1')
 
@@ -276,14 +280,14 @@ test('a tab opens its own pane, and the arrow moves the pane that is open', asyn
 
   // Newest first: the last call an agent made is the one a reader opened the
   // dialog to see, so it is the one the pane opens on.
-  expect(calls.text).toContain('call 20 of the list')
+  expect(above(calls.text)).toContain('call 20 of the list')
   expect(calls.keys).toContain('node:detail-down:1')
 
   await $.ui.press({ plugin: 'flowpane', key: 'node:detail-down:1', requestId: 'flowpane' })
 
   const scrolled = paneOf(await renderPane($, WIDE))
 
-  expect(scrolled.text).not.toContain('call 20 of the list')
+  expect(above(scrolled.text)).not.toContain('call 20 of the list')
 
   // The whole complaint that started this: moving one pane leaves the other
   // where the reader left it, so the tab back is the prompt, whole.

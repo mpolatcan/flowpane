@@ -493,6 +493,11 @@ export type PaintOptions = {
    * other phase is.
    */
   opened?: string[]
+  /**
+   * Rows of the activity strip under the drawing; 0 draws none. See
+   * {@link paintFeed}.
+   */
+  feedRows?: number
 }
 
 /**
@@ -3278,6 +3283,37 @@ function openDetail(
 }
 
 export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintResult {
+  const feed = feedOf(run)
+  const strip = feedRowsFor(c.rows, options.feedRows ?? 0, feed.length)
+
+  if (strip > 0) {
+    // The drawing is painted whole into the rows above the strip and copied in,
+    // rather than every layout being taught to stop short of it: the strip is
+    // a fixed band at the foot, and to the layouts, the rails and the dialogs
+    // the pane is simply that much shorter.
+    const above = new Canvas(c.columns, c.rows - strip - 1, c.background)
+    const result = paintPane(above, run, options)
+
+    c.clear()
+
+    for (let y = 0; y < above.rows; y++) {
+      for (let x = 0; x < c.columns; x++) {
+        const cell = above.cell(x, y)
+
+        c.put(x, y, cell.code, cell.fg, cell.bg)
+      }
+    }
+
+    paintFeed(c, run, feed, above.rows, strip)
+
+    return result
+  }
+
+  return paintPane(c, run, options)
+}
+
+/** Everything but the activity strip: the bar, the drawing, and whatever dialog is open over it. */
+function paintPane(c: Canvas, run: RunState, options: PaintOptions): PaintResult {
   const { nowMs, selectedId } = options
   // A run that has ended draws no more frames, so anything that moves has to
   // stop on a frame that reads: the still tick holds every label at its start
@@ -5277,6 +5313,7 @@ function paintSettings(c: Canvas, options: PaintOptions, hotspots: Hotspot[]): R
   // side says the graph is still there under the answer.
   const most = c.columns - 2
   const detail = Math.max(MIN_DETAIL, Math.min(MAX_DETAIL, options.detailRows ?? MIN_DETAIL))
+  const feed = Math.max(0, Math.min(MAX_FEED, options.feedRows ?? DEFAULT_FEED))
   const here = options.orientation ?? 'auto'
   const layout = LAYOUTS.find(l => l.value === here) ?? LAYOUTS[LAYOUTS.length - 1]
   const palette = paletteOf(THEME)
@@ -5317,6 +5354,11 @@ function paintSettings(c: Canvas, options: PaintOptions, hotspots: Hotspot[]): R
       { label: '−', key: 'detail-shorter', live: false, spent: detail <= MIN_DETAIL },
       { label: `${detail} rows`, key: '', live: true },
       { label: '+', key: 'detail-taller', live: false, spent: detail >= MAX_DETAIL },
+    ]),
+    inLine('Activity', [
+      { label: '−', key: 'feed-fewer', live: false, spent: feed <= 0 },
+      { label: feed === 0 ? 'off' : `${feed} rows`, key: '', live: true },
+      { label: '+', key: 'feed-more', live: false, spent: feed >= MAX_FEED },
     ]),
   ]
 
@@ -9925,6 +9967,43 @@ function clipped(text: string, max: number): string {
   return line.length > max ? `${line.slice(0, Math.max(1, max - 1))}\u2026` : line
 }
 
+/** The argument that says what a call works on, for each tool that has one. */
+const SUBJECT_KEYS: Record<string, string[]> = {
+  Read: ['file_path', 'path'],
+  Edit: ['file_path'],
+  MultiEdit: ['file_path'],
+  Write: ['file_path'],
+  NotebookEdit: ['notebook_path', 'file_path'],
+  Bash: ['command'],
+  Grep: ['pattern'],
+  Glob: ['pattern'],
+  WebFetch: ['url'],
+  WebSearch: ['query'],
+  Agent: ['description', 'prompt'],
+  Task: ['description', 'prompt'],
+}
+
+/**
+ * The one thing a call works on — the file, the command, the pattern — out of
+ * the argument as the pane holds it.
+ *
+ * A call with one argument is held as its value and a call with several as
+ * `key: value` lines, in the order the caller wrote them; an edit's first line
+ * is `replace_all: false`, so a reader told the first line was told `edited
+ * false`. The key is looked for by name instead. A command loses the `cd
+ * <worktree> &&` a pipeline puts in front of every one it runs, since that
+ * prefix is the same on all of them and the command is what tells them apart.
+ */
+function subjectOf(call: ToolCall): string {
+  const input = call.input ?? ''
+  const lines = input.split('\n')
+  const keys = SUBJECT_KEYS[call.name] ?? []
+  const keyed = keys.map(key => lines.find(line => line.startsWith(`${key}: `))?.slice(key.length + 2)).find(Boolean)
+  const said = keyed ?? (/^[a-z_][a-z0-9_]*: /i.test(lines[0] ?? '') ? '' : (lines.find(l => l.trim()) ?? ''))
+
+  return call.name === 'Bash' ? said.trim().replace(/^(cd\s+("[^"]*"|'[^']*'|\S+)\s*(&&|;)\s*)+/, '') : said.trim()
+}
+
 /**
  * What one call is doing, with the thing it is doing it to: `editing
  * stores/config.ts`, `running \`npm run lint\``, `searching for 'storyOf'`.
@@ -9936,9 +10015,7 @@ function clipped(text: string, max: number): string {
  * the second rung of the sentence's ladder.
  */
 function callPhrase(call: ToolCall, tight: boolean): string {
-  // A call with several arguments is held as `key: value` lines; the sentence
-  // wants the value, since the key is the same word the verb already says.
-  const input = (call.input ?? '').replace(/^[a-z_][a-z0-9_]*:\s+/i, '')
+  const input = subjectOf(call)
 
   if (!input.trim()) {
     return verbOf(call.name, false)
@@ -9978,11 +10055,12 @@ function changesOf(calls: ToolCall[]): FileChange[] {
   const files: FileChange[] = []
 
   for (const call of calls) {
-    if (!CHANGES.has(call.name) || !call.input) {
+    const path = CHANGES.has(call.name) ? subjectOf(call) : ''
+
+    if (!path) {
       continue
     }
 
-    const path = call.input.replace(/^[a-z_][a-z0-9_]*:\s+/i, '').split('\n')[0]!.trim()
     let file = files.find(f => f.path === path)
 
     if (!file) {
@@ -10374,3 +10452,192 @@ function paintHeader(
 }
 
 export { COLORS }
+
+/** The most rows the activity strip may take, and how many it takes unless told. */
+export const MAX_FEED = 10
+export const DEFAULT_FEED = 4
+
+/**
+ * Rows of drawing a pane keeps before it gives any to the strip.
+ *
+ * The strip is read beside the drawing, never instead of it: a pane short
+ * enough that the strip would leave the header and a band of cards no room is
+ * a pane that shows the drawing alone.
+ */
+const FEED_FLOOR = 16
+
+/** One line of the activity strip: when, which agent, and what it did. */
+type FeedRow = {
+  atMs: number
+  agent: AgentRow
+  text: string
+  /** A gate's verdict or a call that failed, as the mark ahead of the agent's name. */
+  mark?: 'passed' | 'failed' | 'running'
+}
+
+/** The tools that look at the code rather than change it, gathered into one row. */
+const LOOKS = new Set(['Read', 'Grep', 'Glob'])
+
+/**
+ * What the run has done, one line per thing a reader of a pipeline is waiting
+ * to hear about, in the order it happened.
+ *
+ * A file changed, a command run, a subagent started and a gate's verdict each
+ * get a line. Reads and searches do not: a develop step reads forty files
+ * between two edits, and a line apiece would push every edit off the strip
+ * before anyone saw it. They are gathered into one line per stretch between two
+ * lines that matter — `read 6 files` — which says the agent was looking, and
+ * how hard, without saying it forty times.
+ */
+function feedOf(run: RunState): FeedRow[] {
+  const rows: FeedRow[] = []
+
+  for (const agent of run.agents) {
+    let reads: string[] = []
+    let searches = 0
+    let since = 0
+
+    const gather = () => {
+      if (reads.length === 0 && searches === 0) {
+        return
+      }
+
+      const read = reads.length === 1 ? `read ${shortPath(reads[0]!)}` : `read ${reads.length} files`
+      const searched = `searched ${searches === 1 ? 'once' : `${searches} times`}`
+      const text = reads.length === 0 ? searched : searches === 0 ? read : `${read}, ${searched}`
+
+      rows.push({ atMs: since, agent, text })
+      reads = []
+      searches = 0
+    }
+
+    for (const call of agent.calls ?? []) {
+      const input = subjectOf(call)
+
+      if (LOOKS.has(call.name)) {
+        if (reads.length === 0 && searches === 0) {
+          since = call.startedMs
+        }
+
+        if (call.name === 'Read') {
+          if (!reads.includes(input)) {
+            reads.push(input)
+          }
+        } else {
+          searches++
+        }
+
+        continue
+      }
+
+      const failed = call.isError === true
+      const open = call.endedMs === undefined && agent.state === 'running'
+      let text: string | undefined
+
+      if (CHANGES.has(call.name) && input) {
+        text = `${call.name === 'Write' ? 'wrote' : 'edited'} ${shortPath(input)}`
+      } else if (call.name === 'Bash' && input) {
+        text = `ran ${clipped(input, 120)}`
+      } else if (call.name === 'Agent' || call.name === 'Task') {
+        text = input ? `started a subagent: ${clipped(input, 80)}` : 'started a subagent'
+      }
+
+      if (text === undefined) {
+        continue
+      }
+
+      gather()
+      rows.push({
+        atMs: call.startedMs,
+        agent,
+        text: failed ? `${text}, which failed` : text,
+        ...(failed ? { mark: 'failed' as const } : open ? { mark: 'running' as const } : {}),
+      })
+    }
+
+    gather()
+
+    if (agent.verdict && agent.endedMs !== undefined) {
+      const said = agent.verdict.summary ? `: ${clipped(agent.verdict.summary, 160)}` : ''
+
+      rows.push({
+        atMs: agent.endedMs,
+        agent,
+        text: `${agent.verdict.passed ? 'passed' : 'failed'}${said}`,
+        mark: agent.verdict.passed ? 'passed' : 'failed',
+      })
+    }
+  }
+
+  // Stable, so two lines stamped in the same millisecond keep the order the
+  // agent did them in.
+  return rows.sort((a, b) => a.atMs - b.atMs)
+}
+
+/**
+ * How many rows the strip takes on a pane of this height.
+ *
+ * None until there is a line to put in it: the strip is a band of the pane's
+ * own, and a band that opened empty on every run would cost the drawing four
+ * rows to say that nothing has happened yet, which the drawing already says.
+ */
+function feedRowsFor(rows: number, asked: number, lines: number): number {
+  const want = Math.max(0, Math.min(MAX_FEED, Math.floor(asked)))
+
+  if (want === 0 || lines === 0) {
+    return 0
+  }
+
+  return rows - want - 1 >= FEED_FLOOR ? want : 0
+}
+
+/**
+ * The activity strip: the newest of what the run has done, newest last, under
+ * a rule at the foot of the pane.
+ *
+ * The sentence at the top says what is happening now and the cards say where;
+ * neither says what happened a minute ago, which is what a reader who looked
+ * away from a pipeline wants first. A line is the time into the run, a mark
+ * where the line is news — a gate's verdict, a call that failed, a command
+ * still running — the agent's name in its state's colour, and what it did in
+ * plain words, so colour says state here as it does everywhere else.
+ */
+function paintFeed(c: Canvas, run: RunState, feed: FeedRow[], ruleY: number, rows: number): void {
+  const quiet = quietOf(c.background)
+  const prose = mix(quiet, COLORS.text, 0.7)
+  const shown = feed.slice(-rows)
+
+  for (let x = 0; x < c.columns; x++) {
+    c.put(x, ruleY, RULE_LEFT, quiet)
+  }
+
+  c.text(2, ruleY, ' activity ', quiet)
+
+  const clocks = shown.map(row => elapsed(Math.max(0, row.atMs - run.startedMs)))
+  const clockW = Math.max(...clocks.map(cells))
+  const nameW = Math.min(18, Math.max(...shown.map(row => cells(nodeLabel(row.agent)))))
+
+  shown.forEach((row, i) => {
+    const y = ruleY + 1 + i
+    let x = 1
+
+    x += c.text(x, y, clocks[i]!.padStart(clockW), quiet)
+    x += 2
+
+    if (row.mark) {
+      const [glyph, tone] =
+        row.mark === 'passed'
+          ? [0x2714, COLORS.done]
+          : row.mark === 'failed'
+            ? [0x2716, COLORS.failed]
+            : [0x25b8, COLORS.running]
+
+      c.put(x, y, glyph, tone)
+    }
+
+    x += 2
+    x += c.text(x, y, truncate(nodeLabel(row.agent), nameW).padEnd(nameW), colorOf(row.agent.state))
+    x += 2
+    c.text(x, y, truncate(row.text, Math.max(0, c.columns - 1 - x)), prose)
+  })
+}

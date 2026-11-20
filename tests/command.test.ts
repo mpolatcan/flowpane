@@ -218,7 +218,7 @@ test('the help lists every form of the command, and no more', async ($, on) => {
 
   const forms = helpRows(await reply($, 'help')).map(row => row.form)
 
-  // The seven are the whole surface: a form missing from here is a feature with
+  // The eight are the whole surface: a form missing from here is a feature with
   // no way in, since this reply is the only place the words are written down.
   expect(forms.join(' | ')).toBe(
     [
@@ -227,6 +227,7 @@ test('the help lists every form of the command, and no more', async ($, on) => {
       `${COMMAND} <n>`,
       `${COMMAND} horizontal|vertical|timeline|list|fits`,
       `${COMMAND} detail <n>`,
+      `${COMMAND} activity <n|off>`,
       `${COMMAND} theme [name]`,
       `${COMMAND} about`,
     ].join(' | '),
@@ -243,7 +244,7 @@ test('every description in the help starts in the same column', async ($, on) =>
   // The forms are of very different lengths, so a ragged second column is read
   // as two lists rather than one. The bare `/flowpane` line is the one that
   // tests this: it is the shortest form, and it lands where the rest do.
-  expect(`${columns.join(',')} :: ${rows.length}`).toBe(`${columns[0]} :: 7`)
+  expect(`${columns.join(',')} :: ${rows.length}`).toBe(`${columns[0]} :: 8`)
 })
 
 test('the widest form of the command is three spaces clear of what it does', async ($, on) => {

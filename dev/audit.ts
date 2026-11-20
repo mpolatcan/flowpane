@@ -17,7 +17,7 @@ import { basename } from 'node:path'
 import { Canvas } from '../hooks/canvas'
 import type { RunState } from '../hooks/journal'
 import type { Orientation } from '../hooks/layout'
-import { paint } from '../hooks/paint'
+import { DEFAULT_FEED, paint } from '../hooks/paint'
 import { journalRun, runDirs } from './load'
 
 /** The widths a docked pane is given, from a split terminal to a full screen. */
@@ -117,7 +117,9 @@ for (const { run, name } of picked) {
         const at = performance.now()
 
         try {
-          paint(canvas, run, { nowMs: run.startedMs + 40_000, tick: 3, orientation })
+          // With the activity strip at its default, as a reader's pane is: the
+          // strip is drawn from the same calls and verdicts the drawing is.
+          paint(canvas, run, { nowMs: run.startedMs + 40_000, tick: 3, orientation, feedRows: DEFAULT_FEED })
         } catch (error) {
           broken.push(`${what}: ${error instanceof Error ? error.message : String(error)}`)
 

@@ -57,7 +57,7 @@ import {
   type RunWindow,
   type SettingMenu,
 } from './paint'
-import { applyPress, drew, MAX_DETAIL, MIN_DETAIL, ORIENTATIONS, showDetail, wheel } from './press'
+import { applyPress, DEFAULT_FEED, drew, MAX_DETAIL, MAX_FEED, MIN_DETAIL, ORIENTATIONS, showDetail, wheel } from './press'
 import { DEFAULT_THEME, hexOf, paletteOf, themeOf, THEMES } from './theme'
 import { bandsOf, pictureOf, type Band } from './tree'
 
@@ -170,6 +170,8 @@ const state: {
   clocks: Set<string>
   orientation: Orientation
   detailRows: number
+  /** Rows of the activity strip under the drawing; 0 turns it off. */
+  feedRows: number
   /** Which palette the drawing is painted in. */
   theme: string
   /** Rows the pane asks for while seated inline above the prompt. */
@@ -232,6 +234,7 @@ const state: {
   clocks: new Set(),
   orientation: 'auto',
   detailRows: 24,
+  feedRows: DEFAULT_FEED,
   theme: DEFAULT_THEME,
   paneRows: null,
   nowMs: 0,
@@ -667,6 +670,7 @@ function paintOptions(nowMs: number): PaintOptions {
     callScroll: state.callScroll,
     callOutScroll: state.callOutScroll,
     detailRows: state.detailRows,
+    feedRows: state.feedRows,
     detailScroll: state.detailScroll,
     detailTab: state.detailTab,
     bodyScroll: state.bodyScroll,
@@ -948,6 +952,7 @@ const HELP = ((forms: [string, string][]) => {
   ['<n>', 'show run <n>'],
   ['horizontal|vertical|timeline|list|fits', 'lay the graph out'],
   ['detail <n>', 'rows the detail dialog takes (5–32)'],
+  ['activity <n|off>', 'rows the activity strip takes (0–10)'],
   ['theme [name]', 'list the palettes, or paint in one'],
   ['about', 'what the pane is, and what presses it'],
 ])
@@ -1071,6 +1076,15 @@ async function applyArgs($: EngineInterface, args: string): Promise<string> {
     return `Detail dialog ${state.detailRows} rows.`
   }
 
+  if (verb === 'activity' && (rest === 'off' || Number.isFinite(count))) {
+    state.feedRows = rest === 'off' ? 0 : Math.max(0, Math.min(MAX_FEED, Math.floor(count)))
+
+    await $.store.set('feedRows', state.feedRows)
+    $.ui.invalidate('ui.render')
+
+    return state.feedRows === 0 ? 'Activity strip off.' : `Activity strip ${state.feedRows} rows.`
+  }
+
   // A bare number, or `run 2`, names a run in the order `/flowpane runs` listed them.
   const which = Number(verb === 'run' ? rest : verb)
 
@@ -1127,6 +1141,12 @@ function readOptions(options: PluginOptions): void {
     state.detailRows = Math.floor(rows)
   }
 
+  const feed = Number(options.feedRows)
+
+  if (Number.isFinite(feed) && feed >= 0 && feed <= MAX_FEED) {
+    state.feedRows = Math.floor(feed)
+  }
+
   const pane = Number(options.paneRows)
 
   if (Number.isFinite(pane) && pane >= 6 && pane <= 80) {
@@ -1179,6 +1199,12 @@ async function readStore($: EngineInterface): Promise<void> {
 
   if (Number.isFinite(detailRows) && detailRows >= 5 && detailRows <= 32) {
     state.detailRows = Math.floor(detailRows)
+  }
+
+  const feedRows = await $.store.get('feedRows')
+
+  if (typeof feedRows === 'number' && feedRows >= 0 && feedRows <= MAX_FEED) {
+    state.feedRows = Math.floor(feedRows)
   }
 
   const theme = await $.store.get('theme')

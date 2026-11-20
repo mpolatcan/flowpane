@@ -26,6 +26,7 @@ import {
   DETAIL_CLOSE,
   DETAIL_TAB,
   MAX_DETAIL,
+  MAX_FEED,
   MIN_DETAIL,
   PASS_OPEN,
   RUN_BACK,
@@ -48,13 +49,15 @@ import { nextTheme, THEMES } from './theme'
 // The bounds belong to the dialog they size, and the settings dialog greys out
 // a step that would go past either of them. Re-exported so the plugin still has
 // one place to read what a press can do.
-export { BAND_OPEN, MAX_DETAIL, MIN_DETAIL, SETTING_MENUS, ZOOM_IN, ZOOM_OUT, ZOOMS, type BodyScroll, type SettingMenu } from './paint'
+export { BAND_OPEN, DEFAULT_FEED, MAX_DETAIL, MAX_FEED, MIN_DETAIL, SETTING_MENUS, ZOOM_IN, ZOOM_OUT, ZOOMS, type BodyScroll, type SettingMenu } from './paint'
 
 /** Everything a press can change. The plugin's own state is a superset of it. */
 export type PaneView = {
   orientation: Orientation
   theme: string
   detailRows: number
+  /** Rows of the activity strip under the drawing; 0 turns it off. */
+  feedRows: number
   /**
    * What the detail dialog is open on: an agent by its id, or a nested run by
    * `@run:<phase>`, which has no agent of its own.
@@ -154,7 +157,7 @@ export type PressResult = {
   /** An agent whose detail just opened, and whose transcript is wanted. */
   opened?: string
   /** Settings the press changed, for whoever keeps them between sessions. */
-  store?: ('theme' | 'detailRows' | 'orientation')[]
+  store?: ('theme' | 'detailRows' | 'orientation' | 'feedRows')[]
 }
 
 /** The orientations the layout control walks, in the order it walks them. */
@@ -551,6 +554,14 @@ export function applyPress(
     view.detailRows = Math.max(MIN_DETAIL, Math.min(MAX_DETAIL, view.detailRows + step))
 
     return { store: ['detailRows'] }
+  }
+
+  if (pressed === 'feed-more' || pressed === 'feed-fewer') {
+    const step = pressed === 'feed-more' ? 1 : -1
+
+    view.feedRows = Math.max(0, Math.min(MAX_FEED, view.feedRows + step))
+
+    return { store: ['feedRows'] }
   }
 
   if (pressed === 'orientation') {

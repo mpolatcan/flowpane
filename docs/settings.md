@@ -1,6 +1,6 @@
 # Settings and themes
 
-The four settings, how they are configured, and how a theme becomes a palette.
+The five settings, how they are configured, and how a theme becomes a palette.
 
 `/plugin configure flowpane`, or `pluginConfigs` in settings.json:
 
@@ -8,6 +8,7 @@ The four settings, how they are configured, and how a theme becomes a palette.
 | --- | --- | --- |
 | `orientation` | `horizontal`, `vertical`, `timeline`, `list`, or `auto` (default) — the last spelled `fits` in `/flowpane` and in the settings, and the first two also `across` and `down`. The names three of them carried before 0.5.0 — `flow`, `stack`, `time` — still select their layouts, so a layout picked on an earlier build survives the upgrade | `horizontal` runs the phases across the pane, `vertical` runs them down it, `auto` follows the pane's proportions. A node is the same size in every one of them at every size of pane: the drawing is laid out whole and the pane is a window on to it, so what it cannot hold it scrolls to and the rails say which way. `list` draws a row per agent under each phase with no edges between them — the compact reading of a long run, and where the loop rail, the fan stem and a nested run's gutter are drawn. `timeline` swaps the graph for a trace view: a ruled time axis, one bar per agent on it, grouped by phase and indented under the nested runs they belong to, with a marker where now is. |
 | `detailRows` | 5–32 (default 24) | Rows the detail dialog takes when a node is selected, capped at what the pane can inset. |
+| `feedRows` | 0–10 (default 4; 0 = off) | Rows of the activity strip at the foot of the pane: the newest file changes, commands and gate verdicts, one line each. A pane that would keep fewer than sixteen rows of drawing shows none. See [activity.md](activity.md). |
 | `paneRows` | 6–80 (0 = let the surface decide) | Rows the pane asks for. A dock beside the transcript usually picks its own height. |
 | `theme` | `tokyo-night` (default), `catppuccin`, `gruvbox`, `nord`, `dracula`, `solarized`, `monokai`, `vscode-dark`, `insider-one`, `github-light`, `solarized-light`, `insider-one-light` | The palette everything is drawn in, its ground included. The pane always paints on that ground, footer and all, so the drawing reads the same in every terminal rather than against whatever the terminal happens to be; the ground stops at the drawing's own right edge — see [engine.md](engine.md). |
 

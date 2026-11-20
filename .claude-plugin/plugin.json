@@ -30,6 +30,12 @@
       "description": "Rows the detail dialog takes when a node is selected (5 to 32), capped at what the pane can inset around it. Prompt and Tool Calls sit side by side; the answer takes a row of its own underneath.",
       "default": 24
     },
+    "feedRows": {
+      "type": "number",
+      "title": "Activity",
+      "description": "Rows of the activity strip at the foot of the pane (0 to 10; 0 turns it off): the newest file changes, commands and gate verdicts of the run, one line each, newest last.",
+      "default": 4
+    },
     "paneRows": {
       "type": "number",
       "title": "Pane height",

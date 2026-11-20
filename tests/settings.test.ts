@@ -211,7 +211,7 @@ test('a step past the end of the detail range is drawn but cannot be pressed', (
 
 test('nothing behind the dialog takes a press', () => {
   const own = (id: string) =>
-    id.startsWith('open:') || id.startsWith('set:') || id.startsWith('detail-') || id === '@settings-close'
+    id.startsWith('open:') || id.startsWith('set:') || id.startsWith('detail-') || id.startsWith('feed-') || id === '@settings-close'
 
   // The graph is painted first and whole, so a node under an open dialog is
   // still in the list of things that can be pressed unless it is taken out of

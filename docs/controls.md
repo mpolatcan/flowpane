@@ -13,6 +13,7 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | The graph, with any dialog open | takes no presses — it is pushed back behind the dialog until the dialog shuts |
 | Layout | horizontal, vertical, timeline, list, or fits the shape — picked by name |
 | Detail height `−` `+` | rows the detail dialog takes, 5 to 32; grey at either end of the range |
+| Activity `−` `+` | rows the activity strip takes, 0 (off) to 10 |
 | Theme | twelve palettes, nine dark and three light — each listed beside three cells of its own |
 | ✕ (in a dialog) | closes it, from the dialog's own top corner |
 | A tab in the detail dialog | shows that pane across the dialog's whole width. Which tab is open is kept as the reader moves from node to node |
@@ -326,6 +327,7 @@ line a reader comes back for later. It draws down to 26 columns.
 │ Layout          [horizontal  ▾] │
 │ Theme       ▮▮▮ [tokyo-night ▾] │
 │ Detail height  −  [24 rows]  +  │
+│ Activity       −  [4 rows]  +   │
 │                                 │
 ╰─────────────────────────────────╯
 ```
@@ -440,6 +442,7 @@ back to:
 | `/flowpane <n>` | shows run `<n>` from that list |
 | `/flowpane horizontal` \| `vertical` \| `timeline` \| `fits` | lays the graph out |
 | `/flowpane detail <n>` | rows the detail dialog takes (5–32) |
+| `/flowpane activity <n>` \| `off` | rows the activity strip takes (0–10) |
 | `/flowpane about` | what the pane is, and what presses it — the About dialog's own lines |
 | `/flowpane theme` \| `/flowpane theme <name>` | lists the palettes, or paints in one |
 | `/flowpane help` | prints the above |

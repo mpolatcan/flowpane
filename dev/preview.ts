@@ -131,6 +131,7 @@ if (has('animate')) {
     orientation: (arg('orientation', 'auto') as any),
     selectedId,
     detailRows: Number(arg('detailRows', '24')),
+    feedRows: Number(arg('feed', '4')),
     detailTab: Number(arg('tab', '0')),
     openCall: arg('call'),
     callScroll: Number(arg('callscroll', '0')),
