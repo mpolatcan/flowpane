@@ -149,3 +149,23 @@ test('a gate that answered passed: false stays failed when the engine says it is
 
   expect(run.agents[0]!.state).toBe('failed')
 })
+
+test('an answer cut off inside its JSON carries no verdict, and the agent lands done', () => {
+  const cut = '{"passed": false, "summary": "trunc'
+
+  expect(verdictOf(cut)).toBeUndefined()
+
+  const run = runOf('running', [], { phases: ['Review'] })
+
+  applyJournal(
+    run,
+    [
+      JSON.stringify({ type: 'started', agentId: 'g1', label: 'Review', phase: 'Review' }),
+      JSON.stringify({ type: 'result', agentId: 'g1', result: cut }),
+    ].join('\n'),
+    NOW,
+  )
+
+  expect(run.agents[0]!.state).toBe('done')
+  expect(run.agents[0]!.verdict).toBeUndefined()
+})

@@ -553,3 +553,57 @@ test('a run read back from disk draws its activity strip from the agents’ own 
   expect(lines.some(line => line.includes(' activity '))).toBe(true)
   expect(lines.some(line => line.includes('ran the linter'))).toBe(true)
 })
+
+test('a wheel once the drawing is one picture writes into it rather than building the tree again', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  const painted: string[] = []
+
+  on('tool.call', { tool: 'Workflow' }, () => ({ result: LAUNCH }))
+  stubEngine(on, painted)
+
+  await $.tool.call({ tool: 'Workflow', script: SCRIPT })
+  await clock.advance(600)
+  await $.command.run({ command: 'flowpane', args: 'horizontal' })
+
+  const base = paneOf(await renderPane($))
+  const pointer = { row: railRow(base) - 3 }
+
+  await $.ui.scroll({ requestId: 'flowpane', by: 1, pointer })
+  await clock.advance(30)
+  await renderPane($)
+
+  painted.length = 0
+
+  await $.ui.scroll({ requestId: 'flowpane', by: 1, pointer })
+  await clock.advance(30)
+
+  expect(painted).toContain('blit')
+  expect(painted).not.toContain('invalidate')
+})
+
+test('two steps of the wheel inside one frame are answered by one paint', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  const painted: string[] = []
+
+  on('tool.call', { tool: 'Workflow' }, () => ({ result: LAUNCH }))
+  stubEngine(on, painted)
+
+  await $.tool.call({ tool: 'Workflow', script: SCRIPT })
+  await clock.advance(600)
+  await $.command.run({ command: 'flowpane', args: 'horizontal' })
+
+  const base = paneOf(await renderPane($))
+  const pointer = { row: railRow(base) - 3 }
+
+  await $.ui.scroll({ requestId: 'flowpane', by: 1, pointer })
+  await clock.advance(30)
+  await renderPane($)
+
+  painted.length = 0
+
+  await $.ui.scroll({ requestId: 'flowpane', by: 1, pointer })
+  await $.ui.scroll({ requestId: 'flowpane', by: 1, pointer })
+  await clock.advance(30)
+
+  expect(painted).toEqual(['blit'])
+})

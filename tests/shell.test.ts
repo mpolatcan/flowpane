@@ -61,3 +61,31 @@ test('a sed that edits in place is an edit of the file, not a read of it', () =>
 test('a sed with no range and no file in place rewrites text', () => {
   expect(past("sed 's/a/b/'")).toBe('rewrote some text')
 })
+
+test('a pipe or a semicolon inside a command substitution does not split the line', () => {
+  expect(past('n=$(git log --oneline | wc -l); npm test')).toBe('ran the tests')
+})
+
+test('a timeout in front of a command is looked through to the command', () => {
+  expect(past('timeout 120 npm test')).toBe('ran the tests')
+})
+
+test('committing, pushing and switching branches are said by what they do to the branch', () => {
+  expect(past('git commit -m "x"')).toBe('committed the changes')
+  expect(past('git push origin main')).toBe('pushed the branch')
+  expect(past('git checkout main')).toBe('switched to main')
+  expect(past('git checkout -b feature')).toBe('created the branch feature')
+})
+
+test('opening and merging a pull request are said as such', () => {
+  expect(past('gh pr create --fill')).toBe('opened a pull request')
+  expect(past('gh pr merge 3 --squash')).toBe('merged the pull request')
+})
+
+test('a fetch names the host it went to', () => {
+  expect(past('curl -s https://api.example.com/v1/items')).toBe('fetched api.example.com')
+})
+
+test('a kubectl get names what it read', () => {
+  expect(past('kubectl get pods -n web')).toBe('read Kubernetes pods')
+})
