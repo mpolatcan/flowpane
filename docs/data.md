@@ -13,7 +13,7 @@ alone are not enough:
 | `tool.call`, unmatched | every subagent's tool call, with the `agentId` the journal names | live, around each call |
 | `turn.step` | every model request a subagent makes, with its `agentId`: the text as it streams and the request's `usage` at its stop | live, chunk by chunk |
 | `<transcriptDir>/agent-<id>.meta.json` | the model the agent was spawned on, its type, its phase | at spawn — so a node can name its model while it is still running |
-| `<transcriptDir>/agent-<id>.jsonl` | the prompt the agent was given, the text it answered, and what its newest request was holding | when its detail dialog is opened, and once per agent that stopped without the pane hearing it |
+| `<transcriptDir>/agent-<id>.jsonl` | the prompt the agent was given, the text it answered, the calls it made, and what its newest request was holding | when its detail dialog is opened, and once per agent that stopped without the pane hearing it or whose calls the pane never saw |
 | `<session>/workflows/scripts/<name>-<runId>.js` | that a run exists at all, what workflow it is, and its phases | at launch — the only file a run has before it ends |
 
 `turn.step` is what makes the pane honest about a running agent. The hook is an
@@ -147,6 +147,29 @@ A workflow subagent's tool calls run through the same `tool.call` chain as the
 main loop's, carrying `agentId`, so "what is this agent doing right now" needs
 no polling: the hook wraps the call, and the node shows the tool while it runs
 and the count once it lands.
+
+A run recovered from disk saw none of that chain, so its calls come from the
+transcripts instead: each stopped agent of a recovered run is read once for
+them, the way it is read once for its spend. Without that a run read back after
+a reload of the plugin, or in a resumed session, drew no activity strip at all
+and a sentence with nothing in it an agent did. A reload also renders a pane
+still open before the runs are read back, so the walk ends by asking the pane to
+render again; until it did, the pane said no workflow had run in the session.
+
+## Reading an agent's transcript
+
+Only the conversation is read: the `user` and `assistant` rows. The engine also
+records each request as it went out, in `api-request-blob` rows, with every
+call in it repeated in the form the hooks rewrote it to — `cd <worktree> &&`
+in front. Read whole, every call counted twice, and the dialog's `Tool Calls`
+tab listed seven calls for an agent that made four.
+
+A workflow's agent is handed its task in two messages, each wrapped by the
+harness in a paragraph about what the text is and how much authority it
+carries — the same paragraphs for every agent of every run. Shown as handed
+over, the task an agent was set started thirteen lines down. So the Prompt tab
+drops the paragraphs, gives the task first, and names the request that started
+the run after it. See `promptOf`.
 
 Classic settings hooks were the first thing tried and are the wrong tool here:
 `PostToolUse` on `Workflow` fires ~50ms in with `status: "async_launched"`, and

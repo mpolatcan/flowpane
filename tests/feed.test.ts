@@ -6,7 +6,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { Canvas } from '../hooks/canvas'
-import { noteCallStart, noteStep, type AgentRow, type AgentState, type RunState, type ToolCall } from '../hooks/journal'
+import { applyRunFile, noteCallStart, noteStep, type AgentRow, type AgentState, type RunState, type ToolCall } from '../hooks/journal'
 import { paint } from '../hooks/paint'
 
 const STARTED = 1_700_000_000_000
@@ -201,9 +201,23 @@ test('what a request says before its calls is what those calls are stamped with,
   expect(run.agents[0]!.calls![1]!.why).toBeUndefined()
 })
 
-test('an agent thinking out loud is quoted in the sentence at the top', () => {
-  const run = runOf([agent('Develop', 'running', [], { isThinking: true, stepSaid: 'The pill test failures are a mounting artifact.' })])
-  const { lines } = rows(run, 120, 30, 0)
+test('a run that failed after every agent landed closes the strip with what the script threw', () => {
+  const run = runOf([agent('Gate', 'done', [call('Bash', 'npm test', 5)])])
 
-  expect(lines[0]).toBe(' In Develop, Develop is thinking: \u201cThe pill test failures are a mounting artifact\u201d.')
+  applyRunFile(
+    run,
+    JSON.stringify({
+      status: 'failed',
+      startTime: STARTED,
+      durationMs: 40_000,
+      error: 'Error: gate tests failed: 3 tests failed\n    at <anonymous> (workflow.js:5:7)',
+    }),
+    NOW,
+  )
+
+  const { lines } = rows(run, 100, 30, 6)
+
+  const strip = lines.slice(lines.findIndex(line => line.startsWith('── activity')) + 1).filter(line => line !== '')
+
+  expect(strip).toEqual(['  5.0s    Gate  ran the tests', ' 40.0s  ✖ run   gate tests failed: 3 tests failed'])
 })

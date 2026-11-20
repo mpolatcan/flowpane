@@ -229,8 +229,17 @@ export async function journalRun(dir: string): Promise<RunState> {
         try {
           const row = JSON.parse(line)
 
+          // The request copies the engine records beside the conversation
+          // repeat every call; see the transcript reader in `journal.ts`.
+          if (row?.type !== 'assistant') {
+            continue
+          }
+
           for (const part of row?.message?.content ?? []) {
             if (part?.type === 'tool_use' && typeof part.name === 'string') {
+              // Started, then landed: a call recorded as landed only never
+              // counted past its first, and every tool read `1×`.
+              noteToolCall(run, agent.agentId, part.name, now, true)
               noteToolCall(run, agent.agentId, part.name, now, false)
             }
           }

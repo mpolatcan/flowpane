@@ -1628,7 +1628,7 @@ function paintCrossbar(c: Canvas, rect: Rect, y: number, edge: Rgb, word?: strin
     c.put(at + dx, y, 0x20, edge)
   }
 
-  c.text(at, y, said, quietOf(c.background))
+  c.text(at, y, said, COLORS.dim)
 }
 
 function paintDialogTitle(
@@ -2380,7 +2380,28 @@ function paintSources(c: Canvas, view: Layout, sources: Map<string, string[]>): 
   }
 
   for (const box of view.lanes) {
-    for (const node of box.nodes) {
+    // A band whose every card was fed by the same phases says so once, centred
+    // over the band, rather than once per card: three `▾ from Survey` in a row
+    // are one fact written three times, and the repetition read as three
+    // different arrivals.
+    const first = box.nodes[0]
+    const key = (id: string) => (sources.get(id) ?? []).join('\u0000')
+    //
+    // Across the pane the band is a column, so the label stands over the first
+    // card of it, under the caption. Written over each card, the second and
+    // later labels landed in the one row between two cards, where a reader
+    // could not tell which of the two it was about.
+    const shared =
+      box.nodes.length > 1 &&
+      first !== undefined &&
+      key(first.agent.agentId) !== '' &&
+      box.nodes.every(n => key(n.agent.agentId) === key(first.agent.agentId))
+    const last = box.nodes[box.nodes.length - 1]
+    const targets = shared && first && last
+      ? [{ ...first, x: first.x, w: last.x + last.w - first.x }]
+      : box.nodes
+
+    for (const node of targets) {
       const named = sources.get(node.agent.agentId)
 
       if (!named || named.length === 0) {
@@ -2491,7 +2512,9 @@ function paintSources(c: Canvas, view: Layout, sources: Map<string, string[]>): 
       const said = tight === wide ? lead + tight : wide
 
       // The mark is a wire's and takes a wire's colour; the name is a name and
-      // stays grey. Drawn in one tone the pair read as a caption, which put the
+      // stays grey — the grey words are written in, not the rules' grey, which
+      // sits under two to one on the ground and is a line's colour, not a
+      // word's. Drawn in one tone the pair read as a caption, which put the
       // written arrowhead in a different register from the drawn one beside it.
       //
       // Written rather than put, because it is a mark in a sentence and not the
@@ -2501,7 +2524,7 @@ function paintSources(c: Canvas, view: Layout, sources: Map<string, string[]>): 
       const text = truncate(said, budget)
 
       if (shares) {
-        c.text(found.run.x + room - cells(text), at, text, quietOf(c.background))
+        c.text(found.run.x + room - cells(text), at, text, COLORS.dim)
       } else {
         // Centred on the card, the way a card centres its own name and its own
         // model. Set against the left edge it hung off a card wider than it by
@@ -2529,7 +2552,7 @@ function paintSources(c: Canvas, view: Layout, sources: Map<string, string[]>): 
         }
 
         c.text(from, at, String.fromCodePoint(found.mark), COLORS.wire)
-        c.text(from + 2, at, text, quietOf(c.background))
+        c.text(from + 2, at, text, COLORS.dim)
       }
     }
   }
@@ -2859,6 +2882,7 @@ function paintSections(
   tick: number,
   over: boolean,
   hotspots: Hotspot[],
+  nowMs: number,
   /**
    * The cells across the drawing has, which is the pane less whatever the
    * scroll rail down the right edge takes.
@@ -2868,6 +2892,8 @@ function paintSections(
    * two cells left of the middle of the rule a reader could actually see.
    */
   width: number,
+  /** What the script declared of each phase, which a phase nothing entered says instead of a count. */
+  plan?: Step[],
 ): void {
   const tone = quietOf(c.background)
 
@@ -2944,12 +2970,23 @@ function paintSections(
     // control with no state, and a reader who has opened two of three nested
     // runs cannot see which two.
     const open = fold?.nested === true && fold.shut !== true
-    const facts = phaseFactsOf(
-      open ? FOLD_OPEN + lane.phase.slice(FOLD_SHUT.length) : lane.phase,
-      lane.index,
-      fold?.agents ?? [],
-      passes,
-      over,
+    // A phase nothing entered is drawn as its heading alone, in the dashed
+    // stroke, saying what it was for where a count would be.
+    const empty = (fold?.agents.length ?? 0) === 0
+    const lead = view.list === true ? 2 : 0
+    const facts = ghostFacts(
+      phaseFactsOf(
+        open ? FOLD_OPEN + lane.phase.slice(FOLD_SHUT.length) : lane.phase,
+        lane.index,
+        fold?.agents ?? [],
+        passes,
+        over,
+        tick,
+        nowMs,
+      ),
+      lane.phase,
+      empty ? plan : undefined,
+      width - lead,
     )
     // The heavy stroke says *progress*, not *done*. A band with work still in it
     // fills to the share of it that has landed; a band that has all landed, and
@@ -2993,38 +3030,32 @@ facts.total > 0 && facts.landed < facts.total ? Math.round((facts.landed / facts
         continue
       }
 
-      ink(x, y, ruleOf(fold?.nested === true, landed), tone)
+      ink(x, y, empty ? SEAM_H : ruleOf(fold?.nested === true, landed), tone)
     }
 
-    // The name is set into the rule the way a card's is set into its top edge:
-    // centred, with a blank cell either side of it, so the rule reads as one
-    // line broken by a word rather than as two lines with a word between them.
+    // The heading is set into the rule flush left, a cell in, with a blank cell
+    // either side of it, so the rule reads as one line broken by a heading
+    // rather than as two lines with a word between them. It stands there
+    // whatever crosses the rule, and the wire gives way: the heading clears the
+    // cells it stands in, so a wire passing through loses this one row of
+    // itself and runs on above and below.
     //
-    // Centred in every layout, because a name titles the thing under it and the
-    // reader crosses layouts: a caption flush left down the pane and centred
-    // across it is the same fact told two ways, and the pane stops reading as
-    // one drawing seen from two sides.
-    //
-    // It stands where it is centred whatever crosses the rule there, and the
-    // wire gives way: the caption clears the cells it stands in, so a wire
-    // passing through the rule loses this one row of itself and runs on above
-    // and below, which is the same break the rule takes for the wire everywhere
-    // else on the pane.
-    //
-    // The caption used to give way instead, stepping along the rule until it
-    // found a window with no wire in it. Down a pane of centred cards the spine
-    // runs down the middle, which is the caption's own column, so every band
-    // stepped aside and by a different amount: the rule came out longer on one
-    // side of the caption than the other, band after band, and a reader asked
-    // why the phase names were not centred.
+    // It used to be centred, and the caption used to give way to the wire,
+    // stepping along the rule to a window with no wire in it. The spine of a
+    // stack of centred cards runs down the middle of every rule, so every band
+    // stepped aside by a different amount. Flush left there is nothing to
+    // defend. See `docs/header.md`.
     const nested = fold?.nested === true
     const shut = fold?.shut === true
     const handle = nested ? foldHandle(shut, fold?.agents.length ?? 0, width) : ''
+    // In the list the heading stands in from the gutter the rails and forks
+    // take, so its mark sits over the marks of the rows under it and the stem
+    // a fan forks from keeps its cell on the rule: see `lead` above.
     const label = paintPhaseLabel(
       c,
-      0,
+      lead,
       y,
-      width,
+      width - lead,
       facts,
       2,
       handle.length > 0 ? HANDLE_GAP + handle.length + 1 : 0,
@@ -3052,7 +3083,7 @@ facts.total > 0 && facts.landed < facts.total ? Math.round((facts.landed / facts
       )
 
       if (!drew) {
-        hotspots.push(markSpot(lane.phase, label.x, y, 0))
+        hotspots.push(markSpot(lane.phase, label.nameX, y, 0))
       }
     }
   })
@@ -3643,7 +3674,11 @@ function paintPane(c: Canvas, run: RunState, options: PaintOptions): PaintResult
     if (!follows(lanes[i - 1], lanes[i])) {
       if (wants) {
         bundle()
-      } else {
+      } else if (view.orientation === 'vertical') {
+        // Across the pane the mark is left out. Columns of cards top-aligned
+        // under their captions put it halfway down a gutter beside nothing,
+        // and a reader took the lone `═` for a stray glyph rather than a
+        // statement about two clocks. The cards' own times say it there.
         paintAlongside(
           c,
           left.nodes,
@@ -4217,13 +4252,7 @@ function paintPane(c: Canvas, run: RunState, options: PaintOptions): PaintResult
   paintReturn(c, view, lanes, bottom)
   paintStems(c, view, bottom)
   paintInset(c, view, lanes, nowMs, bottom)
-  paintSections(c, view, lanes, passes, bottom, tick, over, hotspots, bodyW)
-
-  for (const lane of view.lanes) {
-    if (lane.ghost) {
-      paintPlan(c, lane.ghost, lane.phase, run.plan, bottom, over, true)
-    }
-  }
+  paintSections(c, view, lanes, passes, bottom, tick, over, hotspots, nowMs, bodyW, run.plan)
 
   for (const lane of view.lanes) {
     const claim = claimOf(lane.nodes)
@@ -4261,24 +4290,19 @@ function paintPane(c: Canvas, run: RunState, options: PaintOptions): PaintResult
 
   if (view.pending.length > 0) {
     if (view.ahead) {
-      paintAhead(c, view, run.plan, bottom, over)
+      paintAhead(c, view, run.plan, bottom, over, bodyW)
     } else {
       const foot = placed.length > 0 ? Math.max(...placed.map(n => n.y + n.h)) : view.headerRows
       const depth = Math.max(1, Math.min(view.aheadRows ?? 1, Math.max(1, bottom - foot - 1)))
-      // Scrolled, the band goes where the run puts it: under the last section,
-      // wherever that has moved to, so it scrolls with the drawing it belongs
-      // to. Standing still it is centred in what the drawing left, not pinned
-      // to either end of it — down the pane the end of the run is the foot of
-      // the drawing, and a section held against the seat's own bottom edge
-      // reads as part of the pane's furniture rather than as the next thing the
-      // run will do, while held against the last node instead it is the same
-      // blank rows simply moved underneath it. Between the two it reads as the
-      // drawing's own last section, which is what it is.
-      const slack = Math.max(0, bottom - foot - 1 - depth)
-      const top =
-        spanY > 0 ? foot + 1 : Math.min(bottom - depth, foot + 1 + Math.floor(slack / 2))
+      // Under the last section, one row of air below it, scrolled or not: it
+      // is the drawing's own last section and follows the one before it the
+      // way every band follows the one above. It used to be centred in what
+      // the drawing left, which on a tall pane put a run of blank rows above
+      // it and another below, and the band read as detached from the run it
+      // ends.
+      const top = Math.min(bottom - depth, foot + 1)
 
-      paintAheadBand(c, view.pending, run.plan, top, depth, over)
+      paintAheadBand(c, view.pending, run.plan, top, depth, over, bodyW, isList ? 2 : 0)
     }
   }
 
@@ -4325,144 +4349,14 @@ function paintPane(c: Canvas, run: RunState, options: PaintOptions): PaintResult
 }
 
 /**
- * The width a column of plan rows wants: enough for the longest of them whole.
- *
- * It was a fixed seven tenths of the pane whatever it held, which on short
- * details put the models against a right edge the words never reached and left
- * the block sitting off-centre inside a rectangle nothing filled. Sized to what
- * it holds, the block is centred by the same arithmetic that centres every other
- * node down the pane.
- *
- * Seven tenths is still the ceiling. A detail long enough to want the whole pane
- * would set every other row's model a screen's width from its name, and the
- * column of models is the part a reader compares down.
- */
-function planWidth(phases: string[], plan: Step[] | undefined, columns: number): number {
-  const want = (phase: string) => {
-    const step = plan?.find(s => s.title === phase)
-    const detail = step?.detail ?? ''
-    const named = step?.model ? modelName(step.model) : ''
-
-    return 5 + cells(phase) + (detail ? 2 + cells(detail) : 0) + (named ? 2 + cells(named) : 0)
-  }
-
-  const widest = Math.max(0, ...phases.map(want))
-
-  return Math.min(columns - 4, Math.max(20, Math.min(widest, Math.floor(columns * 0.7))))
-}
-
-/**
- * A phase the run never entered, drawn as the phase it is.
- *
- * It used to be an empty rectangle in a dashed stroke, and in the list layout
- * not even that — a caption with nothing under it. Three layouts had three
- * answers to one question, and none of the three looked like the phases beside
- * them, so a reader had to learn a shape for work that happened and a second
- * shape for work that did not.
- *
- * It is a node now, and one shape of node wherever it is drawn: the row the
- * strip beside the graph names it in, the row the band at the foot names it in,
- * and the row a section of its own draws it as. The same rule down the left
- * edge, the same mark column, the same name, the same model against the right
- * edge. What tells it from a node that ran is the tone, which is the one the
- * pane draws everything that has not happened in.
- *
- * It was a card where the nodes beside it were cards, on the reasoning that a
- * node should take its lane's shape. But a card carries four facts and a phase
- * that never ran has three, so the fourth side of the frame went round blank
- * cells — and the pane then had two shapes for one thing after all, a card in
- * one place and a row in the next.
- *
- * What it says is what the script declared about the phase and nothing more —
- * see `Step`. The detail line goes where an agent's figures go, because on a
- * phase that never ran the question a reader has is what it was for. No count
- * is drawn: a workflow declares what its phases do, never how many agents they
- * will open, and a row of three empty cards under `Verify` would be the pane
- * inventing a number the run never had.
- */
-function paintPlan(
-  c: Canvas,
-  box: { x: number; y: number; w: number; h: number },
-  phase: string,
-  plan: Step[] | undefined,
-  bottom: number,
-  /** Whether the run is over, and the phase will never be entered: see `overOf`. */
-  over: boolean,
-  /**
-   * Whether to cut the row to what it has to say. A section with one node in it
-   * hands over the room it can spare rather than the room the phase needs, and
-   * a name and a line about itself set across seven tenths of a wide pane left
-   * the model alone against the right edge, half a pane from the detail it
-   * belongs to. The lists do not ask for this: their rows share one width so
-   * their names line up, and a row cut to its own content would break that
-   * column for the sake of a row nobody is comparing across.
-   */
-  fit = false,
-): void {
-  const step = plan?.find(s => s.title === phase)
-  const detail = step?.detail ?? ''
-  const named = step?.model ? modelName(step.model) : ''
-  // The stroke of a thing that is not there. Pulled toward the stopped tone
-  // once the run is over, for the reason the caption is: grey alone is the
-  // colour of a phase still to come and of one that will never come, and a
-  // reader looking at a finished run wants those two told apart.
-  const frame = over ? mix(quietOf(c.background), COLORS.stopped, 0.7) : quietOf(c.background)
-  const word = aheadTone(over)
-  // Into the blank cells only, so a wire passing through keeps its own.
-  const ink = (x: number, y: number, code: number, color: Rgb) => {
-    if (y < 0 || y >= bottom || x < 0 || x >= c.columns || c.at(x, y) !== 0x20) {
-      return
-    }
-
-    c.put(x, y, code, color)
-  }
-
-  if (box.w < 5) {
-    return
-  }
-
-  const want = 5 + cells(phase) + (detail ? 2 + cells(detail) : 0) + (named ? 2 + cells(named) : 0)
-  const width = fit ? Math.min(box.w, Math.max(20, want)) : box.w
-  const left = box.x + (fit ? Math.floor((box.w - width) / 2) : 0)
-
-  // The rule down the left edge, the mark, the name, and what is known about it
-  // after that — the shape every one-row node on this pane takes.
-  const labelX = left + 3
-  const shared = Math.max(1, width - 5)
-  const name = truncate(phase, shared)
-  const rest = Math.max(0, shared - cells(name) - 2)
-
-  ink(left, box.y, RULE, frame)
-
-  if (over) {
-    ink(left + 1, box.y, 0x2298, word)
-  }
-
-  c.text(labelX, box.y, name, word)
-
-  // The model against the right edge, where a row that ran writes its own, and
-  // the detail in the cells between the two.
-  const tail = named && rest > cells(named) + 2 ? named : ''
-
-  if (tail) {
-    c.text(left + width - cells(tail), box.y, tail, frame)
-  }
-
-  const room = rest - (tail ? cells(tail) + 2 : 0)
-
-  if (detail && room > 4) {
-    c.text(labelX + cells(name) + 2, box.y, truncate(detail, room), frame)
-  }
-}
-
-/**
  * The phases the pane had no room to give a section of its own, named at the
  * end of the ones it did.
  *
  * A run whose last phases are still ahead says so where those phases would be
  * drawn: after the last section, behind the same boundary that divides the
- * phases beside it, as a column of names in the tone of the thing they are —
- * nothing yet. The rest of the header reads across them unchanged, so the
+ * phases beside it, as a column of headings — the mark of a phase still to come
+ * or one that never will, the name, and under it the line the script wrote
+ * about the phase. The rest of the header reads across them unchanged, so the
  * strip is read as the sections are, left to right.
  *
  * It used to be a dashed rule across the foot of the pane. That put what comes
@@ -4471,7 +4365,7 @@ function paintPlan(
  */
 /**
  * The strip's own column head: the boundary's join into the header's rule, and
- * the word over it.
+ * the heading over it.
  *
  * Drawn with the header rather than with the strip, because it is a column head
  * and column heads do not scroll. It used to be drawn with the rest of the
@@ -4487,21 +4381,26 @@ function paintAheadCaption(c: Canvas, view: Layout, over: boolean): void {
     return
   }
 
-  const inner = Math.max(1, strip.w - 1)
-
   c.put(strip.x, view.headerRows - 1, TEE_LEFT, quietOf(c.background))
 
-  // Centred over the column it captions, which is how every other phase's
-  // caption sits over its cards. Flush left it had two left edges a couple of
-  // cells apart, the caption's and the list's, which read as a caption that
-  // missed rather than as a heading over its list.
-  const caption = truncate(over ? 'Skipped' : 'Ahead', inner)
-  const capAt = strip.x + 1 + Math.max(0, Math.floor((inner - cells(caption)) / 2))
+  // A heading like every other column's: flush left on a mark, the way the
+  // phase headings beside it stand. It used to be the word alone, centred over
+  // the strip, and was the one title on the pane that neither led with a state
+  // nor said how many it headed.
+  const facts = ghostFactsOf(`${view.pending.length} ${over ? 'skipped' : 'ahead'}`, undefined, over, strip.w - 1)
 
-  c.text(capAt, view.headerRows - 2, caption, aheadTone(over))
+  paintPhaseLabel(c, strip.x + 1, view.headerRows - 2, Math.max(1, strip.w - 1), facts)
 }
 
-function paintAhead(c: Canvas, view: Layout, plan: Step[] | undefined, bottom: number, over: boolean): void {
+function paintAhead(
+  c: Canvas,
+  view: Layout,
+  plan: Step[] | undefined,
+  bottom: number,
+  over: boolean,
+  /** Where the drawing stops, short of the scroll rail. */
+  right = c.columns,
+): void {
   const strip = view.ahead
 
   if (!strip || view.pending.length === 0 || view.lanes.length === 0) {
@@ -4510,61 +4409,59 @@ function paintAhead(c: Canvas, view: Layout, plan: Step[] | undefined, bottom: n
 
   const phases = view.pending
   const tone = quietOf(c.background)
-  // Everything but the boundary itself: the strip runs from the cell after it to
-  // the pane's edge.
-  const inner = Math.max(1, strip.w - 1)
-  const foot = Math.min(
-    bottom,
-    Math.max(...view.lanes.map(l => Math.max(l.y + l.h, ...l.nodes.map(n => n.y + n.h)))),
-  )
+  const first = view.headerRows + 1
+  const nameAt = strip.x + 2
+  const room = Math.max(1, right - nameAt - 1)
+  const cardsFoot = Math.max(first, ...view.lanes.flatMap(l => l.nodes.map(n => n.y + n.h)))
+  const space = Math.max(0, bottom - first)
+  // A line cut to its first word says there was a line and not what it was, so
+  // a strip too narrow for a dozen letters of it carries the names alone.
+  const detailOf = (phase: string) => (room < 14 ? '' : (plan?.find(step => step.title === phase)?.detail ?? ''))
+  // Each phase is a heading — its mark and name — with the line the script
+  // wrote about it under the name, the way the phase headings beside the strip
+  // lead their columns. The lines go first where there are not rows for both:
+  // a name says which phase, and the line is what the detail dialog says too.
+  const tall = phases.reduce((sum, phase) => sum + 1 + (detailOf(phase) && room > 6 ? 1 : 0), 0)
+  const said = tall <= space
+  const rowsOf = (phase: string) => 1 + (said && detailOf(phase) && room > 6 ? 1 : 0)
+  let y = first
+  let shown = 0
 
-  for (let y = Math.max(0, view.headerRows); y < foot; y++) {
-    if (c.at(strip.x, y) === 0x20) {
-      c.put(strip.x, y, SEAM_V, tone)
+  for (const phase of phases) {
+    const rest = phases.length - shown
+
+    // The last row counts what did not fit, rather than a name cut off by the
+    // foot of the pane.
+    if (y + rowsOf(phase) > first + space - (rest > 1 ? 1 : 0) && rest > 1) {
+      break
     }
+
+    const facts = ghostFactsOf(phase, undefined, over, room + 1)
+
+    paintPhaseLabel(c, nameAt, y, room + 1, facts)
+
+    if (rowsOf(phase) > 1) {
+      c.text(nameAt + 2, y + 1, truncate(detailOf(phase), room - 2), COLORS.dim)
+    }
+
+    y += rowsOf(phase)
+    shown++
   }
 
-  const first = view.headerRows + 1
-  const space = Math.max(0, foot - first)
-  const shown = phases.length <= space ? phases.length : Math.max(0, space - 1)
-  // The column sits in the middle of the strip. The strip is the section those
-  // phases would have had, and every other section on the pane centres what it
-  // holds.
-  //
-  // What is centred is the drawing — the rule, the mark and the longest name —
-  // not the box the rows are given: a row's box carries two cells past its name
-  // for the model to sit against, and centring those as if they were ink pushed
-  // the names off the middle by a cell. So the offset is capped at whatever
-  // leaves the box its full width, and a strip cut to its longest name simply
-  // has nothing to centre.
-  const drawnW = Math.max(1, ...phases.slice(0, shown).map(phase => cells(phase) + 3))
-  const boxW = Math.min(inner, drawnW + 2)
-  const slack = Math.max(0, Math.min(Math.floor((inner - drawnW) / 2), inner - boxW))
-  const nameAt = strip.x + 1 + slack
-  const room = Math.max(1, inner - slack)
+  if (shown < phases.length && y < bottom) {
+    paintPhaseLabel(c, nameAt, y, room + 1, ghostFactsOf(`${phases.length - shown} more`, undefined, over, room + 1))
+    y++
+  }
 
-  // Centred down the strip too, the way the foot band is centred in what the
-  // drawing leaves it. Pinned under the boundary the caption sits on, three
-  // names sat at the top of a column twenty rows deep, which read as a section
-  // that had run out rather than one holding the phases still to come. Centred,
-  // the blank rows above and below are the section's own margin, and the names
-  // sit level with the drawing they are beside.
-  //
-  // The count the tail becomes is part of the list, so it is centred with it
-  // rather than pushing it a row up.
-  const drawn = shown + (shown < phases.length && space > 0 ? 1 : 0)
-  const top = first + Math.floor(Math.max(0, space - drawn) / 2)
+  // The boundary runs as far as whichever is longer, the cards or the list,
+  // and no further: run to the foot of the body it was a line twenty rows long
+  // beside one name.
+  const foot = Math.min(bottom, Math.max(cardsFoot, y) + 1)
 
-  // The same one-row node the foot band draws and the list layout draws, cut to
-  // the width the strip has. A bare column of names was the pane's one piece of
-  // drawing that was not a node, so a phase that never ran looked like a note
-  // in the margin rather than like the phase it is.
-  phases.slice(0, shown).forEach((phase, i) => {
-    paintPlan(c, { x: nameAt, y: top + i, w: room, h: 1 }, phase, plan, bottom, over)
-  })
-
-  if (shown < phases.length && space > 0) {
-    c.text(nameAt, top + shown, truncate(`… ${phases.length - shown}`, room), COLORS.dim)
+  for (let row = Math.max(0, view.headerRows); row < foot; row++) {
+    if (c.at(strip.x, row) === 0x20) {
+      c.put(strip.x, row, SEAM_V, tone)
+    }
   }
 }
 
@@ -4573,14 +4470,17 @@ function paintAhead(c: Canvas, view: Layout, plan: Step[] | undefined, bottom: n
  * of their own at its foot instead.
  *
  * Down the pane and along a timeline the run's next move is below its last, not
- * beside it, and every phase it did draw down there opens with its name set
- * into a rule across the pane. So does this one — the same device, the same
- * place, the stroke dashed rather than solid because nothing has run in it yet.
- * A caption floating over a rule of its own was a third kind of heading on a
- * pane that already had one.
+ * beside it, and every phase it did draw down there opens with its heading set
+ * into a rule across the pane. So does each of these: the same heading in the
+ * same place, the stroke dashed because nothing has run in it.
  *
- * Squeezed to one row it drops the caption and sets the names into the rule
- * instead, which is the line a band's own name goes in anyway.
+ * It used to be one band captioned `Skipped` or `Ahead`, centred in a dashed
+ * rule, with a row under it for each phase centred on the pane. That was the one
+ * centred title left on a pane of flush-left headings, and its rows repeated
+ * `not reached` under a caption that had said so already.
+ *
+ * Squeezed to one row it is a single heading that counts them and names them in
+ * order.
  */
 function paintAheadBand(
   c: Canvas,
@@ -4589,48 +4489,79 @@ function paintAheadBand(
   top: number,
   rows: number,
   over: boolean,
+  /** How far across the headings' rules run: the pane less the scroll rail. */
+  width = c.columns,
+  /** Cells of rule ahead of the mark, which the list keeps for its rails. */
+  lead = 0,
 ): void {
-  if (rows <= 1 || phases.length === 0) {
-    paintAheadRow(c, phases, top, over)
+  for (let i = 0; i < Math.max(1, rows); i++) {
+    if (top + i >= 0 && top + i < c.rows) {
+      c.fill(0, top + i, c.columns, 1, c.background)
+    }
+  }
+
+  if (rows <= 1 && phases.length > 1) {
+    paintAheadRow(c, phases, top, over, width, lead)
 
     return
   }
 
-  const tone = quietOf(c.background)
-  const namesRow = top + 1
-
-  c.fill(0, top, c.columns, 1, c.background)
-
-  for (let x = 0; x < c.columns; x++) {
-    c.put(x, top, SEAM_H, tone)
-  }
-
-  const caption = truncate(over ? 'Skipped' : 'Ahead', Math.max(1, c.columns - 4))
-  const capAt = Math.max(1, Math.floor((c.columns - caption.length) / 2))
-
-  c.put(capAt - 1, top, 0x20, tone)
-  c.text(capAt, top, caption, aheadTone(over))
-  c.put(capAt + caption.length, top, 0x20, tone)
-
-  // A row each, in the shape a one-row node takes everywhere else on the pane.
-  // Where there are more phases than rows the last one counts the rest, the way
-  // the strip beside the graph does.
-  const space = Math.max(0, top + rows - namesRow)
-  const shown = phases.length <= space ? phases.length : Math.max(0, space - 1)
-  const wide = planWidth(phases.slice(0, shown), plan, c.columns)
-  const at = Math.max(1, Math.floor((c.columns - wide) / 2))
-
-  for (let i = 0; i < space; i++) {
-    c.fill(0, namesRow + i, c.columns, 1, c.background)
-  }
+  // A heading each, in the run's own order, as the rest of the run that did
+  // not happen: the mark, the name, what the script said the phase was for,
+  // and a dashed rule — the stroke the pane draws for work that is not this
+  // run's own. Where there are more phases than rows the last counts the rest.
+  const shown = phases.length <= rows ? phases.length : Math.max(1, rows - 1)
 
   phases.slice(0, shown).forEach((phase, i) => {
-    paintPlan(c, { x: at, y: namesRow + i, w: wide, h: 1 }, phase, plan, c.rows, over)
+    paintGhostHeading(c, top + i, width, lead, ghostFactsOf(phase, plan, over, width - lead))
   })
 
-  if (shown < phases.length && space > 0) {
-    c.text(at + 3, namesRow + shown, truncate(`… ${phases.length - shown} more`, wide), COLORS.dim)
+  if (shown < phases.length) {
+    paintGhostHeading(c, top + shown, width, lead, ghostFactsOf(`${phases.length - shown} more`, undefined, over, width - lead))
   }
+}
+
+/**
+ * One heading of a phase nothing entered, across the width given: a dashed rule
+ * with the heading set into it, flush left where every phase heading stands.
+ */
+function paintGhostHeading(c: Canvas, y: number, width: number, lead: number, facts: PhaseFacts): void {
+  if (y < 0 || y >= c.rows) {
+    return
+  }
+
+  const tone = quietOf(c.background)
+
+  for (let x = 0; x < Math.min(width, c.columns); x++) {
+    c.put(x, y, SEAM_H, tone)
+  }
+
+  const label = paintPhaseLabel(c, lead, y, width - lead, facts, 2)
+
+  c.put(label.x - 1, y, 0x20, tone)
+  c.put(label.x + label.used, y, 0x20, tone)
+}
+
+/**
+ * What a phase nothing entered says in its heading: its mark, its name, and in
+ * place of a count the line the script wrote about it — the question a reader
+ * has about a phase that never ran is what it was for. Cut to the room there
+ * is, since a heading drops whole tags rather than cutting them, and a long
+ * line dropped whole would leave the name alone on a rule with room to spare.
+ */
+function ghostFactsOf(phase: string, plan: Step[] | undefined, over: boolean, room: number): PhaseFacts {
+  return ghostFacts(phaseFactsOf(phase, 0, [], new Map(), over), phase, plan, room)
+}
+
+function ghostFacts(facts: PhaseFacts, phase: string, plan: Step[] | undefined, room: number): PhaseFacts {
+  const detail = plan?.find(step => step.title === phase)?.detail ?? ''
+  const left = room - 4 - cells(facts.name) - PHASE_GAP
+
+  if (!detail || left < 8) {
+    return facts.skipped ? { ...facts, count: '' } : facts
+  }
+
+  return { ...facts, count: truncate(detail, left), loop: '', took: '' }
 }
 
 /**
@@ -4695,38 +4626,32 @@ function aheadRun(shown: string[], arrow: string, link: Rgb, rest: number, over:
  * names set into it. A phase the run has reached opens a solid rule and fills
  * it as its agents land; a phase still ahead opens nothing yet.
  */
-function paintAheadRow(c: Canvas, phases: string[], row: number, over: boolean): void {
+function paintAheadRow(c: Canvas, phases: string[], row: number, over: boolean, width = c.columns, lead = 0): void {
   if (row < 0 || row >= c.rows) {
     return
   }
 
   const tone = quietOf(c.background)
 
-  c.fill(0, row, c.columns, 1, c.background)
+  // One heading for all of them: the mark, how many, and their names joined in
+  // the order they come, set into the same dashed rule.
+  const facts = ghostFactsOf(`${phases.length} ${over ? 'skipped' : 'ahead'}`, undefined, over, width - lead)
 
-  for (let x = 0; x < c.columns; x++) {
-    c.put(x, row, SEAM_H, tone)
-  }
+  paintGhostHeading(c, row, width, lead, facts)
 
-  if (phases.length === 0) {
+  const at = lead + 1 + 2 + cells(facts.name) + PHASE_GAP
+  const fields = aheadFields(phases, Math.max(1, width - at - 2), tone, over)
+  const used = widthOf(fields, 1)
+
+  if (phases.length === 0 || at + used + 1 > width) {
     return
   }
 
-  // The caption is what a reader can do without, so at one row it goes and the
-  // names take its place inside the rule — the same line the band's own caption
-  // is set into, carrying what is coming instead of what it is called.
-  const fields = aheadFields(phases, Math.max(1, c.columns - 6), tone, over)
-  const width = widthOf(fields, 1)
-  const at = Math.max(1, Math.floor((c.columns - width) / 2))
-
-  // The whole span is cleared before the names go into it, its own gaps
-  // included: a stroke showing through between two names joins them into one
-  // word with a line in it.
-  for (let x = at - 1; x <= at + width && x < c.columns; x++) {
+  for (let x = at - 1; x <= at + used && x < c.columns; x++) {
     c.put(x, row, 0x20, tone)
   }
 
-  drawFields(c, at, row, c.columns - at, fields, 1)
+  drawFields(c, at, row, width - at, fields, 1)
 }
 
 /**
@@ -6362,26 +6287,31 @@ function paintPhaseHead(
   // the phase has landed, and whether the phase is this run's work at all. So
   // the caption is cut to leave the rule its minimum, and a name too long for
   // what is left is a name the reader opens the phase to read in full.
-  const room = Math.max(1, width - x - reserve)
+  // The mark opens the heading, the way it opens every card and every row:
+  // the state of each phase reads down the gutter's first column.
+  const room = Math.max(1, width - x - reserve - 2)
   const count: Field[] = facts.count ? [{ text: facts.count, color: COLORS.dim }] : []
   const loop: Field[] = facts.loop
     ? [{ text: facts.loop, color: mix(COLORS.dim, COLORS.accent, 0.5) }]
     : []
-  // The name is the last thing to give way, and the count is the first: the
-  // rule beside it already draws how much of the phase has landed, where the
-  // name is the only thing on the row that says which phase this is. Cutting
-  // from the end instead left `Survey 1/1` as `S… 1/1` on a narrow gutter,
-  // which is a row saying nothing twice.
-  const widthOfRung = (rung: Field[]) => rung.reduce((w, f) => w + cells(f.text) + 1, 0)
-  const rungs: Field[][] = [[...count, ...loop], [...loop], []]
+  const took: Field[] = facts.took ? [{ text: facts.took, color: COLORS.clock }] : []
+  // The name is the last thing to give way. The time goes first, since the
+  // bars under the heading draw it to scale; the count next, since the rule
+  // beside it already draws how much of the phase has landed, where the name
+  // is the only thing on the row that says which phase this is. Cutting from
+  // the end instead left `Survey 1/1` as `S… 1/1` on a narrow gutter, which is
+  // a row saying nothing twice.
+  const widthOfRung = (rung: Field[]) => rung.reduce((w, f) => w + cells(f.text) + PHASE_GAP, 0)
+  const rungs: Field[][] = [[...count, ...loop, ...took], [...count, ...loop], [...loop], []]
   const kept = rungs.find(rung => cells(facts.name) + widthOfRung(rung) <= room) ?? []
   const fields: Field[] = [
     { text: runName(facts.name, Math.max(1, room - widthOfRung(kept))), color: facts.tone },
     ...kept,
   ]
-  const used = Math.min(room, widthOf(fields, 1))
+  const used = 2 + Math.min(room, widthOf(fields, PHASE_GAP))
 
-  drawFields(c, x, y, room, fields, 1)
+  c.put(x, y, facts.mark, facts.markTone)
+  drawFields(c, x + 2, y, room, fields, PHASE_GAP)
 
   return { x, used }
 }
@@ -6604,7 +6534,18 @@ function paintTimeline(
     const headed =
       Math.max(
         0,
-        ...lanes.map(lane => cells(lane.phase) + (lane.nested === true ? HANDLE_GAP + HANDLE_W : 0)),
+        ...lanes.map(
+          lane =>
+            // The mark, the name, the count and a time the length of `11.4s`:
+            // the heading as `paintPhaseHead` writes it, before anything gives way.
+            2 +
+            cells(lane.phase) +
+            PHASE_GAP +
+            cells(`${lane.agents.length}/${lane.agents.length}`) +
+            PHASE_GAP +
+            5 +
+            (lane.nested === true ? HANDLE_GAP + HANDLE_W : 0),
+        ),
       ) +
       CHAIN_W +
       HEAD_RULE +
@@ -6752,6 +6693,8 @@ function paintTimeline(
       lane.agents,
       passes,
       overOf(run),
+      tick,
+      nowMs,
     )
     // Three things are cut from one gutter, and each is held to a floor rather
     // than taking what the one before it left: the caption is capped so the
@@ -6962,12 +6905,12 @@ function paintTimeline(
   inWindow(hotspots, headerSpots, { x: 0, y: top, w: width, h: floor - top })
 
   if (pending.length > 0) {
-    // Centred between the last bar and the rows kept back for it, for the
-    // reason the graph centres it: against either end it reads as the seat's
-    // furniture rather than as the run's last section.
-    const at = Math.max(barRows, Math.min(floor, y + Math.floor(Math.max(0, floor - y) / 2)))
+    // Straight after the last phase, the way the graph puts it. Centred in
+    // what the bars left, it stood in a well of blank rows that read as the
+    // drawing having ended before it.
+    const at = Math.max(barRows, Math.min(floor, y))
 
-    paintAheadBand(c, pending, run.plan, at, aheadRows, overOf(run))
+    paintAheadBand(c, pending, run.plan, at, aheadRows, overOf(run), width)
   }
 
   if (railed) {
@@ -9776,6 +9719,11 @@ type PhaseFacts = {
   /** True where the run stopped without ever entering this phase. */
   skipped: boolean
   tone: Rgb
+  /** The phase's state as one glyph, the way a card's state is: see `phaseMark`. */
+  mark: number
+  markTone: Rgb
+  /** How long the phase has taken, first start to last landing; empty when unknown. */
+  took: string
 }
 
 function phaseFactsOf(
@@ -9785,6 +9733,10 @@ function phaseFactsOf(
   passes: Map<string, Pass>,
   /** Whether the run is over: see `overOf`. */
   over = false,
+  /** The frame the spinner of a phase still working is drawn at. */
+  tick = -1,
+  /** The clock a phase still working is measured to; left out, no time is given. */
+  nowMs?: number,
 ): PhaseFacts {
   const skipped = over && agents.length === 0
 
@@ -9812,24 +9764,76 @@ function phaseFactsOf(
     active,
     skipped,
     tone: captionTone(active, agents.length, skipped),
+    ...phaseMark(agents, active, skipped, tick),
+    took: nowMs === undefined ? '' : phaseTook(agents, active, nowMs),
   }
 }
 
 /**
- * A phase's name centred in the cells it is given, with its count after it.
+ * A phase's state as a single glyph: the same spinner, tick and cross its
+ * cards carry, so the heading of a band is read the way the cards under it are.
  *
- * Centred because the name titles the band or the column under it, and a title
- * set to one end of something drifts away from what it names as that thing
- * changes width. Answers the cells it wrote in, so a rule it is set into can
- * keep a space either side of it.
+ * A phase is failed if any of its agents failed, done once all of them landed,
+ * and working while any is. The two marks of its own are for the phases with
+ * no agents: `○` for one the run has not reached yet, `⊘` for one the run
+ * stopped without reaching — the mark a stopped card carries, because that is
+ * what the phase is.
+ */
+function phaseMark(
+  agents: AgentRow[],
+  active: boolean,
+  skipped: boolean,
+  tick: number,
+): { mark: number; markTone: Rgb } {
+  if (skipped) {
+    return { mark: 0x2298, markTone: COLORS.stopped }
+  }
+
+  if (agents.length === 0) {
+    return { mark: 0x25cb, markTone: COLORS.idle }
+  }
+
+  if (active) {
+    return { mark: spinnerAt(tick), markTone: COLORS.running }
+  }
+
+  const state = agents.some(a => a.state === 'failed')
+    ? 'failed'
+    : agents.some(a => a.state === 'stopped')
+      ? 'stopped'
+      : 'done'
+
+  return { mark: markOf(state, tick), markTone: colorOf(state) }
+}
+
+/** First start to last landing, or to now for a phase still going. */
+function phaseTook(agents: AgentRow[], active: boolean, nowMs: number): string {
+  if (agents.length === 0) {
+    return ''
+  }
+
+  const from = Math.min(...agents.map(a => a.startedMs))
+  const to = active ? nowMs : Math.max(...agents.map(a => a.endedMs ?? a.activeMs ?? a.startedMs))
+
+  return to > from ? elapsed(to - from) : ''
+}
+
+/**
+ * A phase's heading, set flush left: its state mark, its name, how many of its
+ * agents have landed, and how long it has taken.
  *
- * The *name* takes the middle, not the caption. The count, the loop mark and a
- * nested run's handle trail off its right, so a reader running down a stack of
- * bands finds every name on the same column — which is what a centred title is
- * for. Centring the group instead balanced the block on its rule and moved the
- * name by half of whatever came after it, so `Setup 1/1` and `Lint ∥ Build ∥
- * Unit Test 3/3` started their names three cells apart and the column a reader
- * was scanning down wandered from band to band.
+ * It used to be the name alone, centred on its rule with the count trailing
+ * it. Centred, a stack of bands put every name in the middle of a rule that
+ * ran off both sides, and a reader running down the pane read the bands as
+ * dividers with words in them rather than as the steps of the run. Flush left
+ * they read as a list, top to bottom, in the column the cards under them start
+ * in; and the mark in front says how the step went the way a card's mark says
+ * how an agent did, so the state of the whole run can be read down that one
+ * column without reading a word.
+ *
+ * What gives way when the room runs out is the time first, then the count, and
+ * the name last, because the name is the one thing on the row that says which
+ * phase this is.
  */
 function paintPhaseLabel(
   c: Canvas,
@@ -9840,44 +9844,49 @@ function paintPhaseLabel(
   /** Cells kept for the blanks either side of a label set into a rule. */
   inset = 0,
   /**
-   * Cells something else will write immediately after the label.
-   *
-   * Counted when the label is placed and not when it is drawn, so a caption
-   * carrying the handle that folds its run back is centred as the group it
-   * reads as. Left out, the name sat where it would have sat alone and the
-   * handle hung off its right, which left the rule longer on one side of the
-   * group than the other — the one measurement a centred title has.
-   *
-   * Asked for and not taken if the name would have to give up cells for it: a
-   * phase column narrow enough to be truncating already has nowhere to put the
-   * handle, and shortening the name further to reserve room nothing can use
-   * loses letters twice over.
+   * Cells something else will write immediately after the label — a nested
+   * run's handle. Taken from the time and the count before the name.
    */
   extra = 0,
-): { x: number; w: number; used: number } {
-  const tail = (facts.count ? facts.count.length + 1 : 0) + (facts.loop ? facts.loop.length + 1 : 0)
-  const fields: Field[] = [
-    { text: runName(facts.name, Math.max(1, width - tail - inset)), color: facts.tone },
+): { x: number; w: number; used: number; nameX: number } {
+  const tags: Field[] = [
     ...(facts.count ? [{ text: facts.count, color: COLORS.dim }] : []),
     ...(facts.loop ? [{ text: facts.loop, color: mix(COLORS.dim, COLORS.accent, 0.5) }] : []),
+    ...(facts.took ? [{ text: facts.took, color: COLORS.clock }] : []),
   ]
-  const used = Math.min(width, widthOf(fields, 1))
-  const w = used + extra <= width ? used + extra : used
-  const at = x + Math.max(0, Math.floor((width - w) / 2))
+  const rungs = Array.from({ length: tags.length + 1 }, (_, i) => tags.slice(0, tags.length - i))
+  const fits = (room: number) =>
+    rungs.find(rung => cells(facts.name) + widthOf(rung, PHASE_GAP) + (rung.length > 0 ? PHASE_GAP : 0) <= room)
+  // The handle's cells are taken only where the name keeps every letter with
+  // them; a name already short of room has nowhere to put a handle either.
+  const roomWith = Math.max(1, width - inset - extra - 2)
+  const roomAlone = Math.max(1, width - inset - 2)
+  const room = fits(roomWith) !== undefined ? roomWith : roomAlone
+  const kept = fits(room) ?? []
+  const fields: Field[] = [
+    { text: runName(facts.name, Math.max(1, room - widthOf(kept, PHASE_GAP) - (kept.length > 0 ? PHASE_GAP : 0))), color: facts.tone },
+    ...kept,
+  ]
+  const at = x + (inset > 0 ? 1 : 0)
+  const used = 2 + Math.min(room, widthOf(fields, PHASE_GAP))
 
   // A label set into a rule clears the cells it stands in, its own gaps
   // included: a stroke showing through between the name and the count joins
   // them into one word with a line in it.
   if (inset > 0) {
-    for (let dx = -1; dx <= used; dx++) {
+    for (let dx = 0; dx <= used; dx++) {
       c.put(at + dx, y, 0x20, facts.tone)
     }
   }
 
-  drawFields(c, at, y, width - (at - x), fields, 1)
+  c.put(at, y, facts.mark, facts.markTone)
+  drawFields(c, at + 2, y, room, fields, PHASE_GAP)
 
-  return { x: at, w, used }
+  return { x: at, w: used + extra, used, nameX: at + 2 }
 }
+
+/** The air between the parts of a phase's heading. */
+const PHASE_GAP = 2
 
 /**
  * The block at the top of the pane: a bar three rows deep carrying what the run
@@ -10051,49 +10060,6 @@ function commandPhrase(command: string, tense: 'past' | 'ing', max: number): str
   return tense === 'past' ? `ran ${clipped(command, max)}` : `running \`${clipped(command, max)}\``
 }
 
-/**
- * What one call is doing, with the thing it is doing it to: `editing
- * stores/config.ts`, `running \`npm run lint\``, `searching for 'storyOf'`.
- *
- * The verb alone — `is editing a file` — says the agent is busy, which the
- * spinner already said. What a reader watching a pipeline wants is which file
- * the develop step is in and which command the gate is running, and the call's
- * own argument is where that is written. `tight` spells the object shorter, for
- * the second rung of the sentence's ladder.
- */
-function callPhrase(call: ToolCall, tight: boolean): string {
-  const input = subjectOf(call)
-
-  if (!input.trim()) {
-    return verbOf(call.name, false)
-  }
-
-  const path = shortPath(input, tight ? 1 : 2)
-
-  switch (call.name) {
-    case 'Read':
-      return `reading ${path}`
-    case 'Edit':
-    case 'MultiEdit':
-    case 'NotebookEdit':
-      return `editing ${path}`
-    case 'Write':
-      return `writing ${path}`
-    case 'Bash':
-      return commandPhrase(input, 'ing', tight ? 24 : 48)
-    case 'Grep':
-      return `searching for '${clipped(input, tight ? 16 : 32)}'`
-    case 'Glob':
-      return `looking for ${clipped(input, tight ? 16 : 32)}`
-    case 'WebFetch':
-      return `fetching ${clipped(input.replace(/^https?:\/\//, '').split('/')[0] ?? input, 32)}`
-    case 'WebSearch':
-      return `searching the web for '${clipped(input, tight ? 16 : 32)}'`
-    default:
-      return verbOf(call.name, false)
-  }
-}
-
 /** One file an agent changed: how many calls changed it, whether one wrote it whole, how many failed. */
 type FileChange = { path: string; edits: number; wrote: boolean; failed: number }
 
@@ -10128,239 +10094,7 @@ function changesOf(calls: ToolCall[]): FileChange[] {
 }
 
 /** The distinct files an agent has changed, in the order it first changed them. */
-function changedFiles(agent: AgentRow): string[] {
-  return changesOf(agent.calls ?? [])
-    .filter(file => file.edits > 0)
-    .map(file => file.path)
-}
-
-/**
- * A running agent's activity, for the sentence: the full clause with what it is
- * working on, a tighter one, or the word that stands for it.
- */
-function activityOf(agent: AgentRow, nowMs: number, rung: 'full' | 'tight' | 'short'): string {
-  const short = rung === 'short'
-  const calls = agent.calls ?? []
-  const open = [...calls].reverse().find(c => c.endedMs === undefined)
-  const busy = agent.tools.find(t => t.isRunning)
-  const changed = changedFiles(agent).length
-  const tally = rung === 'full' && changed > 0 ? ` (${changed} ${changed === 1 ? 'file' : 'files'} changed)` : ''
-
-  if (open && !short) {
-    return `is ${callPhrase(open, rung === 'tight')}${tally}`
-  }
-
-  if (busy) {
-    return short ? verbOf(busy.name, true) : `is ${verbOf(busy.name, false)}${tally}`
-  }
-
-  if (agent.isThinking) {
-    // What it is thinking about is what it did last: `thinking, after running
-    // \`npm test\`` says which result the agent is reading.
-    const before = [...calls].reverse().find(c => c.endedMs !== undefined)
-    // What it is saying, where it has said anything yet: the agent's own account
-    // of what it makes of the last result, which is the reasoning a reader
-    // wants and the one thing nothing else in the pane quotes.
-    const words = agent.stepSaid?.trim()
-
-    if (rung === 'full' && words) {
-      // The quote's own full stop goes: the sentence closes after it, and
-      // `artifact.”.` is two stops.
-      return `is thinking: \u201c${gist(words, 90).replace(/[.;:]$/, '')}\u201d`
-    }
-
-    return short ? 'thinking' : before ? `is thinking, after ${callPhrase(before, rung === 'tight')}${tally}` : `is thinking${tally}`
-  }
-
-  const quiet = quietFor(agent, nowMs)
-
-  if (quiet > 0) {
-    return short ? `quiet ${elapsed(quiet)}` : `has said nothing for ${elapsed(quiet)}${tally}`
-  }
-
-  return short ? 'working' : `is working${tally}`
-}
-
 /** `a`, `a and b`, `a, b and c`, with the names in their own colours and the joins in the prose's. */
-function listed(items: Words[][], prose: Rgb): Words[] {
-  return items.flatMap((item, i) => [
-    ...(i === 0 ? [] : [{ text: i === items.length - 1 ? ' and ' : ', ', color: prose }]),
-    ...item,
-  ])
-}
-
-/**
- * The run in one sentence, from the most it can say down to the least, for the
- * row above the bar to pick the first that fits.
- *
- * The run line is figures with marks, and the drawing is a diagram with no key:
- * between them a reader can work out what is happening, and on a narrow pane
- * the phase doing the work is often scrolled out past the edge. This says it in
- * words — which phase, what each of its agents is doing, what failed, what comes
- * next — and once the run is over, how it ended.
- *
- * Agent names are set in their state's colour and nothing else is coloured, so
- * the sentence keeps the pane's rule that colour says state. It is a list of
- * spellings rather than one string cut to fit because a sentence cut off at the
- * edge says less than a shorter sentence and reads as a fault in the pane.
- */
-function storyOf(run: RunState, nowMs: number, prose: Rgb, plain: Rgb): Words[][] {
-  const say = (text: string): Words => ({ text, color: prose })
-  const name = (agent: AgentRow): Words => ({ text: nodeLabel(agent), color: colorOf(agent.state) })
-  const phase = (title: string): Words => ({ text: title, color: plain })
-  const took = elapsed((run.endedMs ?? nowMs) - run.startedMs)
-  const failed = run.agents.filter(a => a.state === 'failed')
-  const finished = run.agents.filter(a => a.state === 'done').length
-  const total = run.agents.length
-  const failures = (where: string[], why = false): Words[] => {
-    if (failed.length === 0) {
-      return []
-    }
-
-    if (failed.length > 3) {
-      return [say(`${failed.length} agents failed`)]
-    }
-
-    // The phase is named only where it says something the agent's name does
-    // not: a pipeline's gates are mostly phases of one agent, and `Lint failed
-    // in Lint` says the word twice.
-    const elsewhere =
-      failed.every(a => !where.includes(a.phase)) &&
-      failed.every(a => a.phase === failed[0]!.phase) &&
-      failed.some(a => nodeLabel(a) !== a.phase)
-    // Why, where one agent failed and said why: the reason is what a reader
-    // looks for next, and a list of several reasons is a paragraph, not a clause.
-    const reason = why && failed.length === 1 ? failed[0]!.verdict?.summary : undefined
-
-    return [
-      ...listed(failed.map(a => [name(a)]), prose),
-      say(' failed'),
-      ...(elsewhere ? [say(' in '), phase(failed[0]!.phase)] : []),
-      ...(reason ? [say(`: ${clipped(reason, 72)}`)] : []),
-    ]
-  }
-
-  if (run.status !== 'running') {
-    const failedRun = run.status === 'failed'
-    // A run that did not finish is told where it gave out: the phase of the
-    // first agent that did not land, or else the last phase it entered.
-    const cut = run.agents.find(a => a.state !== 'done')?.phase ?? run.agents[run.agents.length - 1]?.phase
-    const opening =
-      run.status === 'completed'
-        ? `Done in ${took}`
-        : `${failedRun ? 'Failed' : 'Stopped'} after ${took}${cut ? ` in ${cut}` : ''}`
-    const error = failedRun ? run.error?.split('\n')[0]?.trim() : undefined
-    const counted =
-      total === 0
-        ? 'No agents ran'
-        : finished === total
-          ? total === 1
-            ? 'Its one agent finished'
-            : total === 2
-              ? 'Both agents finished'
-              : `All ${total} agents finished`
-          : `${finished} of ${total} agents finished`
-    const lost = failures([])
-    const lostWhy = failures([], true)
-
-    return [
-      ...(error
-        ? [[say(`${opening}: ${error}`)]]
-        : [
-            [say(`${opening}. ${counted}`), ...(lostWhy.length > 0 ? [say('; '), ...lostWhy] : []), say('.')],
-            [say(`${opening}. ${counted}`), ...(lost.length > 0 ? [say('; '), ...lost] : []), say('.')],
-          ]),
-      [say(`${opening}. ${finished} of ${total} finished${failed.length > 0 ? `, ${failed.length} failed` : ''}.`)],
-      [say(`${opening}.`)],
-    ]
-  }
-
-  const running = run.agents.filter(a => a.state === 'running')
-  const where = run.phases.filter(p => running.some(a => a.phase === p))
-  const entered = run.phases.filter(p => run.agents.some(a => a.phase === p))
-  const last = entered.length > 0 ? run.phases.indexOf(entered[entered.length - 1]!) : -1
-  const next = last >= 0 ? run.phases[last + 1] : run.phases[0]
-  const here = where.length > 0 ? where : entered.slice(-1)
-  const lost = failures(here)
-  const lostWhy = failures(here, true)
-  // The last gate to report, and what it said: the line a reader watching a
-  // pipeline is waiting for each time a phase lands.
-  const reported = run.agents
-    .filter(a => a.state === 'done' && a.verdict?.summary && a.endedMs !== undefined)
-    .sort((x, y) => (y.endedMs ?? 0) - (x.endedMs ?? 0))[0]
-  const report = reported ? [say(' '), name(reported), say(`: ${clipped(reported.verdict!.summary!, 72)}.`)] : []
-
-  if (running.length === 0) {
-    const waiting = here.length > 0 ? [say('Between phases, after '), phase(here[0]!)] : [say('Starting')]
-
-    return [
-      [...waiting, ...(lost.length > 0 ? [say('. '), ...lost] : []), say('.')],
-      [say(here.length > 0 ? 'Between phases.' : 'Starting.')],
-    ]
-  }
-
-  const phases = listed(here.map(p => [phase(p)]), prose)
-  const few = running.length <= 3
-  const thinking = running.filter(a => a.isThinking && !a.tools.some(t => t.isRunning)).length
-  const crowd = [say(`${running.length} agents are running${thinking > 0 ? `, ${thinking} of them thinking` : ''}`)]
-  const doing = few ? listed(running.map(a => [name(a), say(` ${activityOf(a, nowMs, 'full')}`)]), prose) : crowd
-  const doingTight = few ? listed(running.map(a => [name(a), say(` ${activityOf(a, nowMs, 'tight')}`)]), prose) : crowd
-  const doingShort = few
-    ? listed(running.map(a => [name(a), say(` ${activityOf(a, nowMs, 'short')}`)]), prose)
-    : [say(`${running.length} running`)]
-  const ahead = next ? [say(' '), phase(next), say(' comes next.')] : []
-  const aheadShort = next ? [say(' Next: '), phase(next), say('.')] : []
-  const counts = `${running.length} running${failed.length > 0 ? `, ${failed.length} failed` : ''}`
-
-  const opening = (what: Words[]) => [say('In '), ...phases, say(', '), ...what, say('.')]
-  const then = (why: Words[]) => (why.length > 0 ? [say(' '), ...why, say('.')] : [])
-
-  return [
-    [...opening(doing), ...then(lostWhy), ...report, ...ahead],
-    [...opening(doing), ...then(lostWhy), ...ahead],
-    [...opening(doing), ...then(lost), ...ahead],
-    [...opening(doingTight), ...then(lost), ...ahead],
-    [...opening(doingTight), ...then(lost)],
-    [...phases, say(': '), ...doingShort, say('.'), ...(lost.length > 0 ? [say(' '), ...lost, say('.')] : []), ...aheadShort],
-    [...phases, say(': '), ...doingShort, say('.'), ...(lost.length > 0 ? [say(' '), ...lost, say('.')] : [])],
-    [...phases, say(': '), ...doingShort, say(failed.length > 0 ? `. ${failed.length} failed.` : '.')],
-    [...phases, say(`: ${counts}`)],
-    [say(counts)],
-  ]
-}
-
-/**
- * The run's sentence across the pane's first row, where the pane's name used to
- * stand while a run was shown.
- *
- * The name said the same thing on every frame, and once a run is on screen the
- * reader already knows what the pane is: the row is worth more saying what the
- * run is doing. The name stays on the idle pane, where nobody yet knows what
- * this is, and in the line at the foot.
- *
- * Ragged left, a cell in from the edge, because it is a sentence to be read
- * rather than a heading to be found; and quieter than the figures under it, as
- * the name was, so the run line stays the loudest thing at the top.
- */
-function paintStory(c: Canvas, run: RunState, nowMs: number, columns: number): void {
-  const prose = mix(quietOf(c.background), COLORS.text, 0.7)
-  const room = columns - 2
-
-  for (const words of storyOf(run, nowMs, prose, COLORS.text)) {
-    if (words.reduce((sum, w) => sum + cells(w.text), 0) > room) {
-      continue
-    }
-
-    let x = 1
-
-    for (const w of words) {
-      x += c.text(x, 0, w.text, w.color ?? prose)
-    }
-
-    return
-  }
-}
-
 function paintBar(
   c: Canvas,
   run: RunState,
@@ -10372,12 +10106,7 @@ function paintBar(
   picker?: 'shut' | 'open',
 ): void {
   const quiet = quietOf(c.background)
-  // The title takes the pane's first row, and the bar begins under it.
-  const top = barRows >= 4 ? 1 : 0
-
-  if (top > 0) {
-    paintStory(c, run, nowMs, columns)
-  }
+  const top = 0
 
   if (barRows - top >= 3) {
     for (let x = 0; x < Math.max(0, columns - CLOSE_W); x++) {
@@ -10446,32 +10175,46 @@ function paintHeader(
     // it is a column head, down the pane it is a rule, and a reader who learns
     // the ▸ in one should not have to find it again in the other.
     const open = fold?.nested === true && fold.shut !== true
-    const facts = phaseFactsOf(
-      open ? FOLD_OPEN + lane.phase.slice(FOLD_SHUT.length) : lane.phase,
-      lane.index,
-      fold?.agents ?? [],
-      passes,
-      overOf(run),
+    // The caption has its column and the gutter after it, up to two cells
+    // short of the next column's caption. Flush left over a card, the column's
+    // own width cut the time and the handle from every heading, with the
+    // gutter beside it standing empty.
+    const after = lanes[place + 1]
+    const room = Math.max(lane.w, (after === undefined ? columns : after.x) - lane.x - 2)
+    const empty = (fold?.agents.length ?? 0) === 0
+    const facts = ghostFacts(
+      phaseFactsOf(
+        open ? FOLD_OPEN + lane.phase.slice(FOLD_SHUT.length) : lane.phase,
+        lane.index,
+        fold?.agents ?? [],
+        passes,
+        overOf(run),
+        tick,
+        nowMs,
+      ),
+      lane.phase,
+      empty ? run.plan : undefined,
+      room,
     )
-    const handle = fold?.nested === true ? foldHandle(!open, fold.agents.length, lane.w) : ''
+    const handle = fold?.nested === true ? foldHandle(!open, fold.agents.length, room) : ''
     const label = paintPhaseLabel(
       c,
       lane.x,
       captionRow,
-      lane.w,
+      room,
       facts,
       0,
       handle.length > 0 ? HANDLE_GAP + handle.length + 1 : 0,
     )
 
     if (fold?.nested && hotspots) {
-      const after = label.x + label.used + HANDLE_GAP
+      const handleAt = label.x + label.used + HANDLE_GAP
       const drew = paintFoldHandle(
         c,
         lane.phase,
-        after,
+        handleAt,
         captionRow,
-        lane.x + lane.w - after,
+        lane.x + room - handleAt,
         facts.tone,
         !open,
         fold.agents.length,
@@ -10479,7 +10222,7 @@ function paintHeader(
       )
 
       if (!drew) {
-        hotspots.push(markSpot(lane.phase, label.x, captionRow, lane.x))
+        hotspots.push(markSpot(lane.phase, label.nameX, captionRow, lane.x))
       }
     }
 
@@ -10493,6 +10236,14 @@ function paintHeader(
     // laid in is the one every other phase wants.
     for (let dx = nested ? 0 : filled; dx < (nested ? lane.w : filled); dx++) {
       c.put(lane.x + dx, ruleRow, ruleOf(nested, dx < filled), quiet)
+    }
+
+    // A phase nothing entered keeps its length of rule in the dashed stroke,
+    // the one the pane draws for work that is not this run's own.
+    if (empty) {
+      for (let dx = 0; dx < lane.w; dx++) {
+        c.put(lane.x + dx, ruleRow, SEAM_H, quiet)
+      }
     }
 
     // The joint between a filled length of rule and the border under it is
@@ -10526,7 +10277,8 @@ const FEED_FLOOR = 16
 /** One line of the activity strip: when, which agent, and what it did. */
 type FeedRow = {
   atMs: number
-  agent: AgentRow
+  /** Absent for the line the run itself closes the strip with. */
+  agent?: AgentRow
   text: string
   /**
    * What the agent did on the strength of what it said, where the line is the
@@ -10772,9 +10524,21 @@ function feedOf(run: RunState): FeedRow[] {
     }
   }
 
+  // A run can fail after every agent in it landed, on something the script
+  // itself checked, and then the reason is in no agent's line. It closes the
+  // strip, under the name of the run rather than of an agent.
+  if (run.status === 'failed' && run.error) {
+    rows.push({ atMs: run.endedMs ?? Number.MAX_SAFE_INTEGER, text: run.error, mark: 'failed' })
+  }
+
   // Stable, so two lines stamped in the same millisecond keep the order the
   // agent did them in.
   return rows.sort((a, b) => a.atMs - b.atMs)
+}
+
+/** Who a line of the strip is about: the agent, or the run for its own failure. */
+function feedName(row: FeedRow): string {
+  return row.agent ? nodeLabel(row.agent) : 'run'
 }
 
 /**
@@ -10814,14 +10578,14 @@ function paintFeed(c: Canvas, run: RunState, feed: FeedRow[], ruleY: number, row
     c.put(x, ruleY, RULE_LEFT, quiet)
   }
 
-  c.text(2, ruleY, ' activity ', quiet)
+  c.text(2, ruleY, ' activity ', COLORS.dim)
 
   // The columns are measured over the lines that could be shown, which is no
   // more than one per row.
   const near = feed.slice(-rows)
   const clockOf = (row: FeedRow) => elapsed(Math.max(0, row.atMs - run.startedMs))
   const clockW = Math.max(...near.map(row => cells(clockOf(row))))
-  const nameW = Math.min(18, Math.max(...near.map(row => cells(nodeLabel(row.agent)))))
+  const nameW = Math.min(18, Math.max(...near.map(row => cells(feedName(row)))))
   const textX = 1 + clockW + 2 + 2 + nameW + 2
   const room = Math.max(0, c.columns - 1 - textX)
 
@@ -10892,7 +10656,7 @@ function paintFeed(c: Canvas, run: RunState, feed: FeedRow[], ruleY: number, row
     }
 
     x += 2
-    c.text(x, y, truncate(nodeLabel(row.agent), nameW).padEnd(nameW), colorOf(row.agent.state))
+    c.text(x, y, truncate(feedName(row), nameW).padEnd(nameW), row.agent ? colorOf(row.agent.state) : COLORS.failed)
 
     for (const line of lines) {
       const at = textX + c.text(textX, y, truncate(line.text, room), prose)

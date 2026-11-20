@@ -38,6 +38,7 @@ import {
   runFileOf,
   runOfScriptName,
   type RunState,
+  type ToolCall,
 } from './journal'
 import { aboutText, NAME, noteShipped, shippedVersion } from './about'
 import type { Orientation } from './layout'
@@ -344,6 +345,36 @@ async function recoverRuns($: EngineInterface): Promise<void> {
   }
 
   state.runs.sort((a, b) => a.startedMs - b.startedMs)
+
+  await refreshRuns($)
+}
+
+/**
+ * Reads again every run still marked going that is not the one on the pane.
+ *
+ * Only the run on the pane is read on the timer. One left behind by a second
+ * launch, or by a press on another run, kept whatever it said when the reader
+ * looked away: a run that failed while another was drawn stood in the list as
+ * `▸ broken 0/1`, still going with half its agents, until it was opened.
+ */
+async function refreshRuns($: EngineInterface): Promise<void> {
+  const behind = state.runs.filter(r => r.status === 'running' && r !== state.shown)
+
+  if (behind.length === 0) {
+    return
+  }
+
+  const nowMs = await $.clock.now()
+
+  for (const run of behind) {
+    await readRun($, run, nowMs)
+
+    // `readRun` takes the summary only from a run it reads as going, which this
+    // one may no longer be; a summary on disk is the run being over.
+    if (run.status === 'running' && (await $.fs.exists(run.runFile))) {
+      applyRunFile(run, await $.fs.read(run.runFile), nowMs)
+    }
+  }
 }
 
 /** The runs of this session that are over, from the summary each one wrote. */
@@ -558,10 +589,20 @@ async function readModels($: EngineInterface, run: RunState): Promise<void> {
  * model: once per agent, and only for an agent that has stopped and still has
  * no count. A running agent is left to the live reader, which is ahead of the
  * file; a run that has ended has the summary, which is better than both.
+ *
+ * The same read fills in the calls of an agent of a recovered run. Calls reach
+ * the pane from the live chain, so a run read back after a reload of the
+ * plugin, or in a resumed session, had none: the activity strip was not drawn at all, and
+ * the sentence had nothing to say an agent did.
  */
 async function readSpend($: EngineInterface, run: RunState): Promise<void> {
   for (const agent of run.agents) {
-    if (agent.state === 'running' || agent.tokens !== undefined || agent.liveTokens !== undefined) {
+    const counted = agent.tokens !== undefined || agent.liveTokens !== undefined
+    // Only a run read back from disk: one the pane watched has every call the
+    // live chain saw, and an agent of it with none made none.
+    const unheard = run.recovered === true && (agent.calls?.length ?? 0) === 0
+
+    if (agent.state === 'running' || (counted && !unheard)) {
       continue
     }
 
@@ -574,7 +615,42 @@ async function readSpend($: EngineInterface, run: RunState): Promise<void> {
     const path = `${run.transcriptDir}/agent-${agent.agentId}.jsonl`
 
     if (await $.fs.exists(path)) {
-      agent.liveTokens = readAgentTranscript(await $.fs.read(path)).tokens
+      const read = readAgentTranscript(await $.fs.read(path))
+
+      agent.liveTokens = agent.liveTokens ?? read.tokens
+      takeCalls(agent, read.calls)
+    }
+  }
+}
+
+/**
+ * Gives an agent the calls its transcript records, where it has none of its own.
+ *
+ * The live chain records calls as they happen and knows their timing; the
+ * transcript knows only what was passed and what came back. So the transcript
+ * fills the list for a run that was never watched, and stands aside for one
+ * that was.
+ */
+function takeCalls(row: RunState['agents'][number], calls: ToolCall[]): void {
+  if (calls.length === 0 || (row.calls?.length ?? 0) > 0) {
+    return
+  }
+
+  row.calls = calls
+
+  // The tally the pane counts tools by is filled by the live chain, which was
+  // never running for a replayed run. Recovered from the same calls, so the
+  // figures a reopened run shows are the ones it showed while it ran.
+  if (row.tools.length === 0) {
+    for (const call of calls) {
+      const seen = row.tools.find(t => t.name === call.name)
+
+      if (seen) {
+        seen.count++
+        seen.atMs = Math.max(seen.atMs, call.startedMs)
+      } else {
+        row.tools.push({ name: call.name, count: 1, atMs: call.startedMs, isRunning: false })
+      }
     }
   }
 }
@@ -606,30 +682,7 @@ async function loadDetail($: EngineInterface, run: RunState, agentId: string): P
   // been read, and leaving it blank there would be a gap they can see the
   // answer to.
   row.liveTokens = row.liveTokens ?? read.tokens
-
-  // The live chain records calls as they happen and knows their timing; the
-  // transcript knows only what was passed and what came back. So the transcript
-  // fills the list for a run that was never watched, and stands aside for one
-  // that was.
-  if (read.calls.length > 0 && (row.calls?.length ?? 0) === 0) {
-    row.calls = read.calls
-
-    // The tally the pane counts tools by is filled by the live chain, which was
-    // never running for a replayed run. Recovered from the same calls, so the
-    // figures a reopened run shows are the ones it showed while it ran.
-    if (row.tools.length === 0) {
-      for (const call of read.calls) {
-        const seen = row.tools.find(t => t.name === call.name)
-
-        if (seen) {
-          seen.count++
-          seen.atMs = Math.max(seen.atMs, call.startedMs)
-        } else {
-          row.tools.push({ name: call.name, count: 1, atMs: call.startedMs, isRunning: false })
-        }
-      }
-    }
-  }
+  takeCalls(row, read.calls)
 
   // A running agent's transcript grows; only a finished one is read for good.
   if (row.state !== 'running') {
@@ -809,6 +862,12 @@ async function frame($: EngineInterface, run: RunState): Promise<void> {
   if (run.status !== 'running' && !run.agents.some(a => a.state === 'running')) {
     stopTimer()
     repaint($, run, run.endedMs ?? nowMs)
+
+    // The rows that carry a Button are elements, built again only every few
+    // ticks, so the last frame usually blitted the sentence that the run was
+    // done under a bar still spinning and counting `✔ 5/6`. Nothing ticks after
+    // this one to put that right.
+    $.ui.invalidate('ui.render')
   }
 }
 
@@ -909,6 +968,11 @@ async function actOnPress($: EngineInterface): Promise<void> {
 
   if (result.opened !== undefined && state.shown) {
     await loadDetail($, state.shown, result.opened)
+  }
+
+  // The list unrolled under the bar names every run, and says how each stands.
+  if (state.picking) {
+    await refreshRuns($)
   }
 
   state.nowMs = await $.clock.now()
@@ -1403,6 +1467,8 @@ export function register(on: On, options: PluginOptions) {
       // is cleared and the list takes its place.
       const nowMs = await $.clock.now()
 
+      await refreshRuns($)
+
       const idle = paintIdle(state.canvas, state.runs.map(runEntry), nowMs, paintOptions(nowMs))
 
       state.hotspots = idle.hotspots
@@ -1552,6 +1618,12 @@ export function register(on: On, options: PluginOptions) {
     await readManifest($)
     await readStore($)
     await recoverRuns($)
+
+    // A pane left open across a reload of the plugin renders before the runs
+    // are read back, and with nothing asking it to render again it went on
+    // saying no workflow had run in the session, beside the transcript of the
+    // one that just had.
+    $.ui.invalidate('ui.render')
 
     await $.command.register({
       name: COMMAND,

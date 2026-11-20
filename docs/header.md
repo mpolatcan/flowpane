@@ -334,8 +334,10 @@ spent should say which run this is.
 
 ## The phase names
 
-Laid out across, one name per phase, centred over the column it names, with its
-landed count and — where a phase looped — the number of passes it took. Under
+Laid out across, one heading per phase, set flush left over the column it names:
+the phase's state mark, its name, its landed count, — where a phase looped — the
+number of passes it took, and how long it has taken. The heading may run on over
+the gutter after its column, up to two cells short of the next heading. Under
 the names a rule, and each phase fills its own length of that rule as its agents
 land, which ties the measurement to the column it measures. The fill is a change
 of stroke, not of colour: `━` where the phase has landed and `─` where it has
@@ -357,123 +359,106 @@ own rule carries the first phase's name.
 
 A phase nothing has entered yet leaves its length unfilled and its name grey.
 The rule still runs, because it is the block's own border, and a border that
-stops where the work stops is a border with a hole in it. In the body it gives
-its section up altogether, however much room the pane has, and is named with the
-other phases the run has not reached — in the strip beside the drawing, or in
-the band at its foot:
+stops where the work stops is a border with a hole in it.
+
+## Phases the run did not reach
+
+A phase nothing entered is drawn as its heading and nothing else, in every
+layout: its mark, its name, and — where a phase that ran gives its count — the
+line the script wrote about it in `meta.phases`, set into a dashed rule. The
+dashed stroke is the one the pane draws for work that is not this run's own.
 
 ```
-╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ Skipped ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
-              ▌⊘ Verify  one agent per finding, told to refute it          Sonnet
-              ▌⊘ Escalate  only what survived as blocking — usually noth…    Opus
-              ▌⊘ Report  one agent joins the survey and the verdicts         Opus
+ ✖ Gate  2/2  9.0s ──────────────────────────────────────────────────────────────
+
+                ╭───────── ✔ lint ─────────╮  ╭──────── ✖ tests ─────────╮
+                │     ⧖ 6.0s  ∑ 40.6k      │  │     ⧖ 9.0s  ∑ 35.6k      │
+                ╰─────── Haiku 4.5 ────────╯  ╰─────── Haiku 4.5 ────────╯
+
+ ⊘ Review  security-reviewer agent ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ ⊘ Verify  confirm each finding against the diff ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ ⊘ Persist  write the verdict for the pre-push hook ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 ```
 
-Each is the same one-row node every list on the pane draws: the rule down the
-left edge in the tone of the thing it is, the state mark, the name, the one line
-the phase wrote about itself, and the model against the right edge where a row
-that ran writes its own.
+**A phase nothing has entered is ahead of the run while the run is going and
+skipped once it is over**, and the mark says which: `○` in the idle tone while
+the run may still reach it, `⊘` in the stopped tone once it cannot. Grey on its
+own is the colour of both, and a reader looking at a finished run wants to know
+at a glance which of its phases did work.
 
-A section is a rule and the nodes under it, and a phase with no agents has no
-nodes — so a section of its own is a rule with blank rows under it. Three of
-those down a tall pane read as three bands that failed to draw. One list of them
-says it once, in the order they will run, which is the fact a reader wanted.
+The line about the phase stands where the count would, because a workflow
+declares what its phases do and never how many agents they will open: `Verify`
+spawns one per finding, and the findings are not known until `Review` returns. A
+count there would be invented, and an invented number beside measured ones is
+worse than none. The line is cut to the room the heading has rather than dropped
+whole, so a narrow pane keeps the start of it.
 
-It was a dashed card in a section of its own for a while, sized to the card the
-phase's first agent would have taken, and before that an empty rectangle of that
-size. The rectangle said the room is kept and nothing has arrived to fill it,
-twice, and said nothing else — while `meta.phases` declares a title, a one-line
-detail and often a model for every phase in the script, whether or not the run
-reaches it. The card said all three, but a card carries four facts where a phase
-that never ran has three, so its fourth side went round blank cells; and the
-strip beside the graph was drawing rows for the same thing at the same time. One
-shape for one thing, wherever it is drawn.
+**Where they go.** Phases at the end of the run that nothing has entered close
+the drawing, a heading each in the order they would run, one row of air under
+the last section — down the pane, along a timeline and in the list alike. A
+phase in the middle of a run that later phases passed keeps its place, since
+moving it to the foot would put it after work it came before; down the pane it
+is its heading and one row of air, rather than a band of blank rows saying that
+nothing happened at the depth of a band where something did. Across the pane it
+keeps its column, with its heading over an empty one and its length of rule
+dashed.
 
-A phase in the middle of a run that later phases passed keeps its section, since
-dropping it to the foot would put it after work it came before. It draws the same
-row there, cut to what it has to say and centred in the band, under a rule
-carrying its name the way every other band's does:
+**What it replaced.** The phases at the foot used to be one band captioned
+`Skipped` or `Ahead`, centred in a dashed rule, with a row under it for each
+phase — a state rule, the name, the line and the model — centred on the pane.
+It was the one centred title left on a pane of flush-left headings, its rows
+said `not reached` under a caption that had said so already, and a phase that
+kept its place mid-run drew its heading with `skipped` in it and then the same
+row again, centred in a band seven rows deep. Before that a phase nothing
+entered was a dashed card, and before that an empty rectangle the size of the
+card its first agent would have taken.
 
-```
-─────────────────────────────────────────── Escalate ───────────────────────────────────────────
-
-
-
-                      ▌  Escalate  only what survived as blocking    Opus
-```
-
-What it does not draw is a count. Nothing in a workflow declares how many agents
-a phase will run: `Verify` spawns one per finding, and the findings are not known
-until `Review` returns. A figure there would have to be invented, and an invented
-number standing beside measured ones is worse than no number. The node stands for
-the phase, not for its fan-out.
-
-The outline ran the width of the pane once, which read as a divider the drawing
-does not have, and the phase used to get the word `pending` beside its name,
-which truncated `Verify` to `Ver…` to repeat what the grey already said.
-
-A section costs the same whether ten agents ran in it or none ever did, so on a
-pane that cannot afford every phase the ones nothing has entered give their
-sections up, from the end of the run backward, and take a strip at the end of
-the drawing instead — behind the same boundary every other phase is divided
-by, captioned the way every other section is:
+A pane with fewer rows than phases ends with a heading counting the rest —
+`⊘ 3 more`. A pane with one row to give puts them all in one heading, counted
+and named in order:
 
 ```
-           Survey 5/5                     Review 0/3                      Check 0/2              Skipped
-────━━━━━━━━━━━━━━━━━━━━━━━━━━━┯──────────────────────────────┬────────────────────────────────┬──────────────
-                               │                              │                                ╎
-                               │                              │                                ╎
-                               │                              │                                ╎
-    ╭────── ✔ paint ───────╮   │                              │                                ╎
-    │   ⧖ 13.8s  ∑ 17.9k   │•┄┄◠╮                             │                                ╎
-    ╰───── Haiku 4.5 ──────╯   │┆                             │                                ╎
-                               │┆                             │                                ╎
-                               │┆                             │                                ╎
-    ╭────── ✔ layout ──────╮   │┆  ╭─ ⊘ paint:correctne… ─╮   │                                ╎
-    │   ⧖ 10.3s  ∑ 17.9k   │•┄╮│╰─▸│   ⧖ 19.8s  ∑ 46.9k   │   │                                ╎
-    ╰───── Haiku 4.5 ──────╯  ┆│   ╰────── Sonnet 5 ──────╯   │    ╭────── ⊘ README ──────╮    ╎
-                            ╭┄◠◠┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄×2┄┄┄┄┄┄┄┄┄┄┄┄┄◠┄┄┄▸│   ⧖ 20.6s  ∑ 42.6k   │    ╎
-                            ┆ ┆│                              │    ╰───── Haiku 4.5 ──────╯    ╎
-    ╭───── ✔ journal ──────╮┆ ┆│   ╭─ ⊘ layout:correctn… ─╮   │                                ╎ ▌⊘ Verify
-    │   ⧖ 11.6s  ∑ 17.4k   │•╮╰◠┄─▸│   ⧖ 22.5s  ∑ 28.5k   │   │                                ╎ ▌⊘ Escalate
-    ╰───── Haiku 4.5 ──────╯┆┆ │   ╰────── Sonnet 5 ──────╯   │    ╭────── ⊘ plugin ──────╮    ╎ ▌⊘ Report
+ ○ 3 ahead  Verify ▸ Escalate ▸ Report ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 ```
 
-Each phase in the strip is the same node the band and the list draw, cut to the
-width the strip has: the rule, the state mark, the name, and then the detail and
-the model where there is room for them. A bare column of names was the pane's one
-piece of drawing that was not a node, so a phase that never ran read as a note in
-the margin rather than as part of the run.
+### Across the pane, a strip at the end
 
-The list sits in the middle of the strip rather than at the head of it. Held
-under the boundary the caption sits on, three names stood at the top of a column
-twenty rows deep, which read as a section that had run out rather than one
-holding the phases still to come. Centred, the blank rows above and below are
-the section's own margin, and the names sit level with the drawing beside them.
+Across, the run reads left to right, so what it has not reached stands to the
+right of what it has: a strip after the last column, behind the same boundary
+that divides every other pair of phases.
 
-That run was killed, so the strip is captioned `Skipped` rather than `Ahead`
-and its nodes take the tone of the agents the kill caught. **A phase nothing
-has entered is ahead of the run while the run is going and skipped once it is
-over**, and the two need telling apart: grey on its own is the colour of both
-a phase still to come and a phase that will never come, and a reader looking at
-a finished run wants to know at a glance which of its phases did work. A phase
-that kept a section of its own says the same thing in its caption —
-`Escalate skipped` — and its row is drawn in that tone instead of the rules'.
+```
+                ✖ Gate  2/2  9.0s                            ⊘ 3 skipped
+────────────────────────────────────────────────────────────┬──────────────────────────────
+                                                            ╎
+                ╭───────── ✔ lint ─────────╮                ╎ ⊘ Review
+                │     ⧖ 6.0s  ∑ 40.6k      │                ╎   security-reviewer agent
+                ╰─────── Haiku 4.5 ────────╯                ╎ ⊘ Verify
+                                                            ╎   confirm each finding aga…
+                ╭──────── ✖ tests ─────────╮                ╎ ⊘ Persist
+                │     ⧖ 9.0s  ∑ 35.6k      │                ╎   write the verdict for th…
+                ╰─────── Haiku 4.5 ────────╯                ╎
+```
 
-The run reads left to right, so what has not happened yet belongs to the right
-of what has, in the direction the drawing already runs. They are set down the
-strip in the order they will run, and a strip too short for all of them ends
-with `… 3`. A phase drawn there becomes a lane of its own the moment an agent
-starts in it.
+The strip's own heading stands with the column headings beside it and the way
+they stand: flush left on a mark, saying how many it holds — `⊘ 3 skipped`,
+`○ 2 ahead`. Each phase in it is a heading, with its line under the name. They
+start on the row the cards beside them start on, and the boundary runs as far
+as whichever is longer, the cards or the list.
 
-The caption is centred over the strip, and the names are centred in it the same
-way — across as well as down. Every other phase's caption is centred over its
-cards, and a strip captioned flush left had two left edges a couple of cells
-apart, the caption's and the list's, which read as two things that landed near
-each other rather than as a heading and its list. How much the centring shows
-across depends on the names: the strip is sized to the longest of them plus
-seven, so a strip of long names is full and one of short names stands its list
-in the middle of what is left.
+The strip is as wide as the longest name needs, and wider — up to a third of
+the pane — to hold the lines, but only where the drawing beside it still fits:
+a drawing pushed past the left edge to make room for notes about phases that
+never ran is a drawing about the wrong thing. Too narrow for a dozen letters of
+a line, the strip carries the names alone, since a line cut to its first word
+says there was a line and not what it was.
+
+It used to be the word `Skipped` centred over a column of one-row nodes, which
+were centred down the whole body; with the cards at the top of it the names
+stood a dozen rows under the last card, beside a boundary twenty rows long.
+Before that it was a dashed rule across the last row with the names set into
+it, which cost the graph a row and put the end of the run under the middle of
+it.
 
 The columns stop at the strip's boundary. A column is allowed to run past the
 *pane's* edge — a phase drawn at four cells is worse than a phase whose last
@@ -481,67 +466,6 @@ card loses its tail to the frame — but the strip's edge is not the pane's, and
 column allowed past it was drawn over the phases the strip is there to name, so
 `∑48k` and `Report` ran together with no cell between them. Where the strip is
 there the columns divide what it leaves and no more.
-
-It was a rule across the last row before, the names set into it the way a phase
-sets its name into its own rule:
-
-```
-╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ Check   Verify   Escalate   Report ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
-```
-
-That row cost the graph a row of its own height, and it put the end of the run
-underneath the middle of it, where the drawing has no other reason to be read.
-The strip costs the graph at most a fifth of its width, which is width the last
-section was spending on a margin, and gives the row back.
-
-Down the pane — stacked, as a list, or along a timeline — the end of the run is
-the foot of the drawing rather than its right-hand edge, so what is ahead opens
-a band of its own there. It is drawn the way every band the pane did draw is
-drawn — the name set into its own rule — with the stroke dashed instead of
-solid, because nothing has run in it yet:
-
-```
-                               ╭── ⊘ README ──╮   ╭── ⊘ plugin ──╮
-                               │⧖ 20.6s  ∑43k │   │⧖ 19.7s  ∑21k │
-                               ╰─ Haiku 4.5 ──╯   ╰─ Haiku 4.5 ──╯
-
-╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ Skipped ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
-              ▌⊘ Verify  one agent per finding, told to refute it          Sonnet
-              ▌⊘ Escalate  only what survived as blocking — usually noth…    Opus
-              ▌⊘ Report  one agent joins the survey and the verdicts         Opus
-```
-
-That run was killed. While a run is still going the same band reads `Ahead`, the
-mark column stands empty, and every tone in it is the rules'.
-
-A row each, in the order they will run, in the one-row shape a node takes
-everywhere else on the pane — rule, mark, name, detail, model. They were joined
-on one line once, `Verify ▸ Escalate ▸ Report`, which read as the rest of the run
-in order but had room for nothing except the names. A row each pays for the
-detail and the model, and a phase that never ran is the thing on the pane a
-reader otherwise knows least about. More phases than rows and the last row counts
-the rest: `… 3 more`. The band itself scrolls with the drawing, so a run whose
-phases run past the foot of the pane still reaches it — see
-[controls.md](controls.md#the-body-scrolls-to-the-rest-of-the-run).
-
-Before that they were spread one to a share of the width, so a phase stood where
-its own section would have been drawn. Down the pane that is the wrong axis: the
-run reads top to bottom there, and three names spaced across the foot of it read
-as three columns of a layout the drawing is not in.
-
-The band sits under the last phase the run entered rather than on the pane's own
-last row, which on a tall seat left six blank rows between the run and what it
-will do next and read as part of the pane's furniture.
-
-It wants a row for the caption and a row for each phase under it, and a short
-pane has not got them. Rows come off the bottom of the list first, counted by the
-last one. At one row the caption goes too — it is the part a reader can do
-without — and the joined line comes back in its place, set inside the rule, which
-is the same line a band's own name goes in:
-
-```
-╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ Verify ▸ Escalate ▸ Report ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
-```
 
 Never more than a third of the body: a drawing that spent two of its five rows
 on what has not happened yet is a drawing about the wrong thing. What the run
@@ -553,17 +477,14 @@ They go together rather than one at a time: dropping only as many as the
 arithmetic needed left a single empty section standing among the full ones.
 
 Stacked, and down a timeline, a phase is a band of rows rather than a column,
-so each band opens with a full-width rule carrying its own name centred in it,
-filled to the same fraction:
+so each band opens with a full-width rule carrying its own heading, set flush
+left, and the rule filled to the same fraction:
 
 ```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Survey 5/5 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ✔ Survey  5/5  11.4s ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   ▌✔ paint                                                                   10.3s  ∑17k  Haiku 4.5
   ▌✔ layout                                                                  11.9s  ∑17k  Haiku 4.5
-  ▌✔ journal                                                                 10.9s  ∑17k  Haiku 4.5
-  ▌✔ README                                                                  10.2s  ∑17k  Haiku 4.5
-  ▌✔ plugin                                                                  15.8s  ∑17k  Haiku 4.5
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Review 3/6 ↻3 ───────────────────────────────────────────
+ ⊘ Review  3/6  ↻3  2m45s ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━──────────────────────────────────
   ▌⊘ paint:correctness                                                        2m45s  ∑91k  Sonnet 5
 ```
 
@@ -576,78 +497,69 @@ seventeen hundred cells of the loudest ink the drawing has, saying of each band
 that it was finished, which is the one thing the row of `✔` marks underneath
 already said. The stroke is for the band a reader is watching.
 
-One device in both axes: the name is set into the rule the way a card's name is
-set into its top edge, centred, with a blank cell either side of it, so the rule
-reads as one line broken by a word rather than as two lines with a word between
-them. It replaced three things at once — a fourteen-column caption rail down the
-left of the stacked layout, the dotted rule that divided one band from the next,
-and the header's own progress bar — and gave a narrow pane those fourteen
-columns back.
+**A heading, read down one column.** The heading is the phase's state mark, its
+name, how many of its agents have landed and how long it took, two cells apart,
+set a cell in from the left edge, with the rule running from it to the right
+edge. The mark is the one a card carries — a spinner while any agent is
+working, `✔` once all have landed, `✖` if any failed, `⊘` where one was cut
+off or the run stopped before the phase began, `○` for a phase still ahead — so
+the state of the whole run reads down that first column before a word is read,
+the way the state of a band reads across its cards' marks. The time is first
+start to last landing, and to now for a phase still working.
 
-**Centred in both axes, and that is the point.** Across the pane a phase is a
-column and its name is that column's head, so the centre means *this column*.
-Down the pane the rule spans the whole width and names the rows under it, and
-the centre means less on its own — but a reader crosses layouts, and a caption
-flush left down the pane and centred across it is the same fact told two ways.
-The pane stops reading as one drawing seen from two sides.
+It replaced a name centred in the rule with its count trailing it. Centred, a
+stack of bands put every name in the middle of a rule running off both sides,
+and the bands read as dividers with words in them rather than as the steps of
+the run; the state of a phase was only the colour of its name. Centring also
+had to be defended down the pane, where the cards are centred and the spine
+runs down the middle of every rule — the one column a centred caption wants —
+and for a long while the caption walked to whichever end came free first, which
+put four bands of one drawing at four different columns. Flush left there is
+nothing to defend: every heading starts in the same column whatever crosses its
+rule.
 
-Down the pane it has to be fought for, because the cards are centred too and the
-spine therefore runs down the middle of every band rule — the one column a
-centred caption wants. One of the two has to give way there, and for a long
-while it was the caption: it walked to whichever end came free first, which put
-four bands of one drawing at four different columns.
+The same heading stands over each column across the pane and in the gutter of a
+timeline, so a reader who crosses layouts meets one device. In the flat list it
+stands two cells in, over the marks of the rows under it, leaving the first two
+columns to the rails and forks the list draws there.
 
-**The wire gives way, and the caption stands where it is centred.** A caption set
-into a rule clears the cells it stands in, so a wire crossing there simply loses
-this one row of itself and runs on above and below. That is the same break the
-rule takes for the wire everywhere else on the pane, read the other way round,
-and a one-cell gap in a line whose two halves are on the same column is a gap the
-eye closes without being asked.
+**The wire gives way, and the heading stands where it is.** A heading set into a
+rule clears the cells it stands in, so a wire crossing there simply loses this
+one row of itself and runs on above and below. That is the same break the rule
+takes for the wire everywhere else on the pane, read the other way round, and a
+one-cell gap in a line whose two halves are on the same column is a gap the eye
+closes without being asked.
 
-```
-the caption gave way                     the wire gives way
-──────────── Preflight 1/1 ──────        ───────── Preflight 1/1 ────────
-──────────────────•  Setup 1/1 ──        ─────────── Setup 1/1 ──────────
-──────────────────•  Develop 1/1 ─       ────────── Develop 1/1 ─────────
-──────────────────•  Verify 1/1 ──       ─────────── Verify 1/1 ─────────
-     names on four columns                    rule equal on both sides
-```
+**What gives way first is the time, then the count.** The name is the one thing
+on the row that says which phase this is, so it is the last to go. A nested
+run's fold handle is asked for and given up rather than paid for out of the
+name: a heading already short of room has nowhere to put a handle, and
+shortening the name further to reserve room nothing can use loses letters twice
+over.
 
-**The whole caption is centred, not the name in it.** The count, the loop mark
-and a nested run's fold handle all trail off the name's right, and all of them
-count towards the block that gets placed. Centring the name alone and letting the
-rest hang off it left more rule on one side of the caption than the other, by
-half of whatever followed the name — and the rule either side is the one
-measurement a centred title has. A reader does not measure a name against the
-middle of the pane; they see two runs of rule and compare them.
+**Drawn to the drawing's width, not the pane's.** A stack taller than the body
+gets a scroll rail down the right edge, and the rules stop where the rail
+begins rather than running under it.
 
-The handle is asked for and given up rather than paid for out of the name: a
-phase column narrow enough that the name is already being truncated has nowhere
-to put a handle, and shortening the name further to reserve room nothing can use
-loses letters twice over.
-
-**Centred in the drawing, not in the pane.** A stack taller than the body gets a
-scroll rail down the right edge, and the rail is painted over the last two
-columns of every row it crosses — the band rules among them. Measured against the
-pane, every caption on a scrolling run stood two cells left of the middle of the
-rule a reader could actually see. The rules are drawn to the width the rail
-leaves and the captions are centred in that same width, so what is measured and
-what is seen are the same line.
-
-What this costs is the cell itself. Across the corpus about two band rules in
-five have a wire somewhere under their caption, and there the wire has no mark on
-the rule row — including, where it falls under the caption, a card's own exit
-point. A wire whose halves line up is still one wire; four bands of one drawing
-with their names on four different columns is a caption that has stopped being a
-title.
+What this costs is the cell itself. Where a wire falls under a heading it has no
+mark on the rule row — including, where it falls there, a card's own exit point.
+A wire whose halves line up is still one wire; four bands of one drawing with
+their names on four different columns is a heading that has stopped being one.
 
 ## Sections of one size
 
-Every phase gets a section the same size as every other, and its nodes sit in
-the middle of it. Downward that is a band of rows; across it is a column. The
-body divides by the number of phases, and what a section does not spend on its
-cards it spends on the wires arriving at them — so the room goes where the
-drawing is rather than into a margin at the foot of the pane.
+Every phase fed from the one above gets a band the same depth as every other,
+and its nodes sit in the middle of it. Downward that is a band of rows; across
+it is a column. What a band does not spend on its cards it spends on the wires
+arriving at them.
+
+The bands are laid out at their own depth and the pane is a window on them, the
+way it is sideways. An even share of the body used to be the floor as well, so a
+run of three phases in a tall pane spread its bands to fill it and every card
+stood in a well of blank rows. The first band is the one exception to the equal
+depth: nothing feeds it, so the three rows above a card that the wires arriving
+need are three rows of nothing there. It keeps one, between its heading and its
+cards.
 
 A band's rows, top to bottom: the rule carrying its name, the row the wires into
 it gather on, the row a card fed from further back names that phase on, the row
@@ -711,32 +623,46 @@ below in the row it left in, and the rules came out chewed into segments while
 a third of the pane sat empty underneath. Equal sections put that room between
 the bands, which is where the wires are.
 
-Across, the same rule: every column is the same width and the same height, and
-the block of nodes centres in the body. It used to sit two rows under the
-header whatever the height, which left one gap under the graph rather than two
-around it.
+Across, every column is the same width and the same height, and the block of
+nodes starts one row under the headings — the row a card fed from further back
+writes its source on. Each column centres against the tallest one inside the
+block, so a fan reads as a fan, and a source never lands on the row of a card it
+does not feed: pinned to the top as well, a phase of two beside a phase of four
+ran a wire straight through the trunk into the wrong card. The block used to
+centre in the body, which on a tall pane put a well of blank rows between the
+headings and the first card of every column; before that it sat two rows under
+the header whatever the height.
+
+The cards of a column stand one row apart, and two where the column hands work
+down itself — between the last card of one wave and the first of the next —
+because the hop there is a point under the one card and an arrowhead over the
+next, and in one row the arrowhead stood on the point. The leftover depth used
+to go between the cards, up to three rows, so a phase of five took a pane and a
+half to say what fits in one.
 
 Across, the pane is divided into one slice per phase and each card is centred
 in its own slice, rather than the cards being packed at a fixed gutter and the
 block of them centred as a whole. Packing put every card in the drawing the
 same distance from the one beside it and the pane's spare width at the two
 ends, so the first phase's section ran twenty cells to the left of a card
-sitting at its right-hand edge and the last one did the mirror of it. The
-caption is centred on the section, so it sat over the gap rather than over the
-work.
+sitting at its right-hand edge and the last one did the mirror of it.
 
 The boundary between two phases is drawn halfway between the cards either side
 of it, which is what makes the section symmetrical: as much room to the left of
 its cards as to the right. Every other line in the gutter is placed off that —
 the barrier's spine sits between the boundary and the cards it feeds, not at a
-fixed offset from the card. A card, its caption and the length of rule that
-fills as its agents land are then all centred on the same middle, and a reader
-can tell which phase a card is in by looking at it rather than by counting
-boundaries.
+fixed offset from the card. A card and the length of rule that fills as its
+agents land are then centred on the same middle, the heading starts where the
+column does, and a reader can tell which phase a card is in by looking at it
+rather than by counting boundaries.
 
-A card stops widening at thirty-two columns. Past that the frame grows and the
-words do not — a five-character name in a forty-four-column card is four
-characters of name to nineteen of stroke either side of it.
+A card is twenty-eight columns. Past about thirty the frame grows and the words
+do not — a five-character name in a forty-four-column card is four characters of
+name to nineteen of stroke either side of it. It was thirty-two, which put a
+band of three at a hundred and one columns, so on a pane docked beside a
+transcript — ninety or so — the third card of every fan was cut by a few cells.
+Twenty-eight still holds `⧖ 11.4s  ∑ 36.8k tkns` with air either side, and three
+of them stand in ninety.
 
 Below a band of six rows — a card, its two rows of wires, and the rule under it
 — the card gives way to a single row, and the band keeps everything else: the
@@ -833,13 +759,13 @@ the pane has down the page.
 Every phase gets a section the same size as every other, and its cards stand in
 the middle of it. The sections divide the pane between them only while a section
 can hold a whole node and the gutter its wires run down. Past that they are the
-wrong device — they would set a thirty-two-cell card in a thirteen-cell section
+wrong device — they would set a twenty-eight-cell card in a thirteen-cell section
 — so the columns stand at the gutter they need, the drawing runs past the pane's
 edge, and the body scrolls to the rest of it.
 
-What a section has to be worth is fixed, because a node is thirty-two cells wide
-in every layout at every size of pane. A column is thirty-two cells and a section
-is thirty-nine. Seventeen phases divided into a hundred and ten columns is six
+What a section has to be worth is fixed, because a node is twenty-eight cells
+wide in every layout at every size of pane. A column is twenty-eight cells and a
+section is thirty-five. Seventeen phases divided into a hundred and ten columns is six
 cells each, which is not a section but the gap between two wires, so that pane
 draws three columns and scrolls to the other fourteen.
 
@@ -857,16 +783,16 @@ twenty-three, on a pane of a hundred and ten. The reader got both — a drawing
 squeezed to fit *and* a drawing to scroll. Now they get the second alone.
 
 ```
- 60 columns   1 of the run's 17 phases     a card of 32 cells at every width,
+ 60 columns   1 of the run's 17 phases     a card of 28 cells at every width,
  80              2                         and as many whole columns as the
 110              3                         pane has room to stand
 200              5
 ```
 
 The same question is asked down the pane, where a section is a band and the
-nodes stand side by side inside it. A band of eight is eight cards of thirty-two
-and the gaps between them, which is two hundred and seventy-one cells and wider
-than any pane here. The band stands whole anyway.
+nodes stand side by side inside it. A band of eight is eight cards of
+twenty-eight and the gaps between them, which is two hundred and thirty-eight
+cells and wider than any pane here. The band stands whole anyway.
 
 It used to wrap. A band took as many rows as its nodes needed at a width they
 could be named at — eight agents on a hundred and ten columns was two rows of

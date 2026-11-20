@@ -110,7 +110,7 @@ phases joined left to right, with one gutter carrying nothing, was read off the
 pane as a chain — the review and the security scan a driver dispatched in one
 batch reported as having run one after the other, when the two clocks two cards
 apart say they overlapped by two minutes. So the gutter carries a mark of its
-own: `═` across the pane, `║` down it. The double stroke lies *along* the run
+own: `║`, down the pane. The double stroke lies *along* the run
 where a barrier's spine always cuts across it, which is what tells the two apart
 before either is read — one says the work passed through here, the other says
 these two are tracks side by side with nothing passing between them. It is grey,
@@ -118,6 +118,12 @@ like every other thing that divides the drawing rather than carries work, and it
 is one of the two marks no line may be drawn over: a wire routed through it
 would take the statement away and leave a cell of wire that is drawn again a
 cell along.
+
+Across the pane it is not drawn. There it was a `═` standing alone in the gutter
+halfway down a column, with no line arriving at it and nothing beside it to
+read it against, and readers took it for a stray cell of drawing rather than a
+statement. Across, the columns already say which phases stood side by side, and
+the timeline says which overlapped.
 
 A phase is entered at whatever started first and left from whatever finished
 last. The clocks say what that is: the agents of a phase group into waves — each
@@ -552,8 +558,8 @@ it is a bar still growing.
 
 A phase nothing has entered gets no band. A band is a rule with its agents under
 it, so a phase with no agents is a rule with an empty row under it — which reads
-as a band that failed to draw. They are gathered into the one Ahead band the
-other down-layouts use, under the last bar the run drew. The rows it takes are
+as a band that failed to draw. They close the timeline as the other
+down-layouts close, a dashed heading each, under the last bar the run drew. The rows it takes are
 taken off the foot of the drawing before any bar is placed: reserved after the
 fact, the band would have been drawn over the bars it was meant to follow.
 
@@ -567,7 +573,7 @@ eight rows and a docked pane has about thirty.
 
 So it gives up a column for a rail and lets the reader move, which is what the
 other layouts have always done. The bar at the top, the ruler under it and
-the Ahead band at the foot stay where they are; the bands scroll between them.
+the headings of the phases still ahead stay where they are; the bands scroll between them.
 Where the axis is wider than the pane there is a second rail along the foot, and
 the two move the drawing in the two directions independently.
 

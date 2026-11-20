@@ -272,10 +272,10 @@ test('a wheel over the drawing moves it down', async ($, on) => {
   await $.ui.scroll({ requestId: 'flowpane', by: 1, pointer: { row: railRow(base) - 3 } })
 
   const moved = paneOf(await renderPane($))
-  const was = findAt(base, 'two')
-  const now = findAt(moved, 'two')
+  const was = findAt(base, ' one ')
+  const now = findAt(moved, ' one ')
 
-  // Down and only down: the second card has come up a row, and it is in the
+  // Down and only down: the first card has come up a row, and it is in the
   // same column it was in.
   expect(now.row).toBeLessThan(was.row)
   expect(now.column).toBe(was.column)
@@ -487,4 +487,69 @@ test('while the wheel turns the drawing is one picture, and its cards can be pre
   await clock.advance(400)
 
   expect(cards(keysOf(await renderPane($))).length).toBeGreaterThan(0)
+})
+
+test('a run read back from disk draws its activity strip from the agents’ own transcripts', async ($, on) => {
+  const transcriptDir = `${BASE}/subagents/workflows/wf_00`
+  const files: Record<string, string> = {
+    [`${BASE}/workflows/wf_00.json`]: JSON.stringify({
+      status: 'completed',
+      workflowName: 'probe',
+      startTime: 1_000,
+      durationMs: 500,
+      result: 'done',
+      workflowProgress: [
+        { type: 'workflow_agent', agentId: 'a1', label: 'lint', phaseTitle: 'Check', state: 'done', tokens: 900, durationMs: 400 },
+      ],
+    }),
+    [`${transcriptDir}/agent-a1.jsonl`]: [
+      { type: 'user', message: { content: 'Lint the repo.' } },
+      { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'npm run lint' } }] } },
+      { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } },
+    ]
+      .map(row => JSON.stringify(row))
+      .join('\n'),
+  }
+
+  mock.clock(on, { now: 1_000 })
+  on('env.get', () => ({ value: HOME }))
+  on('ui.open', () => ({ value: undefined }))
+  on('ui.close', () => ({ value: undefined }))
+  on('ui.blit', () => ({ value: { requestId: 'flowpane' } }))
+  on('ui.invalidate', () => ({ value: undefined }))
+  on('command.register', () => ({ value: { command: 'flowpane' } }))
+  on('session.id', () => ({ value: 'test-session' }))
+  on('session.start', ($$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
+  on('store.get', () => ({ value: undefined }))
+  on('store.set', () => ({ value: undefined }))
+  on('fs.exists', ($$: unknown, e: { path: string }) => ({
+    value: e.path === PROJECTS || e.path === `${BASE}/workflows` || e.path in files,
+  }))
+  on('fs.list', ($$: unknown, e: { path: string }) => ({
+    value: e.path === PROJECTS ? [{ name: 'proj', kind: 'dir' }] : e.path === `${BASE}/workflows` ? [{ name: 'wf_00.json', kind: 'file' }] : [],
+  }))
+  on('fs.read', ($$: unknown, e: { path: string }) => ({ value: files[e.path] ?? '' }))
+
+  await $.session.start({ cwd: HOME, surface: 'terminal', isInteractive: true })
+  await $.command.run({ command: 'flowpane', args: '' })
+
+  const lines = paneOf(
+    await $.ui.render({
+      surface: 'terminal',
+      component: 'Pane',
+      requestId: 'flowpane',
+      viewport: { columns: 106, rows: 40 },
+      props: {
+        title: 'workflow',
+        isFocused: true,
+        bodyColumns: 100,
+        placement: 'dock',
+        scroll: { bodyRows: 36, offset: 0, height: 36 },
+        view: {},
+      },
+    }),
+  )
+
+  expect(lines.some(line => line.includes(' activity '))).toBe(true)
+  expect(lines.some(line => line.includes('ran the linter'))).toBe(true)
 })

@@ -306,6 +306,13 @@ Two sources are both named, in the order the run entered them, and a card with
 more names than its width can carry ends with a count of the rest —
 `▾ from Setup +2`.
 
+**Once for a band whose cards all say the same thing.** A fan of three fed from
+`Survey` used to carry `▾ from Survey` three times, on one row, which read as a
+pattern rather than as a fact. Where every card of a band names the same
+sources, the label is written once — down the pane centred over the whole band,
+across the pane over the first card of the column — and the arrowheads into each
+card still say which cards it reaches.
+
 **Centred on the card**, the way a card centres its own name and its own model.
 Set against the left edge it hung off a card wider than it by the whole of the
 difference, and read as a label belonging to whatever was further left rather
@@ -350,6 +357,12 @@ have been.
 The mark takes a wire's colour and the name stays grey, since between them that
 is what they are. Both in one tone, the pair read as a caption and the written
 arrowhead sat in a different register from the drawn one beside it.
+
+The grey is the one words are written in, not the one rules are drawn in. The
+name used to take the rules' grey, which stands under two to one against the
+ground: right for a line a reader is meant to look past, and too faint for a
+word a reader has to read. The same went for the `activity` caption over the
+strip and the names on a dialog's shelves; all three take the dim grey now.
 
 **The row above the card, in every layout.** The row under a card is the row its
 wires leave by down the pane, so a name written there reads as something coming

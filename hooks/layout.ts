@@ -14,7 +14,7 @@
  */
 
 import type { AgentRow, RunState } from './journal'
-import { orderedLanes, type Fold, type FoldedLane, type FoldPass } from './shape'
+import { orderedLanes, wavesOf, type Fold, type FoldedLane, type FoldPass } from './shape'
 
 /**
  * Which way the phases run. `auto` picks from the pane's proportions; `time`
@@ -173,11 +173,14 @@ export function titledPane(rows: number, columns: number): boolean {
  * border rather than after a gap. A pane too short for that gives up the bar's
  * opening rule first — the closing one is the border, and the border stays.
  *
- * A fourth row above all of it carries the pane's own name, where the pane is
- * big enough to spare it — see `titledPane`.
+ * There used to be a fourth row above it, saying the run in a sentence: which
+ * phase, what each agent was doing, what came next. The activity strip at the
+ * foot says the same in more detail and in order, so the sentence was the same
+ * fact twice, and the row it took is the drawing's again. The idle pane keeps
+ * its own title row; see `titledPane`.
  */
-export function barRowsOf(rows: number, columns: number): number {
-  return (rows >= 10 ? 3 : 2) + (titledPane(rows, columns) ? 1 : 0)
+export function barRowsOf(rows: number, _columns?: number): number {
+  return rows >= 10 ? 3 : 2
 }
 
 /**
@@ -213,11 +216,17 @@ const MAX_COL = 32
  *
  * A node is the same size whatever the pane is now. What the pane cannot hold
  * it scrolls to: the drawing runs past the edge and the rails say which way.
- * `MAX_COL` is the width to fix it at because that is the width the columns
- * already grew to wherever there was room — the point past which a wider node
- * carries no more label, only air.
+ * It was fixed at `MAX_COL`, the width the columns had grown to wherever there
+ * was room. Thirty-two columns put a band of three at a hundred and one, so on
+ * a pane docked beside a transcript — ninety or so — the third card of every
+ * fan was cut by a few cells and the drawing scrolled sideways for the sake of
+ * them. Twenty-eight still holds the clock and the count, `⧖ 11.4s  ∑ 36.8k
+ * tkns`, with air either side, and three of them stand in ninety.
  */
-const NODE_W = MAX_COL
+const NODE_W = 28
+
+/** The rows the first band of a stack gives up: see `stackLayout`. */
+const FIRST_LIFT_SAVED = 2
 
 /**
  * Picks the axis from the pane's proportions: a seat wide enough to give every
@@ -289,26 +298,33 @@ export function layout(
   // changes.
   const shown = fitting(numbered)
   const pending = numbered.filter(lane => !shown.includes(lane)).map(lane => lane.phase)
-  const strip = orientation === 'horizontal' ? aheadWidth(pending, columns) : 0
-  const depth = strip > 0 ? 0 : aheadDepth(pending.length, body)
+  const narrow = orientation === 'horizontal' ? aheadWidth(pending, columns) : 0
+  const depth = narrow > 0 ? 0 : aheadDepth(pending.length, body)
   const room = Math.max(1, body - depth)
 
-  const view =
+  const laid = (strip: number) =>
     setting === 'list'
       ? listLayout(shown, columns, room, headerRows)
       : orientation === 'horizontal'
         ? flowLayout(shown, columns, room, headerRows, widest, strip)
         : stackLayout(shown, columns, room, headerRows)
+  const reach = (view: Layout) =>
+    Math.max(0, ...view.lanes.flatMap(lane => [lane.x + lane.w, ...lane.nodes.map(n => n.x + n.w)]))
+  // The strip widens to hold the line each phase's script wrote about it only
+  // where the drawing beside it still fits the pane: a drawing pushed past the
+  // left edge to make room for notes about phases that never ran is a drawing
+  // about the wrong thing.
+  const said = narrow > 0 ? aheadWidth(pending, columns, pending.map(phase => run.plan?.find(step => step.title === phase)?.detail ?? '')) : 0
+  const roomy = said > narrow ? laid(said) : undefined
+  const strip = roomy && reach(roomy) + GUTTER <= columns - said ? said : narrow
+  const view = roomy && strip === said ? roomy : laid(strip)
 
   // The strip names what the run has not reached, so it belongs after what the
   // run has. It stands at the pane's own right edge, where the drawing ends
   // with the pane; where the drawing runs past the pane it goes after the last
   // phase instead, because pinned to the edge it would sit in the middle of the
   // drawing, between two phases that did run.
-  const drawnTo = Math.max(
-    0,
-    ...view.lanes.flatMap(lane => [lane.x + lane.w, ...lane.nodes.map(n => n.x + n.w)]),
-  )
+  const drawnTo = reach(view)
   const stripAt = drawnTo > columns - strip ? drawnTo + GUTTER : columns - strip
 
   return {
@@ -347,6 +363,8 @@ const AHEAD_NAME = 14
  */
 /** The caption's own rule, plus a row for the first phase under it. */
 const AHEAD_ROWS = 2
+/** A phase nothing entered, down the pane: its heading, and one row of air. */
+const GHOST_DEPTH = 2
 
 export function aheadDepth(pending: number, body: number): number {
   if (pending === 0) {
@@ -364,10 +382,13 @@ export function aheadDepth(pending: number, body: number): number {
   // with arrows between them — a device the pane uses nowhere else, for the
   // only part of the drawing that is not a node. A row each is the same row
   // the list layout gives an agent, which is a shape the reader already knows.
-  return Math.max(AHEAD_ROWS, Math.min(1 + pending, Math.floor(body / 3)))
+  //
+  // A row each and no caption row: every row is a heading of its own, and the
+  // heading says what the phase is.
+  return Math.max(1, Math.min(pending, Math.floor(body / 3)))
 }
 
-function aheadWidth(phases: string[], columns: number): number {
+function aheadWidth(phases: string[], columns: number, details: string[] = []): number {
   if (phases.length === 0) {
     return 0
   }
@@ -379,8 +400,22 @@ function aheadWidth(phases: string[], columns: number): number {
   // and the strip holds nodes now rather than a column of bare names.
   const want = longest + 7
 
-  return want <= Math.floor(columns / 5) && columns - want >= MIN_COL * 2 + GUTTER ? want : 0
+  if (want > Math.floor(columns / 5) || columns - want < MIN_COL * 2 + GUTTER) {
+    return 0
+  }
+
+  // Wide enough for the line each phase's script wrote about it, under its
+  // name, within a third of the pane. Cut to the names alone, the strip cut
+  // every line to its first word and an ellipsis, which says there was a line
+  // and not what it was.
+  const said = Math.max(0, ...details.map(detail => detail.length))
+  const wide = Math.min(AHEAD_WIDE, Math.floor(columns / 3), said + 5)
+
+  return Math.max(want, columns - wide >= MIN_COL * 2 + GUTTER ? wide : want)
 }
+
+/** The widest the strip of phases still ahead grows to hold what they are for. */
+const AHEAD_WIDE = 32
 
 /**
  * The phases the drawing holds, which is every phase the run has reached.
@@ -414,28 +449,6 @@ function fitting(lanes: Lane[]): Lane[] {
   }
 
   return shown
-}
-
-/**
- * Where a band with nothing in it puts the one node it draws.
- *
- * Its own width, not the lane width. A band's cards are cut to whatever divides
- * the widest band between its agents — five across a narrow pane leaves eleven
- * cells a card — and a band with one node in it was cut to the same eleven, so
- * a phase that never ran said `⊘ Veri…` in a band with sixty columns spare
- * either side of it.
- *
- * It is a row rather than a card, so the ceiling is the one the band at the foot
- * holds its rows to — a name, the line the phase wrote about itself and a model,
- * in seven tenths of the pane — rather than the one a card is held to. A card's
- * ceiling on a row left the detail cut to `only what …` with half the pane
- * empty beside it.
- */
-function plannedBox(columns: number, colW: number, y: number): { x: number; y: number; w: number; h: number } {
-  const room = Math.max(8, columns - 2)
-  const w = Math.max(colW, Math.min(room, Math.max(MAX_COL, Math.floor(columns * 0.7))))
-
-  return { x: Math.max(1, Math.floor((columns - w) / 2)), y, w, h: 1 }
 }
 
 /** Phases as columns, agents stacked inside them, the run reading rightward. */
@@ -489,8 +502,35 @@ function flowLayout(
   // margins at the two ends: a lane of three boxes in thirty rows read as a
   // clump with half the pane blank around it. Capped, so a lane of two does not
   // put its nodes at opposite corners.
-  const slack = tallest > 1 ? Math.floor((body - tallest * nodeH) / (tallest - 1)) : 0
-  const nodeGap = Math.max(1, Math.min(3, slack))
+  //
+  // One row now, at every height. The spread put up to three blank rows
+  // between the cards of a column, so a phase of five took a pane and a half to
+  // say what fits in one, and the reader scrolled past air to reach its foot.
+  //
+  // Two where a column hands work down itself — between the last card of one
+  // wave and the first of the next — because the hop there is a point under
+  // the one card and an arrowhead over the next, and in one row the arrowhead
+  // stood on the point.
+  const gapsOf = (lane: Lane): number[] => {
+    const waveOf = new Map<string, number>()
+
+    wavesOf({ agents: lane.folds.map(f => f.agent) }).forEach((wave, i) => {
+      for (const agent of wave) {
+        waveOf.set(agent.agentId, i)
+      }
+    })
+
+    return lane.folds.map((fold, i) => {
+      const before = lane.folds[i - 1]
+
+      return before === undefined
+        ? 0
+        : waveOf.get(before.agent.agentId) === waveOf.get(fold.agent.agentId)
+          ? 1
+          : 2
+    })
+  }
+  const heightOf = (lane: Lane) => lane.folds.length * nodeH + gapsOf(lane).reduce((a, b) => a + b, 0)
 
   const boxes: LaneBox[] = []
   const graphW = colW * lanes.length + gutters
@@ -506,12 +546,23 @@ function flowLayout(
   // column reads as a section of the same height with its nodes in the middle
   // of it. The leftover splits above and below rather than pooling under the
   // graph, which read as a drawing that had run out rather than one placed.
-  const blockH = tallest * nodeH + Math.max(0, tallest - 1) * nodeGap
-  const blockTop = headerRows + Math.max(0, Math.floor((body - blockH) / 2))
+  const blockH = Math.max(nodeH, ...lanes.map(heightOf))
+  //
+  // The block starts at the top of the body now, one row down, which is the
+  // row a card fed from further back writes its source on. Centred in the body,
+  // a tall pane put a well of blank rows between the captions and the first
+  // card of every column.
+  //
+  // Each column still centres against the tallest. Pinned to the top as well,
+  // a phase of two beside a phase of four put a source on the same row as a
+  // card it does not feed, and its wire ran straight through the trunk into
+  // that card.
+  const blockTop = headerRows + 1
 
   lanes.forEach((lane, place) => {
-    const height = lane.folds.length * nodeH + Math.max(0, lane.folds.length - 1) * nodeGap
-    const top = blockTop + Math.max(0, Math.floor((blockH - height) / 2))
+    const gaps = gapsOf(lane)
+    const ys = gaps.map((_, i) => gaps.slice(0, i + 1).reduce((a, b) => a + b, 0) + i * nodeH)
+    const top = blockTop + Math.max(0, Math.floor((blockH - heightOf(lane)) / 2))
     const x = placeOf(place)
     const before = boxes[boxes.length - 1]
     const gapAt = before === undefined ? -1 : before.x + before.w
@@ -537,7 +588,7 @@ function flowLayout(
       nodes: lane.folds.map((fold, i) => ({
         ...boxOf(fold),
         x,
-        y: top + i * (nodeH + nodeGap),
+        y: top + (ys[i] ?? 0),
         w: colW,
         h: nodeH,
       })),
@@ -584,7 +635,11 @@ function stackLayout(lanes: Lane[], columns: number, body: number, headerRows: n
   // only the rows its cards needed crushed those cards against the rule opening
   // the phase below, and every wire leaving them crossed that rule in the row it
   // left in.
-  const bands = Math.max(1, lanes.length)
+  // The first band is fed by nothing, so the three rows above a card that the
+  // wires arriving need — the bundle, the written source, the arrowheads — are
+  // three rows of nothing there. It keeps one, between its caption and its cards.
+  const first = lanes[0]
+  const fedFromAbove = (lane: Lane) => lane !== first
   /**
    * The depth a band is actually given: the floor, plus the two rows under the
    * node that make it centred — the row a card's exit point stands on and one
@@ -646,7 +701,16 @@ function stackLayout(lanes: Lane[], columns: number, body: number, headerRows: n
    * depth, every card in the middle of its own band. A band is one node deep
    * whatever it holds, so every band asks the same of the body.
    */
-  const depthOf = (_lane: Lane) => Math.max(airyAs(nodeH), Math.floor(body / bands))
+  //
+  // An even share of the body used to be the floor as well, so a run of three
+  // phases in a tall pane spread its bands to fill it, and every card stood in
+  // a well of blank rows. The drawing is laid out at its own size now and the
+  // pane is a window on it, the same as it is sideways.
+  // A phase nothing entered is its heading and a row of air: the heading says
+  // what it was for, and a band of blank rows under it would say that nothing
+  // happened at the depth of a band where something did.
+  const depthOf = (lane: Lane) =>
+    lane.folds.length === 0 ? GHOST_DEPTH : airyAs(nodeH) - (fedFromAbove(lane) ? 0 : FIRST_LIFT_SAVED)
   /** Where each band opens, which is where the one before it ended. */
   const tops: number[] = []
   let at = headerRows
@@ -681,8 +745,10 @@ function stackLayout(lanes: Lane[], columns: number, body: number, headerRows: n
     // in the drawing sat as low in its band as it could go. Where a band has
     // more depth than the floor asks for, the halves win again and the node
     // stands in the middle of it.
-    const lift = slack === 0 ? 0 : Math.max(Math.min(slack, 3), Math.floor(slack / 2))
-    const y = top + lift
+    const lift = fedFromAbove(lane)
+      ? slack === 0 ? 0 : Math.max(Math.min(slack, 3), Math.floor(slack / 2))
+      : 1
+    const y = lane.folds.length === 0 ? top : top + lift
     const shown = Math.max(1, lane.folds.length)
     const width = shown * colW + Math.max(0, shown - 1) * nodeGap
     // Centred, which is what makes a fan read as a fan — and what a band of one
@@ -698,7 +764,7 @@ function stackLayout(lanes: Lane[], columns: number, body: number, headerRows: n
       x: 0,
       y,
       w: columns,
-      h: blockH,
+      h: lane.folds.length === 0 ? 1 : blockH,
       // The band's name rule is the line between it and the band before it: the
       // last row of that band, and for the first the row the header keeps back.
       edgeAt: -1,
@@ -716,13 +782,9 @@ function stackLayout(lanes: Lane[], columns: number, body: number, headerRows: n
         w: colW,
         h: nodeH,
       })),
-      // On the row a card in this band would have its middle on, not the row a
-      // card would start at: one row set against the top of a three-row block
-      // sits high in a band laid out to centre what it holds.
-      ghost:
-        lane.folds.length === 0
-          ? plannedBox(columns, colW, y + Math.floor((nodeH - 1) / 2))
-          : undefined,
+      // The heading is the whole of it: the rule the band opens with, carrying
+      // the phase's name and what it was declared to do.
+      ghost: lane.folds.length === 0 ? { x: 0, y: Math.max(0, top - 1), w: columns, h: 1 } : undefined,
     })
   })
 
@@ -781,8 +843,7 @@ function listLayout(
       busAt: y - 1,
       nodes,
       ...(inset ? { inset: true } : {}),
-      ghost:
-        lane.folds.length === 0 ? { x: left, y, w: width, h: 1 } : undefined,
+      ghost: lane.folds.length === 0 ? { x: 0, y: Math.max(0, y - 1), w: columns, h: 1 } : undefined,
     })
 
     y += depthOf(lane) + sectionGap

@@ -96,21 +96,19 @@ test('the bar is a rule, the run line, and a rule', () => {
 
   const rows = rowsOf(canvas)
 
-  // A pane this size carries a row above the bar as well: the run in a
-  // sentence, where the idle pane carries its name.
-  expect(barRowsOf(canvas.rows, canvas.columns)).toBe(4)
-  expect(rows[0]?.trim()).toBe('Done in 20.0s. All 6 agents finished.')
+  // No row above the bar: what the run is doing is the activity strip's to say.
+  expect(barRowsOf(canvas.rows, canvas.columns)).toBe(3)
   // The lid stops short of the corner the surface draws its own close control
   // over; the foot runs the whole way, because it is the block's border.
-  expect(rows[1]?.trimEnd()).toMatch(/^─+$/)
-  expect(rows[3]).toMatch(/^─+$/)
-  expect(rows[2]).toContain('haiku')
+  expect(rows[0]?.trimEnd()).toMatch(/^─+$/)
+  expect(rows[2]).toMatch(/^─+$/)
+  expect(rows[1]).toContain('haiku')
 
   // Both figures are marked — the clock and the sum — and the row of bars that
   // used to stand between them is gone. This row is where the pane teaches the
   // two marks, so it is the one that sets each off from its figure.
-  expect(rows[2]).toContain('⧖')
-  expect(rows[2]).toMatch(/∑ \d+(?:\.\d)?[km]/)
+  expect(rows[1]).toContain('⧖')
+  expect(rows[1]).toMatch(/∑ \d+(?:\.\d)?[km]/)
   expect(rows[2]).not.toMatch(/[▁-█]/)
 
   // Under ten rows the bar keeps the closing rule and gives up the opening one,
@@ -134,7 +132,7 @@ test('the bar is a rule, the run line, and a rule', () => {
   expect(rowsOf(narrow)[0]).not.toContain('FlowPane')
 })
 
-test('each phase name is centred over what it names', () => {
+test('each phase heading starts where its column does, on its state mark', () => {
   const run = loaded()
   const canvas = new Canvas(100, 26)
 
@@ -150,56 +148,34 @@ test('each phase name is centred over what it names', () => {
 
     expect(over).toContain(lane.phase)
 
-    // The caption as a whole takes the middle of the column — the name and the
-    // count it carries, measured together. Centring the name alone and letting
-    // the count trail off its right left more air on the caption's left than on
-    // its right, by half the count, which is the one measurement a centred
-    // title has and the thing a reader checks it by.
-    const from = over.length - over.trimStart().length
-    const to = over.trimEnd().length
-    const mid = (from + to) / 2
-
-    // One cell of slack: an odd number of cells cannot be split evenly.
-    expect(Math.abs(mid - lane.w / 2)).toBeLessThanOrEqual(1)
+    // Flush left over the column, so the heading and the cards under it start
+    // on one column. Centred, a heading moved by half of whatever it carried,
+    // and the column a reader scanned down for the start of a phase wandered.
+    expect(over[0]).toMatch(/[\u2714\u2716\u2298\u25cb\u2800-\u28ff]/)
+    expect(over.slice(2).startsWith(lane.phase)).toBe(true)
   }
 })
 
-test('a stacked band carries its caption centred in its own rule', () => {
+test('a stacked band carries its heading flush left in its own rule', () => {
   const run = loaded()
   const canvas = new Canvas(80, 30)
 
   paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical' })
 
   const rule = rowsOf(canvas).find(row => row.includes(PHASES[0]!)) ?? ''
-  // The name is set into the rule with a blank cell either side of it.
-  const found = / (\S+ \d+\/\d+) /.exec(rule)
+  // The state mark, the name, how many landed and how long it took, two cells
+  // apart, set into the rule a cell in from the edge.
+  const found = /^ (\S) (\S+) {2}(\d+\/\d+) {2}(\S+) /.exec(rule)
 
   expect(found).not.toBeNull()
+  expect(found?.[2]).toBe(PHASES[0])
 
-  const at = (found?.index ?? 0) + 1
-  const label = found?.[1] ?? ''
-
-  expect(label).toContain(PHASES[0]!)
-  // The caption is centred, the way a card's name is set into its top edge and
-  // the way a phase's caption is centred over its column across the pane. One
-  // rule for both axes: a caption flush left down the pane and centred across it
-  // is the same fact told two ways, and the pane stops reading as one drawing.
-  //
-  // The caption, not the name in it. What a reader sees is the rule either side,
-  // and a name centred with its count trailing off its right leaves the two runs
-  // of rule different lengths by half the count.
-  const left = at - 1
-  const right = canvas.columns - (at + label.length + 1)
-
-  expect(Math.abs(left - right)).toBeLessThanOrEqual(1)
-  // Either side of it, rule and nothing else: the band's own border, filled to
-  // the fraction of the phase that has landed.
-  expect(rule.replace(found?.[0] ?? '', '')).toMatch(/^[\u2501\u2500]+$/)
-  expect(rule.slice(0, left)).toMatch(/^[\u2501\u2500]+$/)
-  expect(rule.slice(at + label.length + 1)).toMatch(/^[\u2501\u2500]+$/)
+  // After it, rule and nothing else to the edge: the band's own border, filled
+  // to the fraction of the phase that has landed.
+  expect(rule.slice(found?.[0].length ?? 0)).toMatch(/^[\u2501\u2500]+$/)
 })
 
-test('a band rule centres its caption on the drawing, not on the pane', () => {
+test('a band rule stops at the scroll rail, and its heading stays flush left', () => {
   const run = loaded()
   // Short enough that the stack runs past the foot, which is what puts the
   // scroll rail down the right edge.
@@ -209,26 +185,11 @@ test('a band rule centres its caption on the drawing, not on the pane', () => {
 
   const rows = rowsOf(canvas)
   const rule = rows.find(row => row.includes(PHASES[0]!)) ?? ''
-  const found = / (\S+ \d+\/\d+) /.exec(rule)
-
-  expect(found).not.toBeNull()
-
-  const at = (found?.index ?? 0) + 1
-  const label = found?.[1] ?? ''
-  const strokes = (text: string) => (text.match(/[\u2501\u2500]/g) ?? []).length
 
   // The rail is there, and it has taken the last of the row.
   expect(rule.slice(-2)).not.toMatch(/[\u2501\u2500]/)
-
-  // The rule used to be drawn the pane's full width and the rail painted over
-  // its last two cells, so a caption centred on the pane stood two cells left of
-  // the middle of the rule a reader could actually see. It is centred on the
-  // drawing instead — the pane less whatever the rail takes.
-  const left = strokes(rule.slice(0, at - 1))
-  const right = strokes(rule.slice(at + label.length + 1))
-
-  expect(left).toBeGreaterThan(0)
-  expect(Math.abs(left - right)).toBeLessThanOrEqual(1)
+  expect(rule.indexOf(PHASES[0]!)).toBe(3)
+  expect(rule.slice(-4, -2)).toMatch(/^[\u2501\u2500]+$/)
 })
 
 test('the run menu drops below the bar, not through it', () => {

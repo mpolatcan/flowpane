@@ -1183,7 +1183,11 @@ test('a prompt is read as the document it was written as', () => {
   // heading is the blank line before the heading.
   const above = rows[at('# SD-141413 — Implementation plan') - 1] ?? ''
 
-  expect(above.replace(/[│─╭╮╰╯]/g, '').trim()).toBe('')
+  // Read inside the dialog's own frame: a band heading set flush left on the
+  // drawing behind it shows in the margin the dialog leaves.
+  const inside = above.slice(above.indexOf('│') + 1, above.lastIndexOf('│'))
+
+  expect(inside.replace(/[│─╭╮╰╯]/g, '').trim()).toBe('')
 })
 
 test('the dialog says in a word what the card beside it says in a mark', () => {

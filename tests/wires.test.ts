@@ -377,12 +377,29 @@ function saidOver(rows: string[], node: { x: number; y: number; w: number }): st
   for (const y of [node.y - 2, node.y - 1]) {
     const said = (rows[y] ?? '').slice(node.x, node.x + node.w)
 
-    if (said.replace(/[\s\u2502\u2506]/g, '').length > 0) {
+    // Strokes are not words: across the pane the columns start on the row
+    // under the captions' rule, so two rows up from a card is that rule.
+    if (said.replace(/[\s\u2502\u2506\u2500\u2501\u252f\u252c]/g, '').length > 0) {
       return said
     }
   }
 
   return ''
+}
+
+/**
+ * What a band says above its cards. Down the pane a band whose every card was
+ * fed by the same phases says so once, centred over the band, so the label is
+ * read across the whole band rather than over one card of it.
+ */
+function saidOverBand(rows: string[], nodes: { x: number; y: number; w: number }[]): string {
+  const first = nodes[0]
+  // Across the pane a band is a column, and the label stands over its first card.
+  const last = nodes.every(n => n.x === first?.x) ? first : nodes[nodes.length - 1]
+
+  return first === undefined || last === undefined
+    ? ''
+    : saidOver(rows, { x: first.x, y: first.y, w: last.x + last.w - first.x })
 }
 
 test('a card fed from further back says which phase fed it, in words', () => {
@@ -397,8 +414,11 @@ test('a card fed from further back says which phase fed it, in words', () => {
   // has scrolled into the middle of it sees a rule with no ends. The name goes
   // on the card that was fed, where the reader already is, and says in words
   // what the line would have said in a shape.
-  for (const node of nodes) {
-    const said = saidOver(rows, node)
+  // Once for the column, over its first card: every card in it was fed by the
+  // same phase, and the label written over each landed in the one row between
+  // two cards, where it read as belonging to either.
+  {
+    const said = saidOverBand(rows, nodes)
 
     // And it names the phase the work came from, not the one before it: a
     // source read off the drawing's own order rather than the run's named the
@@ -436,15 +456,17 @@ test('a written source stands above the card in either layout', () => {
 
     expect(nodes.length).toBe(2)
 
+    const above = saidOverBand(rows, nodes)
+
+    expect(above).toContain('Gather')
+    // Whole. The name is the thing on the row that says anything, and the
+    // word in front of it is given up before a letter of it is.
+    expect(above).not.toContain('\u2026')
+
     for (const node of nodes) {
-      const above = saidOver(rows, node)
       const below = (rows[node.y + node.h] ?? '').slice(node.x, node.x + node.w)
 
-      expect(above).toContain('Gather')
       expect(below).not.toContain('Gather')
-      // Whole. The name is the thing on the row that says anything, and the
-      // word in front of it is given up before a letter of it is.
-      expect(above).not.toContain('\u2026')
     }
   }
 })
@@ -457,22 +479,24 @@ test('the word in front of a written source gives way before the name does', () 
   // reason.
   //
   // The name is what decides it, at one pane size for both: a card is the same
-  // width whatever the pane is, so the same label on the same card cannot say
-  // one thing in a wide window and another in a narrow one.
+  // width whatever the pane is, so the same label on the same band cannot say
+  // one thing in a wide window and another in a narrow one. The band here is
+  // two cards, and the label is written once across both.
   const saidIn = (named: string): string => {
     const { rows, view } = drawn(railedNamed(named), 104, 52, 'vertical')
-    const node = view.lanes.find(l => l.phase === 'Draft')?.nodes[0]
+    const nodes = view.lanes.find(l => l.phase === 'Draft')?.nodes ?? []
 
-    return node === undefined ? '' : saidOver(rows, node).trim()
+    return saidOverBand(rows, nodes).trim()
   }
 
   // Short enough for both, and the label says both.
   expect(saidIn('Gather the evidence')).toContain('from Gather the evidence')
 
   // Too long for both. The name comes through whole and the word goes.
-  const tight = saidIn('Gather the evidence in full')
+  const long = 'Gather the evidence in full across every source on file'
+  const tight = saidIn(long)
 
-  expect(tight).toContain('Gather the evidence in full')
+  expect(tight).toContain(long)
   expect(tight).not.toContain('from')
   expect(tight).not.toContain('\u2026')
 })
@@ -487,19 +511,18 @@ test('a written source stands centred on the card it points at', () => {
 
   expect(nodes.length).toBe(2)
 
-  for (const node of nodes) {
-    const over = saidOver(rows, node)
+  const node = nodes[0]!
+  const over = saidOver(rows, node)
 
-    expect(over).toContain('from Gather')
+  expect(over).toContain('from Gather')
 
-    // Wider than what it says, so there is something to centre.
-    expect(over.trim().length).toBeLessThan(node.w)
+  // Wider than what it says, so there is something to centre.
+  expect(over.trim().length).toBeLessThan(node.w)
 
-    const left = over.length - over.trimStart().length
-    const right = over.length - over.trimEnd().length
+  const left = over.length - over.trimStart().length
+  const right = over.length - over.trimEnd().length
 
-    expect(Math.abs(left - right)).toBeLessThanOrEqual(1)
-  }
+  expect(Math.abs(left - right)).toBeLessThanOrEqual(1)
 })
 
 test('a source that is a nested run is named without the mark that unfolds it', () => {
@@ -509,8 +532,7 @@ test('a source that is a nested run is named without the mark that unfolds it', 
   // press, since the press is on the band's own caption. The detail dialog's
   // title strips it for the same reason.
   const { rows, view } = drawn(railedNested(), 140, 30, 'vertical')
-  const node = view.lanes.find(l => l.phase === 'Draft')?.nodes[0]
-  const above = node === undefined ? '' : saidOver(rows, node)
+  const above = saidOverBand(rows, view.lanes.find(l => l.phase === 'Draft')?.nodes ?? [])
 
   expect(above).toContain('code-review:ai-review')
   expect(above).not.toContain('\u25b8')
@@ -652,8 +674,10 @@ test('down the pane, they turn in one row', () => {
 })
 
 
-test("a band's name stands centred, and the wire gives way for it", () => {
-  const { rows, view } = drawn(abreast(), 120, 34, 'vertical')
+test("a band's name stands flush left, and the wire gives way for it", () => {
+  // Narrow enough that the band runs off the right edge from the left margin,
+  // so the first card's wire comes down under the caption.
+  const { rows, view } = drawn(abreast(), 64, 34, 'vertical')
   const draft = view.lanes.find(l => l.phase === 'Draft')
   const y = draft?.captionRow ?? -1
 
@@ -662,7 +686,7 @@ test("a band's name stands centred, and the wire gives way for it", () => {
   const rule = rows[y] as string
   const crossings = columnsOf(rows[y - 1] as string, [LINE_V, DASH_V])
 
-  expect(crossings.length).toBe(3)
+  expect(crossings.length).toBe(2)
 
   // The caption is the run of cells around the name that carry no stroke: the
   // name, what trails it, and the blank cleared either side of the lot.
@@ -682,9 +706,10 @@ test("a band's name stands centred, and the wire gives way for it", () => {
     to++
   }
 
-  // Equal rule either side of it, which is the one measurement a centred title
-  // has. One cell of slack: an odd number of cells cannot be split evenly.
-  expect(Math.abs(from - (rule.length - 1 - to))).toBeLessThanOrEqual(1)
+  // Flush left, opening on the phase's state mark: the headings of a stack
+  // read down one column, the way the cards' own marks do.
+  expect(from).toBeLessThanOrEqual(1)
+  expect(rule.trimStart()[0]).toBe('\u2714')
 
   const behind = crossings.filter(x => x >= from && x <= to)
 
@@ -1086,7 +1111,7 @@ function alongside(): RunState {
   ])
 }
 
-test('two phases that overlapped are marked as running alongside, not joined', () => {
+test('two phases that overlapped are neither joined nor marked across the pane', () => {
   useTheme('tokyo-night')
 
   const canvas = new Canvas(150, 20)
@@ -1099,22 +1124,15 @@ test('two phases that overlapped are marked as running alongside, not joined', (
   })
 
   const rows = rowsOf(canvas)
-  const marked = rows.filter(row => row.includes('═'))
 
-  // One mark, in one gutter: the one between the two phases whose clocks
-  // overlap. The gutter before them holds a wire instead, because `Commit`
-  // really did land before either of them started.
-  expect(marked).toHaveLength(1)
-
-  const row = marked[0] as string
-  const at = row.indexOf('═')
-  const arrows = columnsOf(row, [ARROW_RIGHT])
-
-  expect(arrows.length).toBeGreaterThan(0)
-  expect(arrows.every(x => x < at)).toBe(true)
-  // Laid along the run rather than across it, which is what tells it from a
-  // barrier's spine at a glance.
-  expect(rows.join('\n')).not.toContain('║')
+  // Across the pane the columns stand against the top of the body, so the
+  // double stroke stood halfway down a gutter beside nothing, and a reader
+  // took it for a stray glyph. The cards' own clocks say they overlapped.
+  expect(rows.join('\n')).not.toContain('\u2550')
+  expect(rows.join('\n')).not.toContain('\u2551')
+  // The gutter before them still holds a wire: `Commit` really did land before
+  // either of them started.
+  expect(rows.some(row => columnsOf(row, [ARROW_RIGHT]).length > 0)).toBe(true)
 })
 
 test('the same two phases are marked down the pane, in the other stroke', () => {
@@ -1215,19 +1233,6 @@ function midOf(
     busAt: right?.busAt ?? -1,
   }
 }
-
-test('the mark stands against the cards it is about, halfway between their ports', () => {
-  useTheme('tokyo-night')
-
-  const { rows, view } = drawn(alongside(), 150, 20, 'horizontal')
-  const { at, busAt } = midOf(view, 'Review', 'Scan', 'horizontal')
-
-  // Both the row and the column: a mark in the right gutter but at the top of
-  // it, with the cards it is about at the bottom, reads as a mark about
-  // something else. The column alone was all the drawing was held to.
-  expect(rows[at]?.[busAt]).toBe('═')
-  expect(rows.filter(row => row.includes('═'))).toHaveLength(1)
-})
 
 test('down the pane the mark stands halfway along them, not at the gutter’s end', () => {
   useTheme('tokyo-night')

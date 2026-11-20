@@ -434,6 +434,7 @@ export function applyJournal(run: RunState, text: string, nowMs: number): boolea
 type RunSummary = {
   status?: string
   result?: unknown
+  error?: unknown
   durationMs?: number
   startTime?: number
   logs?: unknown[]
@@ -513,6 +514,12 @@ export function applyRunFile(run: RunState, text: string, nowMs: number): void {
       ? summary.startTime + summary.durationMs
       : nowMs
   run.result = summary.result === undefined ? undefined : previewOf(summary.result)
+  // What the script threw, which is the whole reason for a run that failed
+  // after every agent in it landed: without it the pane said `failed` over a
+  // drawing of nothing but ticks. The first line, without the class name the
+  // engine prints ahead of the message.
+  run.error =
+    summary.error === undefined ? undefined : previewOf(summary.error).replace(/^\w*Error:\s*/, '') || undefined
 
   applyProgress(run, summary, nowMs)
 
@@ -943,6 +950,45 @@ function answerOf(content: unknown): string {
 }
 
 /**
+ * What an agent was asked, from the messages it was handed before it answered.
+ *
+ * A workflow's harness wraps each message in a paragraph of its own — what the
+ * text is and how much authority it carries, the same for every agent in every
+ * run — and indents the text itself under it. Shown as handed over, the task an
+ * agent was set started thirteen lines down, under two of those paragraphs. So
+ * the paragraphs go, the task comes first, and the request that started the run
+ * follows it, said once as what it is.
+ */
+export function promptOf(messages: string[]): string {
+  let task: string[] = []
+  let request: string | undefined
+  const plain: string[] = []
+
+  for (const message of messages) {
+    const wrapped = /^\[Workflow harness \u2014 ([^\]]+)\][^\n]*\n([\s\S]*)$/.exec(message)
+
+    if (!wrapped) {
+      plain.push(message)
+      continue
+    }
+
+    const body = wrapped[2]!
+      .split('\n')
+      .map(line => line.replace(/^ {2}/, ''))
+      .join('\n')
+      .trim()
+
+    if (wrapped[1] === 'user request') {
+      request = body
+    } else {
+      task = [...task, body]
+    }
+  }
+
+  return [...task, ...plain, ...(request ? [`The run was started by: ${request}`] : [])].join('\n\n')
+}
+
+/**
  * One agent's transcript: the prompt it was given, the text it answered, and
  * every tool call it made with what it passed and what came back.
  *
@@ -1015,9 +1061,10 @@ export function readAgentTranscript(text: string): {
   tokens?: number
   calls: ToolCall[]
 } {
-  let prompt
+  const given: string[] = []
   let result
   let tokens
+  let answered = false
   const calls: ToolCall[] = []
   // What the agent has said since the last answer came back: the reason every
   // call it issues before the next answer is stamped with.
@@ -1037,10 +1084,25 @@ export function readAgentTranscript(text: string): {
       continue
     }
 
+    // Only the conversation itself. The engine also records each request as it
+    // went out, in rows of their own (`api-request-blob`), with every call in
+    // it repeated — as the hooks rewrote it, `cd <worktree> &&` in front — so
+    // read whole, every call was counted twice and the second copy said the
+    // command in a form the agent never wrote.
+    if (row?.type !== 'user' && row?.type !== 'assistant') {
+      continue
+    }
+
     const content = row?.message?.content
 
-    if (row?.type === 'user' && prompt === undefined && typeof content === 'string') {
-      prompt = content
+    // A workflow's agent is handed its task in more than one message: the
+    // harness relays the request that started the run, then the task the script
+    // computed. The first alone is a preamble the same for every agent in the
+    // run, and the task itself was never shown.
+    if (row.type === 'assistant') {
+      answered = true
+    } else if (!answered && typeof content === 'string') {
+      given.push(content)
     }
 
     if (!Array.isArray(content)) {
@@ -1121,5 +1183,5 @@ export function readAgentTranscript(text: string): {
     }
   }
 
-  return { prompt, result, tokens, calls }
+  return { ...(given.length > 0 ? { prompt: promptOf(given) } : {}), result, tokens, calls }
 }

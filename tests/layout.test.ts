@@ -72,22 +72,28 @@ function rowsOf(canvas: Canvas): string[] {
   return lines
 }
 
-test('every band is the same depth, whatever ran in it', () => {
+test('every band fed from above is the same depth, whatever ran in it', () => {
   const view = layout(RUN, 110, 34, 'vertical')
 
   expect(view.orientation).toBe('vertical')
 
   const rules = view.lanes.map(lane => lane.captionRow ?? -1)
   const bands = rules.slice(1).map((row, i) => row - rules[i])
+  const fed = bands.slice(1)
 
-  expect(bands.every(band => band === bands[0])).toBe(true)
-  expect(bands[0]).toBeGreaterThanOrEqual(CARD_H + 3)
+  expect(fed.every(band => band === fed[0])).toBe(true)
+  expect(fed[0]).toBeGreaterThanOrEqual(CARD_H + 3)
+  // The first band is fed by nothing, so it keeps one row between its heading
+  // and its cards rather than the three the wires arriving need.
+  expect(bands[0]).toBe((fed[0] ?? 0) - 2)
+  expect((view.lanes[0]?.nodes[0]?.y ?? 0) - rules[0]!).toBe(2)
 })
 
 test('a band keeps its cards clear of the rule above and the rule below', () => {
   const view = layout(RUN, 110, 34, 'vertical')
 
-  for (const lane of view.lanes) {
+  // The first band has no wires arriving: see the test above.
+  for (const lane of view.lanes.slice(1)) {
     const rule = lane.captionRow ?? 0
     const card = lane.nodes[0]
 
@@ -108,11 +114,15 @@ test('a band stands its node in the middle, with room either side of it', () => 
   const rules = view.lanes.map(lane => lane.captionRow ?? 0)
 
   for (const [place, lane] of view.lanes.entries()) {
+    if (place === 0) {
+      continue
+    }
+
     const card = lane.nodes[0]!
     const rule = rules[place]!
     // The band runs to the rule opening the band below it, and the last band to
     // the foot of the drawing — one band deeper than the last rule.
-    const next = rules[place + 1] ?? rule + (rules[1]! - rules[0]!)
+    const next = rules[place + 1] ?? rule + (rules[2]! - rules[1]!)
     const above = card.y - rule - 1
     const below = next - (card.y + card.h)
 
@@ -138,7 +148,7 @@ test('a band keeps the row its cards name what fed them on clear of the arrowhea
   // the label the way it gives way for a band's own caption.
   const view = layout(RUN, 110, 34, 'vertical')
 
-  for (const lane of view.lanes) {
+  for (const lane of view.lanes.slice(1)) {
     const card = lane.nodes[0]!
 
     // The bundle is clear of the label's row and of the arrowheads' row under it.
@@ -193,7 +203,7 @@ test('a phase the pane cannot fit is named, not dropped in silence', () => {
   expect(roomy.lanes.map(l => l.phase)).toEqual(['Survey', 'Review', 'Check'])
 })
 
-test('a phase the run passed over keeps its section, and draws the same row in it', () => {
+test('a phase the run passed over keeps its place, drawn as its heading alone', () => {
   const run: RunState = {
     ...runOf([
       ['Survey', ['paint', 'layout']],
@@ -205,6 +215,8 @@ test('a phase the run passed over keeps its section, and draws the same row in i
       { title: 'Escalate', detail: 'only what survived as blocking', model: 'opus' },
       { title: 'Report', detail: 'one agent joins the verdicts', model: 'opus' },
     ],
+    status: 'completed',
+    endedMs: STARTED + 30_000,
   }
 
   // Later phases ran, so this one cannot go to the foot: named down there it
@@ -214,92 +226,57 @@ test('a phase the run passed over keeps its section, and draws the same row in i
   expect(view.pending).toEqual([])
   expect(view.lanes.map(l => l.phase)).toEqual(['Survey', 'Review', 'Escalate', 'Report'])
 
-  const ghost = view.lanes.find(l => l.phase === 'Escalate')?.ghost
-
-  // One row, not a card. A card carries four facts and a phase that never ran
-  // has three, so its fourth side went round blank cells — and the strip and
-  // the foot band were drawing rows for the same thing at the same time.
-  expect(ghost?.h).toBe(1)
-
   const canvas = new Canvas(96, 40)
 
-  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical' })
+  paint(canvas, run, { nowMs: STARTED + 40_000, tick: -1, orientation: 'vertical', follow: false })
 
   const lines = rowsOf(canvas)
-  const at = lines.findIndex(line => line.includes('\u258c') && line.includes('Escalate'))
+  const at = lines.findIndex(line => line.includes('Escalate'))
 
-  expect(at).toBeGreaterThan(0)
-  expect(lines[at]).toContain('only what survived as blocking')
-  expect(lines[at]).toContain('Opus')
-  expect(lines.every(line => !line.includes('\u256d\u254c'))).toBe(true)
-
-  // Centred in the band it owns, the way the band centres what it holds.
-  const rule = lines.findIndex(line => line.includes('Escalate '))
-  const next = lines.findIndex((line, y) => y > at && /Report/.test(line))
-
-  expect(at - rule).toBeGreaterThan(1)
-  expect(Math.abs((at - rule - 1) - (next - at - 1))).toBeLessThanOrEqual(1)
+  // The heading says what the phase was for where a count would be, in the
+  // dashed stroke the pane draws for work that is not this run's own, and the
+  // band under it is a row of air rather than a band of blank rows.
+  expect(lines[at]).toMatch(/^ \u2298 Escalate {2}only what survived as blocking \u254c+/)
+  expect(lines.filter(line => line.includes('Escalate')).length).toBe(1)
+  expect(lines[at + 1]?.trim()).toBe('')
+  expect(lines[at + 2]).toMatch(/^ \u2714 Report /)
 })
 
-test('the phases it could not fit open a band of their own at the foot', () => {
-  const run = runOf([
-    ['Survey', ['paint', 'layout', 'journal', 'README', 'plugin']],
-    ['Review', ['paint', 'layout', 'journal', 'plugin']],
-    ['Check', ['README']],
-    ['Verify', []],
-    ['Escalate', []],
-    ['Report', []],
-  ])
+test('the phases the run has not reached close the drawing, a dashed heading each', () => {
+  const run: RunState = {
+    ...runOf([
+      ['Survey', ['paint', 'layout', 'journal', 'README', 'plugin']],
+      ['Review', ['paint', 'layout', 'journal', 'plugin']],
+      ['Check', ['README']],
+      ['Verify', []],
+      ['Escalate', []],
+      ['Report', []],
+    ]),
+    plan: [{ title: 'Verify', detail: 'confirm each finding against the diff' }],
+  }
   const canvas = new Canvas(110, 46)
 
   paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical' })
 
   const lines = rowsOf(canvas)
-  const at = lines.findIndex(line => /^\u254c+ Ahead \u254c+$/.test(line.trimEnd()))
+  const at = lines.findIndex(line => line.includes('Verify'))
 
-  // The same device every band it did draw opens with — the name set into its
-  // own rule — dashed rather than drawn, because nothing has run in it yet.
-  expect(at).toBeGreaterThan(0)
+  // A heading each, in the order they will run, flush left on the mark of a
+  // phase still to come, the way every phase heading stands — and the line the
+  // script wrote about the phase where a count would be. There is no caption
+  // row over them: each heading says what it is.
+  expect(lines.slice(at, at + 3).map(line => line.trimEnd())).toEqual([
+    expect.stringMatching(/^ \u25cb Verify {2}confirm each finding against the diff \u254c+$/),
+    expect.stringMatching(/^ \u25cb Escalate \u254c+$/),
+    expect.stringMatching(/^ \u25cb Report \u254c+$/),
+  ])
+  expect(lines.join('\n')).not.toContain('Ahead')
 
-  expect(lines.join('\n')).not.toContain('\u22ef')
-
-  // A row each, in the order they will run, and each one the same one-row node
-  // the pane draws an agent with: the state rule down its left edge, the mark
-  // column after it, the name where a name goes. A run of names with arrows
-  // between them was the one thing on the pane that was not a node, so the
-  // phases that never ran were the only part of the drawing a reader had to
-  // learn a second shape for.
-  const rows = ['Verify', 'Escalate', 'Report'].map((phase, i) => {
-    const row = lines[at + 1 + i] ?? ''
-
-    expect(row).toContain(phase)
-
-    return row
-  })
-
-  for (const row of rows) {
-    expect(row.trimStart().startsWith('\u258c')).toBe(true)
-  }
-
-  // Still one band for all of them, not a band each.
-  expect(lines.filter(line => /^\u254c+ Ahead \u254c+$/.test(line.trimEnd())).length).toBe(1)
-
-  // The rail along the foot is the pane's own furniture rather than part of the
-  // drawing, so the drawing ends above it where one is drawn.
-  const foot = lines.length - (/[\u25c2\u25b8]/.test(lines[lines.length - 1] ?? '') ? 1 : 0)
-
-  // Nothing under it but blank rows: the band is the drawing's last section.
-  expect(at + 1).toBeLessThan(foot - 1)
-  expect(lines.slice(at + 4, foot).every(line => line.trim() === '')).toBe(true)
-
-  // And centred in what the drawing left, not held against either end of it.
-  // Against the pane's own bottom edge the band read as the seat's furniture;
-  // against the last node the same blank rows simply moved underneath it.
+  // Straight after the drawing, one row of air under its last section.
   const above = at - 1 - lines.findLastIndex((line, y) => y < at && line.trim() !== '')
-  const below = foot - (at + 4)
 
   expect(above).toBeGreaterThan(0)
-  expect(Math.abs(above - below)).toBeLessThanOrEqual(2)
+  expect(above).toBeLessThanOrEqual(2)
 })
 
 test('a pane with no rows to spare names them in one rule instead', () => {
@@ -325,13 +302,11 @@ test('a pane with no rows to spare names them in one rule instead', () => {
   // The rail along the pane's right-hand edge takes the last cell of the row
   // the rule is drawn on, so the rule is looked for inside the line rather than
   // as the whole of it.
-  const row = lines.find(line => /\u254c+ .+ \u254c+/.test(line)) ?? ''
+  const row = lines.find(line => /\u254c{3}/.test(line)) ?? ''
 
-  // The band costs two rows, and a short pane has not got two to give. The
-  // names go into the rule rather than off the pane, and the caption — the one
-  // part of it a reader can do without — gives them the room.
-  expect(row).toContain('Verify \u25b8 Escalate')
-  expect(lines.every(line => !line.includes('Ahead'))).toBe(true)
+  // A heading each costs a row each, and a short pane has not got them. One
+  // heading counts them and names them in the order they come.
+  expect(row).toMatch(/^ \u25cb 2 ahead {2}Verify \u25b8 Escalate \u254c+/)
 
   // The agents keep their rows through all of it: what the run has done is
   // never given up to say what it has not.
@@ -339,7 +314,7 @@ test('a pane with no rows to spare names them in one rule instead', () => {
   expect(lines.join('\n')).toContain('layout')
 })
 
-test('down a timeline the phases still ahead take one band, not an empty band each', () => {
+test('down a timeline the phases still ahead close it, a dashed heading each', () => {
   const run = runOf([
     ['Survey', ['paint', 'layout']],
     ['Verify', []],
@@ -351,27 +326,21 @@ test('down a timeline the phases still ahead take one band, not an empty band ea
   paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'timeline' })
 
   const lines = rowsOf(canvas)
-
-  // One section carrying all three, and no band of its own for any of them: a
-  // rule with an empty row under it reads as a band that failed to draw.
   const named = lines.filter(line => /Verify|Escalate|Report/.test(line))
-
-  expect(named.length).toBe(3)
-
-  // The same device the other layouts use, drawn the same way: one caption set
-  // into a dashed rule, and a node row for each phase under it.
   const at = lines.indexOf(named[0] as string)
 
-  expect(lines[at - 1]?.trimEnd()).toMatch(/^\u254c+ Ahead \u254c+$/)
-  expect(lines.filter(line => /^\u254c+ Ahead \u254c+$/.test(line.trimEnd())).length).toBe(1)
+  // The heading every other layout closes with, and no empty band of its own
+  // for any of them: a rule with an empty row under it reads as a band that
+  // failed to draw.
+  expect(named.map(line => line.trimEnd())).toEqual([
+    expect.stringMatching(/^ \u25cb Verify \u254c+$/),
+    expect.stringMatching(/^ \u25cb Escalate \u254c+$/),
+    expect.stringMatching(/^ \u25cb Report \u254c+$/),
+  ])
   expect(lines.slice(at, at + 3)).toEqual(named)
 
-  // The rows it takes come off the bars, not out from under them: no bar is
-  // drawn on a row the band owns.
-  expect(lines.slice(at - 1).every(line => !/[\u2588\u2592]/.test(line))).toBe(true)
-
-  // And what happened to each agent is a word in its own column, not a weight
-  // of block a reader has to compare against the row above.
+  // The rows it takes come off the bars, not out from under them.
+  expect(lines.slice(at).every(line => !/[\u2588\u2592]/.test(line))).toBe(true)
   expect(lines.join('\n')).toMatch(/done\s+\d/)
 })
 
@@ -427,13 +396,14 @@ test('across, a run of more phases than the pane can name draws fewer of them, w
 
   expect(extentOf(view).w).toBeGreaterThan(110)
 
-  // Cut between two columns rather than through one: a fifth column showing
-  // three cells of its frame at the edge is a card a reader can neither read
-  // nor tell is there.
+  // Every column the pane has room for is drawn whole, and what is left at the
+  // edge is less than one more column and its gutter: the scroll rail says the
+  // drawing goes on.
   const whole = view.lanes.filter(lane => lane.x >= 0 && lane.x + lane.w <= 110)
+  const last = whole[whole.length - 1]
 
   expect(whole.length).toBeGreaterThanOrEqual(3)
-  expect(110 - (whole[whole.length - 1].x + whole[whole.length - 1].w)).toBeLessThan(GUTTER_MAX)
+  expect(110 - (last.x + last.w)).toBeLessThan(last.w + GUTTER_MAX)
 })
 
 test('across, a wider pane names more phases rather than fatter ones', () => {
@@ -481,7 +451,7 @@ test('down, a band of more agents than the pane holds stands whole and runs past
   // agents were a fan on a wide seat and a block of four and four on a narrow
   // one, for no reason a reader could see in the run.
   for (const node of view.lanes.flatMap(lane => lane.nodes)) {
-    expect(node.w).toBe(32)
+    expect(node.w).toBe(28)
   }
 
   const survey = view.lanes[0]
@@ -545,26 +515,23 @@ test('across, the phases still ahead take a strip at the end, not a row under it
 
   const strip = lines.map(line => line.slice(view.ahead?.x ?? 0)).join('\n')
 
-  expect(strip).toContain('Ahead')
+  expect(strip).toContain('\u25cb 3 ahead')
   expect(strip).toContain('Verify')
   expect(strip).toContain('Escalate')
   expect(strip).toContain('Report')
   // And nothing is left under the drawing to say it.
   expect(lines[lines.length - 1]).not.toContain('Verify')
 
-  // The list sits in the middle of the strip, not at the head of it. Held under
-  // the boundary the caption sits on, three names stood at the top of a column
-  // as deep as the drawing beside them, which read as a section that had run
-  // out rather than one holding the phases still to come.
+  // The list starts on the row the cards beside it start on, a heading each
+  // under the strip's own, the way the phase columns beside it hold their
+  // cards. Centred in the body, three names stood a dozen rows under the last
+  // card, beside nothing.
   const column = lines.map(line => line.slice(view.ahead?.x ?? 0))
   const head = column.findIndex(row => row.includes('Verify'))
-  const tail = column.findLastIndex(row => row.includes('Report'))
-  const foot = Math.max(...view.lanes.map(l => Math.max(l.y + l.h, ...l.nodes.map(n => n.y + n.h))))
-  const above = head - (view.headerRows + 1)
-  const below = foot - tail - 1
+  const top = Math.min(...view.lanes.flatMap(l => l.nodes.map(n => n.y)))
 
-  expect(above).toBeGreaterThan(0)
-  expect(Math.abs(above - below)).toBeLessThanOrEqual(1)
+  expect(head).toBe(top)
+  expect(column[head]).toMatch(/^. \u25cb Verify/)
 })
 
 test('down the pane, a run too tall for cards keeps its cards and scrolls to the rest', () => {
@@ -962,7 +929,7 @@ test('a column is the width it is drawn at, whatever the pane is', () => {
   // wherever it does not fit.
   const kept = [20, 47, 52, 53, 110, 240].map(widthOf)
 
-  expect(kept.join(', ')).toBe('32, 32, 32, 32, 32, 32')
+  expect(kept.join(', ')).toBe('28, 28, 28, 28, 28, 28')
 
   // And a name has its cells whatever the pane is: no column is drawn narrower
   // than what a card spends on itself and a name needs after it.
@@ -1006,7 +973,7 @@ test('the flat list is drawn because the reader asked for it, not because the pa
   expect(narrow.lanes[0].nodes[0].h).toBe(CARD_H)
 })
 
-test('a phase the run never reached stands its row in the middle of the band', () => {
+test('down the pane, a phase nothing entered is a heading and a row of air', () => {
   const run = runOf([
     ['Survey', ['paint', 'layout']],
     ['Review', ['paint']],
@@ -1015,15 +982,13 @@ test('a phase the run never reached stands its row in the middle of the band', (
   ])
 
   const view = layout(run, 96, 40, 'vertical')
-  const ghost = view.lanes.find(l => l.phase === 'Escalate')?.ghost
+  const lanes = view.lanes
+  const at = lanes.findIndex(l => l.phase === 'Escalate')
 
-  // The row takes its own width rather than the lane's — a band with one node
-  // in it cut to what divides the widest band said `⊘ Veri…` with sixty columns
-  // spare either side — and a width of its own has to be placed. Held against
-  // the left edge it reads as a row of some other list, and every band around
-  // it centres what it holds.
-  expect(ghost?.x).toBe(Math.floor((96 - (ghost?.w ?? 0)) / 2))
-  expect(ghost?.x).toBeGreaterThan(1)
+  // A band of the full depth under a phase that never ran is a well of blank
+  // rows saying nothing happened at the depth of a band where something did.
+  expect((lanes[at + 1].captionRow ?? 0) - (lanes[at].captionRow ?? 0)).toBe(2)
+  expect(lanes[at].ghost?.y).toBe(lanes[at].captionRow)
 })
 
 /** A band of this many agents, with two small bands under it. */
@@ -1143,36 +1108,19 @@ test('the list reads down the pane, however wide the pane is', () => {
   expect(resolveOrientation('list', 200, 40, 1)).toBe('vertical')
 })
 
-test('across, the room between two nodes of a column is capped at three cells', () => {
-  // The leftover depth goes between a lane's nodes rather than into margins at
-  // its two ends, and past three cells it stops being air between cards and
-  // starts being a column of gaps with cards in it — a lane of two would put
-  // its nodes at opposite corners of the body.
-  const roomy = layout(RUN, 150, 60, 'horizontal')
-  const lane = roomy.lanes[0]
+test('across, the cards of a column stand one row apart at every height', () => {
+  // The leftover depth used to go between a lane's nodes, up to three rows, so
+  // a phase of five took a pane and a half to say what fits in one, and the
+  // reader scrolled past air to reach its foot. One row at every height now; a
+  // gap of zero is two cards sharing a border, which reads as one card with a
+  // rule through it.
+  for (const rows of [16, 30, 60]) {
+    const lane = layout(RUN, 150, rows, 'horizontal').lanes[0]
 
-  expect(lane.nodes.length).toBe(5)
+    expect(lane.nodes.length).toBe(5)
 
-  const gaps = lane.nodes.slice(1).map((node, i) => node.y - (lane.nodes[i].y + lane.nodes[i].h))
+    const gaps = lane.nodes.slice(1).map((node, i) => node.y - (lane.nodes[i].y + lane.nodes[i].h))
 
-  expect(gaps).toEqual([3, 3, 3, 3])
-})
-
-test('across, two nodes of a column keep a cell between them on a pane with none to spare', () => {
-  // The floor. Five cards need fifteen rows of body before a gap is counted at
-  // all, so the slack here is nothing or less than nothing — and a gap of zero
-  // is two cards sharing a border, which reads as one card with a rule through
-  // it. The drawing overruns the pane instead and the body scrolls to the rest.
-  const tight = layout(RUN, 150, 16, 'horizontal')
-  const lane = tight.lanes[0]
-
-  const gaps = lane.nodes.slice(1).map((node, i) => node.y - (lane.nodes[i].y + lane.nodes[i].h))
-
-  expect(gaps).toEqual([1, 1, 1, 1])
-
-  // Between the two, the room there is: neither the cap nor the floor.
-  const between = layout(RUN, 150, 30, 'horizontal')
-  const mid = between.lanes[0]
-
-  expect(mid.nodes[1].y - (mid.nodes[0].y + mid.nodes[0].h)).toBe(2)
+    expect(gaps).toEqual([1, 1, 1, 1])
+  }
 })

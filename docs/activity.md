@@ -84,6 +84,12 @@ order it happened, without a press.
 - A subagent started.
 - A gate's verdict, as the agent lands: `passed` or `failed`, and the summary
   the gate gave. See the verdicts in [nodes.md](nodes.md).
+- What the script threw, for a run that failed, as the last line, under the
+  name `run`: `✖ run  gate tests failed: 3 tests failed in store.spec.ts`. A
+  script can fail a run after every agent in it landed, on a check of its own,
+  and then the reason is in no agent's line; the pane used to say `failed` over
+  a drawing of nothing but `✔`. The engine writes the error into the run's
+  summary, and the line is its first line, without the class name.
 
 Reads and searches do not get a line each. A develop step reads forty files
 between two edits, and a line apiece would push every edit off the strip before

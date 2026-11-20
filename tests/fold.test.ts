@@ -669,7 +669,8 @@ function runWithWaves(phase: string): RunState {
 test('an opened nested run stands every agent it ran', () => {
   const phase = '▸ code-review'
   const run = runWithWaves(phase)
-  const canvas = new Canvas(110, 24)
+  // Tall enough for all five: a column hands work down itself in two rows.
+  const canvas = new Canvas(110, 30)
 
   paint(canvas, run, {
     nowMs: STARTED + 20_000,
@@ -788,12 +789,11 @@ test('a nested run carries one handle, the same shape open and shut', () => {
   // what crosses them.
   const showing = open.rule.replace(/[\u2022\u2502\u2506]/g, '\u254c')
 
-  expect(showing).toContain('\u25be code-review:ai-review 3/3')
+  expect(showing).toContain('\u25be code-review:ai-review  3/3')
   expect(showing).toContain('\u25be 3 agents')
 
-  // The run's own name comes first and what follows it trails off its right, and
-  // the whole of it — name, count and handle — is what gets centred, so the rule
-  // comes out the same length on both sides of the group.
+  // The run's own name comes first, after its state mark, and what follows it
+  // trails off its right.
   const name = '\u25be code-review:ai-review'
 
   for (const rule of [open.rule, ruleOf([phase], 100).rule]) {
@@ -806,20 +806,12 @@ test('a nested run carries one handle, the same shape open and shut', () => {
     // would share. The caption used to give way instead, opening a gap for the
     // wire to land in, which moved the name off the middle by the width of the
     // gap and by a different amount on every band.
-    expect(rule).toContain(`${name} 3/3`)
+    expect(rule).toContain(`${name}  3/3`)
 
-    // Equal rule either side of the group. That is the one measurement a
-    // centred title has, and counting the handle as part of what gets centred
-    // is what makes it come out equal: left out, the name sat where it would
-    // have sat alone and the handle hung off its right, which left a shorter
-    // run of rule on that side.
-    const tail = rule.indexOf('\u25be 3 agents') + '\u25be 3 agents'.length
-    const strokes = (text: string) => (text.match(/[\u2501\u2500\u254d\u254c]/g) ?? []).length
-
-    // Counted as stroke rather than as cells, because a stack taller than the
-    // body puts a scroll rail over the last two columns of this row and those
-    // are not rule a reader is measuring.
-    expect(Math.abs(strokes(rule.slice(0, at - 1)) - strokes(rule.slice(tail + 1)))).toBeLessThanOrEqual(1)
+    // Flush left: the heading opens on the band's state mark in the second
+    // column, and the rule runs from the handle to the edge.
+    expect(rule.trimStart().startsWith(`\u2714 ${name}`)).toBe(true)
+    expect(at).toBe(3)
   }
 })
 
@@ -1002,7 +994,9 @@ function stripOf(columns: number, trip: number, times = 6) {
     canvas,
     drawn,
     // The strip is the shelf between the dialog's title and its tabs.
-    strip: rows.find(row => row.includes('↻') && row.includes('✔')) ?? '',
+    // Inside the dialog's frame: the band heading behind it carries a mark and
+    // the loop count too.
+    strip: rows.find(row => row.includes('↻') && row.includes('✔') && /[├│]/.test(row)) ?? '',
     passes: drawn.hotspots.filter(spot => spot.agentId.startsWith('@pass:')),
   }
 }

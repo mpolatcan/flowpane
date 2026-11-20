@@ -436,8 +436,18 @@ test('the menu stops growing with the pane, and the run it was opened from is st
   // What the menu is about is still on screen under it — the box ends well
   // above the foot of a tall pane rather than running to it.
   const canvas = new Canvas(80, 44)
+  // A column of five, so the drawing reaches past the menu: a phase's cards
+  // start at the top of the body, which is where the menu drops to.
+  const run = shownRun('wf_a')
+  const first = run.agents[0]!
 
-  paint(canvas, shownRun('wf_a'), {
+  run.agents = ['one', 'two', 'three', 'four', 'five'].map(name => ({
+    ...first,
+    agentId: `x-${name}`,
+    label: `collect:${name}`,
+  }))
+
+  paint(canvas, run, {
     nowMs: NOW,
     tick: 0,
     orientation: 'horizontal',
@@ -460,5 +470,5 @@ test('the menu stops growing with the pane, and the run it was opened from is st
   const foot = rows.findIndex(line => line.includes('╰'))
 
   expect(foot).toBeGreaterThan(0)
-  expect(rows.slice(foot + 1).join('\n')).toContain('one')
+  expect(rows.slice(foot + 1).join('\n')).toContain('five')
 })
