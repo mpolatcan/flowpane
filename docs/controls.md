@@ -41,8 +41,8 @@ the body shows a window on to it, with a rail down the right edge where it is
 taller than the pane and one along the foot where it is wider:
 
 ```
-──────────────────────────── Commit (code) 3/3 ↻3 ──────────────────────── █
-  ▌✔ Commit (code)  ✔ 1  ✔ 2  ✔ 3                    1m48s  ∑25k  Haiku 4.5 █
+──────────────────────────── Commit (code) 3/3 ↻3 ──────────────────────── ┃
+  ▌✔ Commit (code)  ✔ 1  ✔ 2  ✔ 3                    1m48s  ∑25k  Haiku 4.5 ┃
 ╍╍╍╍╍╍╍╍ code-review:ai-review-agentic 23/23 ↻3 ╍╍ ▸ 23 agents ╍╍╍╍╍╍╍╍╍ ┃
   ▌✔ code-review:ai-review-agentic  ✔ 1  ✔ 2  ✔ 3            ∑198k   ▾
 ```
@@ -52,6 +52,11 @@ row: a number a reader could read and do nothing with. A rail is the same fact
 told as a place, and a place can be moved. The thumb says how much of the run is
 on the pane and whereabouts in it, so the two questions the count could not
 answer — how much is there, and where am I — are answered by looking.
+
+The thumb is a heavy stroke on the track's light one, `┃` on `│` down the pane
+and `━` on `─` across it. It was a solid block, and a solid block was the
+loudest thing on the pane, louder than any state's colour, for a control that
+says where the reader is rather than what anything is doing.
 
 Whether a rail is drawn and whether it was paid for are two questions. A rail
 costs cells, and the cells change what fits, so the size is settled by laying

@@ -375,8 +375,18 @@ export function scrollFeed(view: PaneView, feed: FeedView | null, by: number): v
  * while a run is live, and never snapping back needs a *resume* control, which
  * is a control nobody presses and a pane left showing the past.
  */
-export function drew(view: PaneView, drawn: { body?: BodyScroll; front?: string }): void {
+export function drew(view: PaneView, drawn: { body?: BodyScroll; front?: string; feed?: FeedView }): void {
   view.bodyScroll = { x: drawn.body?.x ?? 0, y: drawn.body?.y ?? 0 }
+
+  // A strip the paint had to bring down to its newest line — a wider pane that
+  // wraps the history to fewer lines, more rows to show it in — is at the
+  // bottom, and at the bottom it follows. Left holding the line it was clamped
+  // to, it looked like it was following and stopped when the next line came.
+  const feed = drawn.feed
+
+  if (feed && typeof view.feedTop === 'number' && view.feedTop >= Math.max(0, feed.lines - feed.rows)) {
+    view.feedTop = null
+  }
 
   if (drawn.front !== undefined && drawn.front !== view.front) {
     view.following = true

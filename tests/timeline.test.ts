@@ -169,3 +169,38 @@ test('a bar that starts past the window keeps its arrow cell clear of the dots o
   expect(rows[y]![arrow - 1]).toBe('·')
   expect(written.get(`${arrow},${y}`)).not.toContain(0x00b7)
 })
+
+test('a phase heading stands in the middle of the gutter’s rule, at any width of pane', () => {
+  // The rule keeps a few cells after the heading whatever the width, so a
+  // gutter only as wide as the heading sets it as far left as that takes.
+  for (const columns of [110, 60]) {
+    const canvas = new Canvas(columns, 24)
+
+    // A gutter as wide as its longest name, with room either side of the heading.
+    const run = runOf([at('alpha', 0, 10_000), at('charlie-the-long-running-reviewer', 10_000, 30_000)])
+
+    paint(canvas, run, { nowMs: ENDED, tick: -1, orientation: 'timeline', follow: false, zoom: 1, bodyScroll: { x: 0, y: 0 } })
+
+    const row = rowsOf(canvas).find(line => /✔ Work/.test(line)) ?? ''
+    const gutter = row.slice(0, row.indexOf('┆')).trimEnd()
+    const mark = gutter.indexOf('✔')
+    const [, left = '', words = '', right = ''] = /^\s*(\S+) (.*?) (\S+)$/.exec(gutter) ?? []
+
+    // The rule either side of the heading, and the heading cleared out of it
+    // with a blank on each side.
+    expect(mark).toBeGreaterThan(3)
+    expect(words.startsWith('✔ Work')).toBe(true)
+    // In the middle where the gutter has the room, and with rule on both sides
+    // where it does not.
+    if (columns === 110) {
+      expect(Math.abs(cellsOf(left) - cellsOf(right))).toBeLessThanOrEqual(1)
+    } else {
+      expect(cellsOf(left)).toBeGreaterThan(0)
+      expect(cellsOf(right)).toBeGreaterThanOrEqual(3)
+    }
+  }
+})
+
+function cellsOf(s: string): number {
+  return [...s].length
+}

@@ -939,6 +939,12 @@ async function showIdle($: EngineInterface, focus: boolean): Promise<void> {
 
 /** Opens the pane on a run and starts (or, for a finished run, skips) the timer. */
 async function showRun($: EngineInterface, run: RunState, focus: boolean): Promise<void> {
+  // A place in one run's history is no place in another's: held over, it pinned
+  // the new run's strip at a line of the old one's once its history grew past it.
+  if (state.shown !== run) {
+    state.feedTop = null
+  }
+
   state.shown = run
   state.picking = false
   showDetail(state, null)

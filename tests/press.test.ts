@@ -417,6 +417,23 @@ test('the strip scrolled back down to its newest line follows the run again', ()
   expect(v.feedTop).toBe(0)
 })
 
+test('a strip the paint brought down to its newest line follows the run again', () => {
+  const v = view()
+
+  v.feedTop = 14
+
+  // Wider now, the history wraps to fewer lines, and line 14 is past the last
+  // window there is: the paint drew the newest, so the strip is following.
+  drew(v, { feed: { y: 24, rows: 4, top: 8, lines: 12 } })
+
+  expect(v.feedTop).toBeNull()
+
+  v.feedTop = 3
+  drew(v, { feed: { y: 24, rows: 4, top: 3, lines: 12 } })
+
+  expect(v.feedTop).toBe(3)
+})
+
 test('the wheel with a node open moves the dialog, not the drawing', () => {
   const v = view()
   const body = { x: 0, y: 0, spanX: 0, spanY: 40 }

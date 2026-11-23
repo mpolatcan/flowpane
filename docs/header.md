@@ -878,10 +878,10 @@ stack of bands gets, and the same wheel.
 
 before                          after
 ▌✔ inflight…  ∑15k              ╭── ✔ inflight claim ──╮   ▴
-▌✔ context    ∑55k              │   ⧖ 15.1s  ∑ 15.4k   │   █
-▌✔ panel-t0   ∑14k              ╰───── Haiku 4.5 ──────╯   █
-▌✔ reviewer   ∑37k                                         █
-…  every card in the run        ╭───── ✔ context ──────╮   █
+▌✔ context    ∑55k              │   ⧖ 15.1s  ∑ 15.4k   │   ┃
+▌✔ panel-t0   ∑14k              ╰───── Haiku 4.5 ──────╯   ┃
+▌✔ reviewer   ∑37k                                         ┃
+…  every card in the run        ╭───── ✔ context ──────╮   ┃
    flattened with it            │   ⧖ 3m21s  ∑ 55.2k   │   │
                                 ╰────── Opus 4.8 ──────╯   ▾
 ```
