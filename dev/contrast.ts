@@ -30,6 +30,20 @@ const ratio = (a: number, b: number) => {
   return (hi + 0.05) / (lo + 0.05)
 }
 
+/**
+ * The theme's own colour each role is taken straight from, where it is one. A
+ * role printed with `from` beside it is one the derivation changed.
+ */
+const SOURCES: Record<string, 'yellow' | 'green' | 'red' | 'fg' | 'blue' | 'purple' | 'cyan'> = {
+  running: 'yellow',
+  done: 'green',
+  failed: 'red',
+  text: 'fg',
+  accent: 'blue',
+  spend: 'purple',
+  model: 'cyan',
+}
+
 let short = 0
 
 for (const theme of THEMES) {
@@ -52,7 +66,11 @@ for (const theme of THEMES) {
 
     short += flag ? 1 : 0
 
-    console.log(`  ${row.role.padEnd(9)} ${hexOf(row.color as number)}  ${row.r.toFixed(2)}${flag}`)
+    const source = SOURCES[row.role]
+    const own = source === undefined ? undefined : theme[source]
+    const moved = own === undefined || own === row.color ? '' : `  from ${hexOf(own)}`
+
+    console.log(`  ${row.role.padEnd(9)} ${hexOf(row.color as number)}  ${row.r.toFixed(2)}${flag}${moved}`)
   }
 }
 

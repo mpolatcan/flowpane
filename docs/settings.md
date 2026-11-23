@@ -38,8 +38,16 @@ under WCAG's 3.0 against the theme's own ground, and the roles built from it —
 the idle tone, the dim text, the stopped grey — sat under it too, which put the
 tone that says *this phase was skipped* at 2.66 on solarized. A role that falls
 short is moved along its own lightness, a hundredth at a time, until it clears
-its floor, so a theme that is already legible keeps its colours exactly and one
-that is not gives up the least it can.
+its floor, so a colour that is already legible is kept exactly and one that is
+not gives up the least it can. Legible is not the only test a colour has to pass:
+the states also have to stand apart in hue, below, and on gruvbox and the two
+solarized palettes that moves the theme's own green. A palette picked by name is
+that palette wherever it already reads, and changed only where it would not.
+
+Five palettes come through untouched: catppuccin, dracula, vscode-dark,
+github-light and insider-one-light. The others give up a role or two — most
+often the failed red, lifted for contrast — and `bun dev/contrast.ts` prints
+every role beside the theme's own colour it came from.
 
 Along its own lightness, so the hue and the saturation stay. The lift used to be
 a mix — first toward the theme's foreground, which on solarized-light dragged
