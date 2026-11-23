@@ -1191,3 +1191,13 @@ test('a nested run is named by the one model its agents said, ignoring the ones 
   expect(foot).toContain('Opus 5')
   expect(foot).not.toContain('models')
 })
+
+test('the count that leads a loop’s strip of trips stays where the strip starts', () => {
+  const { strip } = stripOf(90, 3)
+  const shelf = strip.indexOf('├')
+
+  // A strip of presses is read from its first, so its count is not centred
+  // the way a shelf's word is.
+  expect(shelf).toBeGreaterThanOrEqual(0)
+  expect(strip.indexOf('↻6')).toBe(shelf + 4)
+})

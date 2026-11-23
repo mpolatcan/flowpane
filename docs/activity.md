@@ -18,7 +18,14 @@ line of it whole.
 
 A line takes as many rows as its words need, wrapped at word boundaries, with
 what the calls did after an arrow in the same stream. The clock, the mark and
-the name stand on its first row only.
+the name stand on its first row only, and on the strip's top row whenever the
+window starts inside a line. A line taller than the strip, followed to its
+newest row, would otherwise fill the strip with words and nothing to say which
+agent wrote them or when.
+
+A word longer than the whole room is broken across rows between characters,
+counted as the pane counts cells: by code point, so a break never lands inside
+a character.
 
 It used to be cut: the words to two rows ending on `…`, the words themselves to
 four hundred characters before that, and what the calls did to a few cells, so

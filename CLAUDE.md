@@ -11,7 +11,7 @@ workflow writes, and everything it says has to fit in cells.
 ## Commands
 
 ```bash
-claude plugin test .          # the test suite — 461 tests across 33 files
+claude plugin test .          # the test suite — 477 tests across 33 files
 bunx tsc --noEmit             # typecheck (hooks/ and types/ only; see tsconfig.json)
 ```
 

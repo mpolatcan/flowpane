@@ -10755,10 +10755,14 @@ function paintFeed(c: Canvas, run: RunState, feed: FeedRow[], ruleY: number, row
           line = []
           used = 0
         } else {
-          line.push({ text: piece.slice(0, room), tone: word.tone })
+          // By code points, the unit `cells` counts in: a cut by UTF-16 units
+          // can land inside a surrogate pair and draw half a character.
+          const points = [...piece]
+
+          line.push({ text: points.slice(0, room).join(''), tone: word.tone })
           lines.push(line)
           line = []
-          piece = piece.slice(room)
+          piece = points.slice(room).join('')
         }
       }
     }
@@ -10783,7 +10787,10 @@ function paintFeed(c: Canvas, run: RunState, feed: FeedRow[], ruleY: number, row
   for (let i = from; i < from + rows && i < all.length; i++) {
     const { row, first, parts } = all[i]!
 
-    if (first) {
+    // A window that starts inside a row says whose row it is: a row taller
+    // than the strip, followed to its newest line, would otherwise fill it with
+    // words and nothing to say which agent wrote them or when.
+    if (first || i === from) {
       let x = 1
 
       x += c.text(x, y, clockOf(row).padStart(clockW), quiet)
