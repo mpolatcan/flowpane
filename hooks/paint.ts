@@ -8897,20 +8897,36 @@ function diffLines(line: string, width: number, tone: Rgb, header: boolean): Det
  *
  * A header is read by where the line stands rather than by how it starts. Read
  * off its prefix alone, a removed line that was itself `-- a comment` began
- * `--- ` and was drawn as a header, with no tint to say it went: the header of
- * a file is what comes between its `diff --git` and its first `@@`, and nothing
- * inside a hunk is.
+ * `--- ` and was drawn as a header, with no tint to say it went. A header is
+ * what stands outside every hunk: before the first `@@`, and after a hunk has
+ * used up the lines its `@@` counted, which is where `diff -u` starts its next
+ * file with no `diff --git` to say so.
  */
 function diffLighter(text: string): Lighter {
   const headers = new Set<number>()
   let header = true
   let at = 0
 
+  // What is left of the hunk on each side, from its `@@ -a,b +c,d @@`. A diff
+  // that is not git's has no `diff --git` between its files, so the next
+  // file's `---` is known only by the hunk before it having run out.
+  let old = 0
+  let added = 0
+
   for (const line of text.split('\n')) {
-    if (line.startsWith('diff --git ')) {
-      header = true
-    } else if (line.startsWith('@@')) {
+    const hunk = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(line)
+
+    if (hunk) {
       header = false
+      old = Number(hunk[1] ?? 1)
+      added = Number(hunk[2] ?? 1)
+    } else if (line.startsWith('diff ') || (!header && old <= 0 && added <= 0)) {
+      header = true
+    } else if (!header) {
+      const sign = line[0]
+
+      old -= sign === '+' || sign === '\\' ? 0 : 1
+      added -= sign === '-' || sign === '\\' ? 0 : 1
     }
 
     if (header) {
@@ -9671,6 +9687,20 @@ function paintScrollbar(
     if (live) {
       hotspots.push({ agentId: id, x, y: at, w: 1 })
     }
+  }
+
+  // One row holds one arrow. Both drawn into it, the down arrow landed on the
+  // up one, so a one-line strip at its newest line showed a grey `▾` and
+  // nothing to say there was more above. The way back is the one a reader
+  // following the run cannot otherwise see, so it wins the cell while it is live.
+  if (rows === 1) {
+    if (pane.scroll > 0) {
+      key(y, ARROW_UP, true, `detail-up:${index}`)
+    } else {
+      key(y, ARROW_DOWN, pane.visible < pane.total, `detail-down:${index}`)
+    }
+
+    return
   }
 
   key(y, ARROW_UP, pane.scroll > 0, `detail-up:${index}`)
@@ -11061,12 +11091,18 @@ function feedName(row: FeedRow): { phase?: string; name: string } {
  * the name was cut down to `code-review:…` and said neither.
  */
 function feedPhase(phase: string | undefined): string | undefined {
-  const bare = phase?.trim().replace(/^\u25b8\s*/, '')
+  const trimmed = phase?.trim() ?? ''
+  const nested = trimmed.startsWith('\u25b8')
+  const bare = trimmed.replace(/^\u25b8\s*/, '')
 
-  // Only a namespace, `plugin:` hard against the name: a phase the script named
-  // `Stage 2: Verify` keeps its words, where cutting at the last colon left
-  // ` Verify` and read two phases ending the same as one.
-  return bare ? bare.replace(/^[\w.-]+:(?=\S)/, '') || bare : undefined
+  // Only a nested run's namespace, `plugin:` hard against the name. A phase the
+  // script named is its own words: cut at a colon, `Stage 2: Verify` read
+  // ` Verify`, and `deploy:prod` and `test:prod` read as one phase.
+  if (!bare) {
+    return undefined
+  }
+
+  return nested ? bare.replace(/^[\w.-]+:(?=\S)/, '') || bare : bare
 }
 
 /** How a line's name reads: `Review · bugs`. */

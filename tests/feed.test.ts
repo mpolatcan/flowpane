@@ -420,3 +420,30 @@ test('a phase the script named with a colon keeps its words; only a plugin’s n
 
   expect(strip).toEqual([' 4.0s  · Stage 2: Verify · reviewer  ran the tests', ' 6.0s  · ai-review-panel · panel     ran the linter'])
 })
+
+test('a phase the script named with a colon hard against a word keeps it; only a nested run loses its namespace', () => {
+  const run = runOf([
+    agent('a0', 'done', [call('Bash', 'npm test', 1)], { phase: 'deploy:prod' }),
+    agent('a1', 'done', [call('Bash', 'npm test', 2)], { phase: 'test:prod' }),
+  ])
+  const strip = rows(run, 120, 30, 6).lines.filter(line => line.includes('ran the tests'))
+
+  expect(strip).toEqual([' 1.0s  · deploy:prod · a0  ran the tests', ' 2.0s  · test:prod · a1    ran the tests'])
+})
+
+test('a one-line strip shows the one arrow that has somewhere to go', () => {
+  const corner = (feedTop?: number) => {
+    const { canvas } = rows(pipeline(), 100, 30, 1, feedTop)
+    const cell = canvas.cell(99, 29)
+
+    return { glyph: String.fromCodePoint(canvas.at(99, 29)), fg: JSON.stringify(cell.fg) }
+  }
+  const newest = corner()
+  const oldest = corner(0)
+  const middle = corner(3)
+
+  expect(newest.glyph).toBe('▴')
+  expect(middle.glyph).toBe('▴')
+  expect(oldest.glyph).toBe('▾')
+  expect(newest.fg).toBe(oldest.fg)
+})

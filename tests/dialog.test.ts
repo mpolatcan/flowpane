@@ -1800,3 +1800,12 @@ test('a removed line that read `-- a comment` is tinted as removed, not drawn as
   expect(groundOf(canvas, '- an old note')).not.toBe(groundOf(canvas, 'select 1;'))
   expect(groundOf(canvas, '- an old note')).not.toBe(groundOf(canvas, '+++ b/q.sql'))
 })
+
+test('a second file in a diff that is not git’s still has its header drawn as one, after the hunk before it runs out', () => {
+  const result = ['--- a/one.sql', '+++ b/one.sql', '@@ -1,2 +1,1 @@', '-- old', ' keep one', '--- a/two.sql', '+++ b/two.sql', '@@ -1 +1 @@', '-gone two', '+new two'].join('\n')
+  const canvas = opened({ id: 'two', input: 'command: diff -u', result })
+
+  expect(groundOf(canvas, '- old')).toBe(groundOf(canvas, 'gone two'))
+  expect(groundOf(canvas, '--- a/two.sql')).toBe(groundOf(canvas, 'keep one'))
+  expect(groundOf(canvas, '+++ b/two.sql')).toBe(groundOf(canvas, 'keep one'))
+})
