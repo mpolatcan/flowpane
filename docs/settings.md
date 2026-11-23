@@ -18,7 +18,7 @@ A theme is declared as the ten colours a terminal theme actually ships — a
 ground, a surface, a foreground, a grey, and six hues — and every colour the
 drawing uses is derived from those: running is the theme's yellow, done its
 green, failed its red, the spend its purple, the model its cyan, an idle agent a
-mix of its grey and its surface. Declaring all thirteen roles per theme would be
+mix of its grey and its surface. Declaring all sixteen roles per theme would be
 eighty values to keep in step, and the first one to drift would make the pane
 read as a different theme in one corner.
 

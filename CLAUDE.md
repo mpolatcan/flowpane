@@ -136,7 +136,7 @@ is reached only through the version.
 | `hooks/layout.ts` | Where every band, card and column goes, at a given size |
 | `hooks/paint.ts` | Everything drawn: cards, wires, header, dialogs, settings |
 | `hooks/canvas.ts` | The grid: cells, colour mixing, line drawing, joints |
-| `hooks/theme.ts` | Twelve themes, each ten colours, and the thirteen roles derived |
+| `hooks/theme.ts` | Twelve themes, each ten colours, and the sixteen roles derived |
 | `hooks/press.ts` | Keys and clicks |
 | `hooks/feed.ts` | The activity strip as a surface module: its rows, and the drag and keys that move them |
 | `hooks/about.ts` | What the pane says about itself: the dialog and `/flowpane about` |
