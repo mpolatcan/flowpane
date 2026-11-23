@@ -380,6 +380,6 @@ test('the activity strip is sized by the command, held to its bounds, and the si
 
   expect(await reply($, 'activity 3')).toBe('Activity strip 3 rows.')
   expect(await reply($, 'activity off')).toBe('Activity strip off.')
-  expect(await reply($, 'activity 99')).toBe('Activity strip 10 rows.')
-  expect(kept.filter(e => e.key === 'feedRows').map(e => e.value)).toEqual([3, 0, 10])
+  expect(await reply($, 'activity 99')).toBe('Activity strip 14 rows.')
+  expect(kept.filter(e => e.key === 'feedRows').map(e => e.value)).toEqual([3, 0, 14])
 })
