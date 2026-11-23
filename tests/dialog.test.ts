@@ -1580,3 +1580,14 @@ test('the word on a call’s shelf stands in the middle of the bar', () => {
   expect(left).toBeDefined()
   expect(Math.abs(left!.length - right!.length)).toBeLessThanOrEqual(1)
 })
+
+test('the count of what a long answer left out stands in the middle of its rule', () => {
+  const wide = '='.repeat(60)
+  const lines = Array.from({ length: 400 }, (_, i) => `line ${i} ${wide} of the build log`)
+  const rows = rowsOf(opened({ id: 'long', input: 'command: make', result: lines.join('\n') }, 127, 40))
+  const row = rows.find(r => r.includes('characters not shown')) ?? ''
+  const [, left, right] = row.match(/(─+) … [\d.]+k characters not shown … (─+)/) ?? []
+
+  expect(left).toBeDefined()
+  expect(Math.abs(left!.length - right!.length)).toBeLessThanOrEqual(1)
+})

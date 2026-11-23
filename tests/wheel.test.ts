@@ -656,3 +656,77 @@ test('two steps of the wheel inside one frame are answered by one paint', async 
 
   expect(painted).toEqual(['blit'])
 })
+
+test('a strip scrolled back in one run opens on the newest line of the next run shown', async ($, on) => {
+  const transcript = (word: string) =>
+    [
+      { type: 'user', message: { content: 'Work.' } },
+      ...Array.from({ length: 20 }, (_, i) => [
+        { type: 'assistant', message: { content: [{ type: 'tool_use', id: `${word}${i}`, name: 'Bash', input: { command: `echo ${word}-${i}`, description: `Say ${word} ${i}` } }] } },
+        { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `${word}${i}`, content: 'ok' }] } },
+      ]).flat(),
+    ]
+      .map(row => JSON.stringify(row))
+      .join('\n')
+  const runFile = (id: string, startTime: number) =>
+    JSON.stringify({
+      status: 'completed',
+      workflowName: `probe ${id}`,
+      startTime,
+      durationMs: 500,
+      result: 'done',
+      workflowProgress: [{ type: 'workflow_agent', agentId: id, label: 'work', phaseTitle: 'Work', state: 'done', tokens: 900, durationMs: 400 }],
+    })
+  const files: Record<string, string> = {
+    [`${BASE}/workflows/wf_00.json`]: runFile('a1', 1_000),
+    [`${BASE}/workflows/wf_01.json`]: runFile('b1', 2_000),
+    [`${BASE}/subagents/workflows/wf_00/agent-a1.jsonl`]: transcript('first'),
+    [`${BASE}/subagents/workflows/wf_01/agent-b1.jsonl`]: transcript('second'),
+  }
+
+  mock.clock(on, { now: 3_000 })
+  on('env.get', () => ({ value: HOME }))
+  on('ui.open', () => ({ value: undefined }))
+  on('ui.close', () => ({ value: undefined }))
+  on('ui.blit', () => ({ value: { requestId: 'flowpane' } }))
+  on('ui.invalidate', () => ({ value: undefined }))
+  on('command.register', () => ({ value: { command: 'flowpane' } }))
+  on('session.id', () => ({ value: 'test-session' }))
+  on('session.start', ($$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
+  on('store.get', () => ({ value: undefined }))
+  on('store.set', () => ({ value: undefined }))
+  on('fs.exists', ($$: unknown, e: { path: string }) => ({
+    value: e.path === PROJECTS || e.path === `${BASE}/workflows` || e.path in files,
+  }))
+  on('fs.list', ($$: unknown, e: { path: string }) => ({
+    value:
+      e.path === PROJECTS
+        ? [{ name: 'proj', kind: 'dir' }]
+        : e.path === `${BASE}/workflows`
+          ? [{ name: 'wf_00.json', kind: 'file' }, { name: 'wf_01.json', kind: 'file' }]
+          : [],
+  }))
+  on('fs.read', ($$: unknown, e: { path: string }) => ({ value: files[e.path] ?? '' }))
+
+  await $.session.start({ cwd: HOME, surface: 'terminal', isInteractive: true })
+  await $.command.run({ command: 'flowpane', args: '1' })
+
+  const strip = async () => {
+    const client = feedOf(await renderPane($))
+    const props = client?.props as unknown as { props: { lines: { t: string }[][] } }
+
+    return props.props.lines.map(spans => spans.map(span => span.t).join('')).join('\n')
+  }
+  const first = await strip()
+  const row = paneOf(await renderPane($)).findIndex(line => line.includes(' activity '))
+
+  expect(first).toContain('first 19')
+
+  await $.ui.scroll({ requestId: 'flowpane', by: -30, pointer: { row: row + 2 } })
+
+  expect(await strip()).not.toContain('first 19')
+
+  await $.command.run({ command: 'flowpane', args: '2' })
+
+  expect(await strip()).toContain('second 19')
+})

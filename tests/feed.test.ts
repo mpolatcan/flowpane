@@ -271,6 +271,38 @@ test('a subagent an agent started is told by the description it was given, or ba
   expect(lines.slice(-2)).toEqual([' 5.0s    Develop  started a subagent: review the diff', ' 9.0s    Develop  started a subagent'])
 })
 
+test('a row taller than the strip, followed to its newest line, still says whose row it is and when', () => {
+  const why = 'The pill test failures are a mounting artifact: when the root v-if is false it renders as a comment node, so the element does not re-point after the flip. The fix is to mount it inside a stable wrapper.'
+  const run = runOf([
+    agent('Develop', 'running', [
+      call('Bash', 'npm run lint', 4),
+      call('Edit', 'file_path: /wt/feature/src/AiStatusPill.test.ts', 6, { why }),
+    ]),
+  ])
+  const { lines } = rows(run, 80, 30, 3)
+
+  expect(lines.slice(-3)).toEqual([
+    ' 6.0s    Develop  element does not re-point after the flip. The fix is to      \u25b4',
+    '                  mount it inside a stable wrapper. \u2192 edited',
+    '                  AiStatusPill.test.ts',
+  ])
+})
+
+test('a word broken across lines is broken between characters, never inside one', () => {
+  const faces = '\u{1F600}'.repeat(120)
+  const run = runOf([agent('Preflight', 'done', [], { verdict: { passed: true, summary: `a${faces}` }, endedMs: STARTED + 4_000 })])
+  const { canvas } = rows(run, 80, 30, 6)
+  const codes: number[] = []
+
+  for (let y = 0; y < canvas.rows; y++) {
+    for (let x = 0; x < canvas.columns; x++) {
+      codes.push(canvas.at(x, y))
+    }
+  }
+
+  expect(codes.filter(code => code >= 0xd800 && code <= 0xdfff)).toEqual([])
+})
+
 test('a word longer than the strip’s room is broken across lines rather than run past the edge', () => {
   const path = `/${'x'.repeat(119)}`
   const run = runOf([agent('Preflight', 'done', [], { verdict: { passed: true, summary: `kept ${path}` }, endedMs: STARTED + 4_000 })])
