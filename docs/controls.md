@@ -335,7 +335,7 @@ line a reader comes back for later. It draws down to 26 columns.
 │ Layout          [horizontal  ▾] │
 │ Theme       ▮▮▮ [tokyo-night ▾] │
 │ Detail height  −  [24 rows]  +  │
-│ Activity       −  [4 rows]  +   │
+│ Activity       −  [6 rows]  +   │
 │                                 │
 ╰─────────────────────────────────╯
 ```

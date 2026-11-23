@@ -8824,7 +8824,7 @@ function jsonRuns(text: string, weights: ReturnType<typeof weightsOf>): Field[] 
     }
 
     if (token.kind === 'number' || /^(?:-?\d|true$|false$|null$)/.test(token.text)) {
-      return { text: token.text, color: token.kind === 'space' ? weights.base : COLORS.syntaxNumber }
+      return { text: token.text, color: COLORS.syntaxNumber }
     }
 
     return { text: token.text, color: token.kind === 'punct' ? weights.drop : weights.base }
@@ -8868,10 +8868,10 @@ function jsonLines(line: string, width: number, tone: Rgb): DetailLine[] {
  * a call that failed; a ground leaves the words in the block's own tone and
  * says the same thing a reviewer's diff view says.
  */
-function diffLines(line: string, width: number, tone: Rgb): DetailLine[] {
+function diffLines(line: string, width: number, tone: Rgb, header: boolean): DetailLine[] {
   const weights = weightsOf(tone)
 
-  if (/^(?:diff --git |index |--- |\+\+\+ )/.test(line)) {
+  if (header) {
     return litLines([{ text: line, color: weights.drop }], width, tone)
   }
 
@@ -8890,6 +8890,37 @@ function diffLines(line: string, width: number, tone: Rgb): DetailLine[] {
   )
 
   return tint ? lines.map(l => ({ ...l, tint })) : lines
+}
+
+/**
+ * A diff's lighter, which knows where each file's header ends.
+ *
+ * A header is read by where the line stands rather than by how it starts. Read
+ * off its prefix alone, a removed line that was itself `-- a comment` began
+ * `--- ` and was drawn as a header, with no tint to say it went: the header of
+ * a file is what comes between its `diff --git` and its first `@@`, and nothing
+ * inside a hunk is.
+ */
+function diffLighter(text: string): Lighter {
+  const headers = new Set<number>()
+  let header = true
+  let at = 0
+
+  for (const line of text.split('\n')) {
+    if (line.startsWith('diff --git ')) {
+      header = true
+    } else if (line.startsWith('@@')) {
+      header = false
+    }
+
+    if (header) {
+      headers.add(at)
+    }
+
+    at += line.length + 1
+  }
+
+  return (line, width, tone, start) => diffLines(line, width, tone, headers.has(start))
 }
 
 /** Whether a tool's answer is a unified diff, by the header one always carries. */
@@ -9124,7 +9155,7 @@ function editLighter(input: string): Lighter {
   const starts: { at: number; tint: 'removed' | 'added' | undefined }[] = []
 
   for (const match of input.matchAll(/^([a-z_]+): /gm)) {
-    if (match[1]! in EDIT_FIELDS) {
+    if (Object.hasOwn(EDIT_FIELDS, match[1]!)) {
       starts.push({ at: match.index ?? 0, tint: EDIT_FIELDS[match[1]!] })
     }
   }
@@ -9192,7 +9223,7 @@ function callOutLines(call: ToolCall, width: number): DetailLine[] {
   const text = call.result ?? ''
 
   return kept(call, 'out', text, width, () =>
-    valueLines(text, width, quietOf(COLORS.text), isJson(text) ? jsonLines : isDiff(text) ? diffLines : outputLines),
+    valueLines(text, width, quietOf(COLORS.text), isJson(text) ? jsonLines : isDiff(text) ? diffLighter(text) : outputLines),
   )
 }
 
@@ -9316,25 +9347,6 @@ function markSpot(phase: string, x: number, y: number, left: number): Hotspot {
 }
 
 
-/**
- * The tabs, set into the rule under the title, and where the open one stands.
- *
- * A tab is a Button and a Button carries no colour and no ground, so which one
- * is open cannot be said by tinting it. It is said by the rule instead: the open
- * tab is bracketed out of it, `─┤ Tool Calls (20) ├─`, the way a card is framed
- * rather than filled, and the brackets are cells the Button does not cover.
- *
- * Where the strip will not fit, the tabs give up their counts before any of them
- * gives up a letter of its name, and shorten their names before any of them
- * gives up its place: `Tool Calls (106)` says one more thing than `Tool Calls`,
- * which says one more thing than `Calls`, and a tab whose name has gone is a tab
- * nobody can aim at.
- *
- * The count is in brackets because it is a count of the things behind the tab
- * and not part of what the tab is called. `Calls 106` read as a name with a
- * number loose on the end of it, next to `Prompt` and `Response`, which have
- * none.
- */
 const HEAVY_ACROSS = 0x2501
 
 /**
@@ -9358,6 +9370,25 @@ function frameOpen(c: Canvas, left: number, right: number, y: number): void {
   c.put(right, y, 0x2523, COLORS.accent)
 }
 
+/**
+ * The tabs, set into the rule under the title, and where the open one stands.
+ *
+ * A tab is a Button and a Button carries no colour and no ground, so which one
+ * is open cannot be said by tinting it. It is said by the rule instead: the open
+ * tab is bracketed out of it, `━┫ Tool Calls (20) ┣━`, the way a card is framed
+ * rather than filled, and the brackets are cells the Button does not cover.
+ *
+ * Where the strip will not fit, the tabs give up their counts before any of them
+ * gives up a letter of its name, and shorten their names before any of them
+ * gives up its place: `Tool Calls (106)` says one more thing than `Tool Calls`,
+ * which says one more thing than `Calls`, and a tab whose name has gone is a tab
+ * nobody can aim at.
+ *
+ * The count is in brackets because it is a count of the things behind the tab
+ * and not part of what the tab is called. `Calls 106` read as a name with a
+ * number loose on the end of it, next to `Prompt` and `Response`, which have
+ * none.
+ */
 function paintTabs(
   c: Canvas,
   x: number,
@@ -11032,7 +11063,10 @@ function feedName(row: FeedRow): { phase?: string; name: string } {
 function feedPhase(phase: string | undefined): string | undefined {
   const bare = phase?.trim().replace(/^\u25b8\s*/, '')
 
-  return bare ? bare.slice(bare.lastIndexOf(':') + 1) || bare : undefined
+  // Only a namespace, `plugin:` hard against the name: a phase the script named
+  // `Stage 2: Verify` keeps its words, where cutting at the last colon left
+  // ` Verify` and read two phases ending the same as one.
+  return bare ? bare.replace(/^[\w.-]+:(?=\S)/, '') || bare : undefined
 }
 
 /** How a line's name reads: `Review · bugs`. */
@@ -11068,7 +11102,9 @@ function feedNameFit(who: { phase?: string; name: string }, width: number): stri
  * A pane too short for the lines asked for gets as many as leave the drawing
  * its floor, rather than none. All or nothing was right while the strip asked
  * for four; asking for six and a row of column names on top, it would have
- * taken the strip away from every pane that showed one at twenty rows.
+ * taken the strip away from every pane that showed one at twenty rows. It
+ * gives way down to a single line: a floor of two took the strip away from a
+ * reader who had asked for one, while the setting still said one.
  */
 function feedRowsFor(rows: number, asked: number, lines: number): number {
   const want = Math.max(0, Math.min(MAX_FEED, Math.floor(asked)))
@@ -11077,16 +11113,11 @@ function feedRowsFor(rows: number, asked: number, lines: number): number {
     return 0
   }
 
-  const fit = Math.min(want, rows - FEED_CHROME - FEED_FLOOR)
-
-  return fit >= FEED_MIN ? fit : 0
+  return Math.max(0, Math.min(want, rows - FEED_CHROME - FEED_FLOOR))
 }
 
 /** The rows the strip takes beyond its lines: the rule and the column names. */
 const FEED_CHROME = 2
-
-/** The fewest lines worth a strip: one is a ticker, and a ticker with a scrollbar is two arrows. */
-const FEED_MIN = 2
 
 /**
  * The activity strip: the newest of what the run has done, newest last, under
