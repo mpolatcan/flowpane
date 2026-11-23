@@ -384,11 +384,11 @@ A row of the Tool Calls list is a press, and what it opens is the call:
 ╭─ ◂ Back ─────────────── ✔ Bash ──────────────────── ✕ ─╮
 ├── command ──────────────────────────────────────────────┤
 │ command: git add -A src/ && git status --short && echo ▴│
-│   "=== staged diffstat ===" && git diff --staged --sta █│
+│   "=== staged diffstat ===" && git diff --staged --sta ┃│
 │ description: Stage source changes and show the staged  ▾│
 ├── output ───────────────────────────────────────────────┤
 │ M  src/stores/ai-status.ts                             ▴│
-│  M src/components/Guido.vue                            █│
+│  M src/components/Guido.vue                            ┃│
 │ ?? src/composables/useAiStatus.test.ts                 ▾│
 ├─────────────────────────────────────────────────────────┤
 │ done │ ⧖ 2.6s │ ∑ 3 tkns │ ⇄ 4                          │
@@ -589,8 +589,8 @@ a file, one field to a line, with the block scrolling through it:
 ```
 ├── Prompt ─── Tool Calls (20) ──┤ Response ├───────────────────────┤
 │ {                                                                 ▴│
-│   "lines": 2096,                                                  █│
-│   "kind": "code",                                                 █│
+│   "lines": 2096,                                                  ┃│
+│   "kind": "code",                                                 ┃│
 │   "headline": "Renders the run as a canvas of phases and nodes.", ▾│
 ```
 
@@ -618,7 +618,7 @@ and the thumb between them.
 ```
 ├── Prompt ──┤ Tool Calls (20) ├── Thinking ─── Response ───────────────────────┤
 │ ✔  Bash   git rev-parse --abbrev-ref HEAD                ⧖ 40ms  ∑ 5.4k tkns ▴│
-│ ✔  Bash   set -e bun test --reporter junit bunx tsc --n…  ⧖ 1.7s  ∑ 210 tkns █│
+│ ✔  Bash   set -e bun test --reporter junit bunx tsc --n…  ⧖ 1.7s  ∑ 210 tkns ┃│
 │ ✔  Read   file_path: hooks/paint.ts offset: 5900 limit:… ⧖ 120ms  ∑ 1.1k tkns││
 │ ✖  Edit   file_path: hooks/layout.ts old_string: const b… ⧖ 10ms     ∑ 3 tkns▾│
 ├──────────────────────────────────────────────────────────────────────────────┤

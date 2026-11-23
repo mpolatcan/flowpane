@@ -11,7 +11,7 @@ workflow writes, and everything it says has to fit in cells.
 ## Commands
 
 ```bash
-claude plugin test .          # the test suite — 459 tests across 33 files
+claude plugin test .          # the test suite — 461 tests across 33 files
 bunx tsc --noEmit             # typecheck (hooks/ and types/ only; see tsconfig.json)
 ```
 
@@ -138,6 +138,7 @@ is reached only through the version.
 | `hooks/canvas.ts` | The grid: cells, colour mixing, line drawing, joints |
 | `hooks/theme.ts` | Twelve themes, each ten colours, and the thirteen roles derived |
 | `hooks/press.ts` | Keys and clicks |
+| `hooks/feed.ts` | The activity strip as a surface module: its rows, and the drag and keys that move them |
 | `hooks/about.ts` | What the pane says about itself: the dialog and `/flowpane about` |
 | `tests/` | What the pane draws, read back off the canvas |
 | `dev/` | The tools above |

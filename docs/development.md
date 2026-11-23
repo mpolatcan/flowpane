@@ -266,8 +266,8 @@ opened from the list remembers it, that Back returns to the list rather than out
 of the reading, and that an agent pressed in the drawing is offered no way back
 to a list it did not come from. `tests/fold.test.ts` reads a nested run back off the canvas — that a run
 a reader opened stands behind a dashed gutter its calling run's rows do not,
-that the gutter closes on the run's own totals, that the mark says whether it is
-open, and that folding it back takes the gutter with it. It measures the way in and the way back
+that the gutter closes on the run's own totals, that the handle says whether it
+is open, that the name carries no mark of its own, and that folding it back takes the gutter with it. It measures the way in and the way back
 out, which are one control on the band's caption in every layout: that the
 handle reads `▸ 3 agents` shut and `▾ 3 agents` open, that the run's own card
 carries neither — its bottom edge says its model, the way every card's does — that it is the same width either way, that the word

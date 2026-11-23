@@ -473,10 +473,9 @@ the same way, to one row named after the run with a count of what is inside it:
 ```
 
 **The way in is on the band's caption, and nowhere else.** The run's own rule
-reads `▸ code-review:ai-review-agentic 23/23 ╍╍ ▸ 23 agents`, and pressing the
+reads `code-review:ai-review-agentic 23/23 ╍╍ ▸ 23 agents`, and pressing the
 handle after the caption unfolds the run into its twenty-three agents, each on a
-row or a card of its own with its own press. The mark the caption opens with says
-so by turning ▾.
+row or a card of its own with its own press. The handle says so by turning ▾.
 
 One place, because there is only one row of the drawing that is about the run
 rather than about the agents in it, and that is the rule naming it. The count
@@ -510,7 +509,7 @@ scrolling had no way to know whose they were.
 So the run is drawn one step in, behind a gutter of its own:
 
 ```
-╍╍╍┬╍╍╍╍ ▾ code-review:ai-review-agentic 23/23 ↻3 ╍╍ ▾ 23 agents ╍╍╍╍╍
+╍╍╍┬╍╍╍╍ code-review:ai-review-agentic 23/23 ↻3 ╍╍ ▾ 23 agents ╍╍╍╍╍
   ╎├▌✔ inflight claim  ✔ 1  ✔ 2  ✔ 3       15.1s  ∑15k  Haiku 4.5
   ╎├▌✔ context  ✔ 1  ✔ 2  ✔ 3              3m21s  ∑55k   Opus 4.8
   ╎╰▌✔ lead  ✔ 1  ✔ 2                       4.5s  ∑11k   Opus 4.8
@@ -629,8 +628,8 @@ mark did nothing.
 A nested run's caption carries a handle:
 
 ```
-╌╌╌╌╌╌╌╌╌ ▸ code-review:ai-review 3/3 ╌╌ ▸ 3 agents ╌╌╌╌╌╌╌╌╌
-╌╌╌╌╌╌╌╌╌ ▾ code-review:ai-review 3/3 ╌╌ ▾ 3 agents ╌╌╌╌╌╌╌╌╌
+╌╌╌╌╌╌╌╌╌ code-review:ai-review 3/3 ╌╌ ▸ 3 agents ╌╌╌╌╌╌╌╌╌
+╌╌╌╌╌╌╌╌╌ code-review:ai-review 3/3 ╌╌ ▾ 3 agents ╌╌╌╌╌╌╌╌╌
 ```
 
 It went through two worse versions first. The mark on the name was the whole
@@ -648,6 +647,14 @@ in the two places a reader would try it — and, opened, `▾ 3 agents`, which i
 that sentence with its state changed rather than a different sentence. Shut, it
 is the way in; open, it is the way back, which matters because opening the run
 spends the other way in: the row that read `▸ 3 agents` becomes the three agents.
+
+The name used to open with a `▸` of its own as well — the engine's mark, kept
+because it did the same as the handle — and turned `▾` with it. Two marks on one
+heading read as two controls, and a reader pressing the first one opened the
+run's list of agents rather than unfolding the run, since the name is where that
+press has always gone. The engine's mark is taken off the name in every heading
+now, as it already was in a card's source and a dialog's title, and the handle
+is the only mark there is.
 
 It stands clear of the caption with two strokes of the rule between them. Set
 hard against the count it read as a fourth field of the caption — mark, name,
@@ -676,7 +683,7 @@ run's own work in the gaps, and a single bar from the first start to the last
 end would draw over an hour the nested run spent not running.
 
 ```
-╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍ ▸ code-review:ai-review-agentic 23/23 ↻3 ╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+╍╍╍╍╍╍╍╍╍╍╍╍╍ code-review:ai-review-agentic 23/23 ↻3 ╍╍ ▸ 23 agents ╍╍╍╍╍╍╍╍╍╍╍╍╍
  ✔ code-review:ai-review-agent…   ███████            done  11m0…  ∑ 292.2k  Opus 4.8
  ✔ code-review:ai-review-agent…           ███        done  4m06s  ∑ 91.4k   Opus 4.8
  ✔ code-review:ai-review-agent…                ████   done  5m54s  ∑ 198k    Opus 4.8

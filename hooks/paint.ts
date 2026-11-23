@@ -6380,7 +6380,8 @@ function paintPhaseHead(
   ]
   const used = 2 + Math.min(room, widthOf(fields, PHASE_GAP))
 
-  const middle = x + Math.floor((width - x - used) / 2)
+  // The rule starts a cell in from `x`, so the middle is the rule's.
+  const middle = x + 1 + Math.floor((width - x - 1 - used) / 2)
   const at = centred ? Math.max(x, Math.min(middle, width - used - reserve)) : x
 
   // Cleared, a blank either side included, since a centred heading is set into
