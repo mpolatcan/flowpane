@@ -1708,3 +1708,20 @@ test('a call list longer than the dialog carries one heavy thumb on a light trac
 
   expect(track).toMatch(/^┃+│+$/)
 })
+
+test('the open tab is framed in heavy strokes, and the others are their names on the rule', () => {
+  const rows = shown(pathRun('Review the file.', 4))
+  const tabs = rows.find(row => row.includes('Prompt') && row.includes('Calls')) ?? ''
+
+  expect(tabs).toMatch(/━┫ [^┣]*Calls[^┣]* ┣━/)
+  expect(tabs).toContain('─ Prompt ─')
+  // The dialog's own joints stand at either end; between them, no light bracket.
+  expect(tabs.trim().slice(1, -1)).not.toMatch(/[\u2524\u251c]/)
+})
+
+test('the ways out of a dialog are bracketed alike, a half-stroke each side', () => {
+  const text = rowsOf(opened({ id: 'way', input: 'command: ls', result: 'total 0' })).join('\n')
+
+  expect(text).toContain('╴◂ Back╶')
+  expect(text).toContain(`╴${CLOSE_MARK}╶`)
+})

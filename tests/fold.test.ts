@@ -1024,7 +1024,7 @@ test('a dialog opened on one trip of a loop carries every trip of it', () => {
   // The one being read is bracketed rather than coloured, in the brackets the
   // tabs mark their open one with: a press target is drawn as a Button, and a
   // Button throws away every colour painted into its cells.
-  expect(strip).toContain('┤ ✔ 3 ├')
+  expect(strip).toContain('┫ ✔ 3 ┣')
 })
 
 test('a trip on the strip is pressed by its number, with its mark outside the press', () => {
@@ -1051,7 +1051,7 @@ test('a strip too narrow for every trip shows a window and steps to the rest', (
   // — the reader walks to them.
   expect(strip).toContain('◂')
   expect(strip).toContain('▸')
-  expect(strip).toContain('┤ ✔ 3 ├')
+  expect(strip).toContain('┫ ✔ 3 ┣')
   expect(strip).not.toContain('✔ 1')
   expect(strip).not.toContain('✔ 6')
 
@@ -1065,7 +1065,7 @@ test('the window on a narrow strip keeps the end of the loop in view', () => {
   // Outward from the trip being read, the later ones taken first: a loop is
   // read for how it ended, so a reader who opened the first trip is shown what
   // came after it rather than the blank either side of one number.
-  expect(strip).toContain('┤ ✔ 1 ├')
+  expect(strip).toContain('┫ ✔ 1 ┣')
   expect(strip).toContain('✔ 2')
   expect(strip).toContain('▸')
   expect(strip).not.toContain('◂')
@@ -1112,7 +1112,7 @@ test('a dialog with nothing recorded says so and keeps the shelf of trips over i
 
   const rows = rowsOf(canvas)
   const said = rows.findIndex(row => row.includes('No transcript for this agent'))
-  const strip = rows.findIndex(row => row.includes('┤ ✔ 3 ├'))
+  const strip = rows.findIndex(row => row.includes('┫ ✔ 3 ┣'))
 
   // An empty dialog over a node that was just pressed reads as a dialog that
   // did not open, so it says which of the two it is.

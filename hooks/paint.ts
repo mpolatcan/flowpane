@@ -5465,9 +5465,7 @@ function paintSettings(c: Canvas, options: PaintOptions, hotspots: Hotspot[]): R
     edge,
   )
 
-  c.put(closeX, y, 0x20, edge)
-  c.put(closeX + 1, y, CLOSE_MARK, mix(COLORS.dim, COLORS.text, 0.4))
-  c.put(closeX + 2, y, 0x20, edge)
+  paintControl(c, closeX, y, String.fromCodePoint(CLOSE_MARK), edge)
   hotspots.push({ agentId: SETTINGS_CLOSE, x: closeX, y, w: 3 })
 
   const at = x + 2 + SETTING_NAME_W
@@ -5622,9 +5620,7 @@ function paintAbout(c: Canvas, options: PaintOptions, hotspots: Hotspot[]): Rect
     rule,
   )
 
-  c.put(closeX, y, 0x20, rule)
-  c.put(closeX + 1, y, CLOSE_MARK, mix(COLORS.dim, COLORS.text, 0.4))
-  c.put(closeX + 2, y, 0x20, rule)
+  paintControl(c, closeX, y, String.fromCodePoint(CLOSE_MARK), rule)
   hotspots.push({ agentId: ABOUT_CLOSE, x: closeX, y, w: 3 })
 
   let lead = true
@@ -7708,12 +7704,11 @@ function paintPassStrip(
       break
     }
 
-    // The same brackets the tabs mark their open one with, in the same places:
+    // The same frame the tabs mark their open one with, in the same places:
     // the strip never shifts under the pointer, so picking along it is picking
     // along a row of fixed targets.
     if (index === openAt) {
-      c.put(at - 2, y, 0x2524, COLORS.accent)
-      c.put(at + w + 1, y, 0x251c, COLORS.accent)
+      frameOpen(c, at - 2, at + w + 1, y)
     }
 
     c.put(at - 1, y, 0x20, rule)
@@ -7881,9 +7876,7 @@ function paintDetail(
   // mark at the dialog's own corner rather than a word in the footer under the
   // drawing. Three cells, as the scroll arrows are: the glyph is one cell and a
   // one-cell target is one cell to miss.
-  c.put(closeX, headY, 0x20, edge)
-  c.put(closeX + 1, headY, CLOSE_MARK, mix(COLORS.dim, COLORS.text, 0.4))
-  c.put(closeX + 2, headY, 0x20, edge)
+  paintControl(c, closeX, headY, String.fromCodePoint(CLOSE_MARK), edge)
   hotspots.push({ agentId: DETAIL_CLOSE, x: closeX, y: headY, w: 3 })
 
   // Opened out of a nested run's list, the dialog says so and offers the way
@@ -8163,12 +8156,25 @@ function paintBack(
     return
   }
 
-  for (let cell = x + 1; cell <= x + 2 + cells(back); cell++) {
-    c.put(cell, y, 0x20, edge)
-  }
-
-  c.text(x + 2, y, back, mix(COLORS.dim, COLORS.text, 0.4))
+  paintControl(c, x + 1, y, back, edge)
   hotspots.push({ agentId: key, x: x + 2, y, w: cells(back) })
+}
+
+/**
+ * A control set into a dialog's top rule: its label, with the rule stopped a
+ * half-stroke short of it either side.
+ *
+ * `◂ Back` and `✕` were set in gaps of blank cells, and a gap in a rule reads as
+ * a rule broken off rather than as something placed in it. Ending the rule on a
+ * half-stroke each side brackets the label the same way for every control on
+ * every dialog, so the two ways out of a call read as one kind of thing, and
+ * a word set into the rule that is a heading is told from one that is a
+ * button by its ends.
+ */
+function paintControl(c: Canvas, x: number, y: number, label: string, stroke: Rgb): void {
+  c.put(x, y, 0x2574, stroke)
+  c.text(x + 1, y, label, mix(COLORS.dim, COLORS.text, 0.4))
+  c.put(x + 1 + cells(label), y, 0x2576, stroke)
 }
 
 /**
@@ -8279,9 +8285,7 @@ function paintRun(
     edge,
   )
 
-  c.put(closeX, rect.y, 0x20, edge)
-  c.put(closeX + 1, rect.y, CLOSE_MARK, mix(COLORS.dim, COLORS.text, 0.4))
-  c.put(closeX + 2, rect.y, 0x20, edge)
+  paintControl(c, closeX, rect.y, String.fromCodePoint(CLOSE_MARK), edge)
   hotspots.push({ agentId: DETAIL_CLOSE, x: closeX, y: rect.y, w: 3 })
 
   if (ruleY > rect.y) {
@@ -8488,9 +8492,7 @@ function paintCall(
 
   paintBack(c, rect.x, rect.y, closeX, edge, CALL_BACK, hotspots)
 
-  c.put(closeX, rect.y, 0x20, edge)
-  c.put(closeX + 1, rect.y, CLOSE_MARK, mix(COLORS.dim, COLORS.text, 0.4))
-  c.put(closeX + 2, rect.y, 0x20, edge)
+  paintControl(c, closeX, rect.y, String.fromCodePoint(CLOSE_MARK), edge)
   hotspots.push({ agentId: DETAIL_CLOSE, x: closeX, y: rect.y, w: 3 })
 
   if (ruleY > rect.y) {
@@ -9287,6 +9289,29 @@ function markSpot(phase: string, x: number, y: number, left: number): Hotspot {
  * number loose on the end of it, next to `Prompt` and `Response`, which have
  * none.
  */
+const HEAVY_ACROSS = 0x2501
+
+/**
+ * The open one of a row of tabs or trips: heavy brackets in the accent at
+ * `left` and `right`, with a cell of heavy rule leading into each.
+ *
+ * A light bracket in the accent was one cell each side, in a colour the eye had
+ * to find along a grey rule. Drawn heavy, it is the one weighted thing on the
+ * row and is read before the names are. The lead-ins are drawn only over the
+ * rule itself, so they never land on a scroll arrow, the air beside one, or
+ * the dialog's own border.
+ */
+function frameOpen(c: Canvas, left: number, right: number, y: number): void {
+  for (const x of [left - 1, right + 1]) {
+    if (c.at(x, y) === LIGHT.across) {
+      c.put(x, y, HEAVY_ACROSS, COLORS.accent)
+    }
+  }
+
+  c.put(left, y, 0x252b, COLORS.accent)
+  c.put(right, y, 0x2523, COLORS.accent)
+}
+
 function paintTabs(
   c: Canvas,
   x: number,
@@ -9329,8 +9354,7 @@ function paintTabs(
     }
 
     if (i === on) {
-      c.put(at - 2, y, 0x2524, COLORS.accent)
-      c.put(at + w + 1, y, 0x251c, COLORS.accent)
+      frameOpen(c, at - 2, at + w + 1, y)
     }
 
     c.put(at - 1, y, 0x20, rule)
