@@ -34,7 +34,7 @@ export const MAINTAINER = 'Mutlu Polatcan'
  * holds it to the day the release before it went out, or a later one: two
  * releases can go out on one day, and 0.6.0, 0.7.0 and 0.8.0 did.
  */
-export const RELEASED = '20-11-2026'
+export const RELEASED = '23-11-2026'
 
 /**
  * The version this build was written with, and what the pane falls back to.
@@ -53,7 +53,7 @@ export const RELEASED = '20-11-2026'
  * failed, which is the only case where the two can still disagree, and
  * `dev/checkmeta.ts` keeps it honest for that case.
  */
-export const VERSION = '0.11.0'
+export const VERSION = '0.12.0'
 
 /** What the manifest said, once a session has read it. */
 let shipped: string | undefined

@@ -212,12 +212,14 @@ thing its colour says.
 **A card's frame is the exception, and it is drawn in its agent's state.** Done
 is green, running is yellow, failed is red, and an agent the run cut off is a
 grey carried toward the text tone. It is a tint rather than the state's full
-colour: four fifths of the way there from the tone every other border is drawn
+colour: nine tenths of the way there from the tone every other border is drawn
 in, which is enough to be read as green or red or yellow across a pane of twenty
 cards and not enough to make the frame louder than the name it frames. Just over
 half was the first setting and it was too little — a border is one cell of ink
 where a word of the same colour is several, so a hue that reads in a label came
-out as grey in a line glyph.
+out as grey in a line glyph. Four fifths followed, and on the muted palettes,
+where the state colour is already soft, a pane of cards still read as mostly
+grey.
 
 The frame was drawn this way once before and taken out, for three reasons that
 have since been answered. It was the full state colour and it breathed while the

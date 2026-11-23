@@ -298,9 +298,30 @@ function apart(a: Rgb, b: Rgb): number {
  * dark one, so the same rule serves both without a special case.
  */
 function readable(color: Rgb, bg: Rgb, floor: number): Rgb {
+  if (apart(color, bg) >= floor) {
+    return color
+  }
+
   const white = rgb(0xff, 0xff, 0xff)
   const black = rgb(0, 0, 0)
-  const away = apart(white, bg) >= apart(black, bg) ? white : black
+  const up = apart(white, bg) >= apart(black, bg)
+  // Along the colour's own lightness first, which keeps its hue and its
+  // saturation: a green made legible is still the palette's green, only
+  // lighter or darker. Mixing with white or black was the only step once, and
+  // it greyed every colour it moved, so the floor for the roles that carry the
+  // answers was held at 4 rather than 4.5 — at 4.5 the mix pulled `done` and
+  // `model` far enough toward white that they stopped reading as green and cyan.
+  const [h, sat, l] = hslOf(color)
+
+  for (let step = 1; step <= 100; step++) {
+    const moved = fromHsl(h, sat, Math.max(0, Math.min(1, l + (up ? step : -step) / 100)))
+
+    if (apart(moved, bg) >= floor) {
+      return moved
+    }
+  }
+
+  const away = up ? white : black
   let lifted = color
 
   for (let step = 1; step <= 20 && apart(lifted, bg) < floor; step++) {
@@ -308,6 +329,50 @@ function readable(color: Rgb, bg: Rgb, floor: number): Rgb {
   }
 
   return lifted
+}
+
+/** A colour's hue in degrees, and its saturation and lightness from 0 to 1. */
+function hslOf(color: Rgb): [number, number, number] {
+  const [r, g, b] = [(color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff].map(c => c / 255) as [
+    number,
+    number,
+    number,
+  ]
+  const top = Math.max(r, g, b)
+  const low = Math.min(r, g, b)
+  const l = (top + low) / 2
+  const span = top - low
+
+  if (span === 0) {
+    return [0, 0, l]
+  }
+
+  const sat = span / (1 - Math.abs(2 * l - 1))
+  const sixth = top === r ? ((g - b) / span) % 6 : top === g ? (b - r) / span + 2 : (r - g) / span + 4
+
+  return [(sixth * 60 + 360) % 360, sat, l]
+}
+
+/** The colour at a hue, saturation and lightness. */
+function fromHsl(h: number, sat: number, l: number): Rgb {
+  const chroma = (1 - Math.abs(2 * l - 1)) * sat
+  const x = chroma * (1 - Math.abs(((h / 60) % 2) - 1))
+  const m = l - chroma / 2
+  const [r, g, b] =
+    h < 60
+      ? [chroma, x, 0]
+      : h < 120
+        ? [x, chroma, 0]
+        : h < 180
+          ? [0, chroma, x]
+          : h < 240
+            ? [0, x, chroma]
+            : h < 300
+              ? [x, 0, chroma]
+              : [chroma, 0, x]
+  const byte = (v: number) => Math.max(0, Math.min(255, Math.round((v + m) * 255)))
+
+  return rgb(byte(r), byte(g), byte(b))
 }
 
 /**
@@ -319,24 +384,39 @@ function readable(color: Rgb, bg: Rgb, floor: number): Rgb {
  * 4.5 the quiet roles stop being quiet, and the layer that is meant to be read
  * past starts competing with the layer that is meant to be read.
  */
-const FLOOR = 3
+export const FLOOR = 3
 
 /**
- * The floor for the roles that are read rather than looked past.
+ * The floor for the roles that are read rather than looked past: WCAG's bar for
+ * text.
  *
- * Four states, three figures and the accent: what a node's rule says happened,
- * what the run cost, what it ran on, and which node the reader picked. These
- * are the answers a reader opened the pane for, and a couple of the palettes
- * put them barely over the graphics bar — solarized drew `done` and `running`
- * at 3.04 and 3.06 on its light ground, two figures a reader has to lean in
- * for. A point of ratio over the bar costs those palettes a little of their
- * softness and buys back the facts.
- *
- * Not 4.5: the roles are glyphs and short figures against one fixed ground,
- * not paragraphs, and 4.5 pulls a muted palette so far toward its own text
- * colour that `done` and `model` stop being green and cyan.
+ * Four states, three figures, the accent, the text and the dim text: what a
+ * node's rule says happened, what the run cost, what it ran on, which node the
+ * reader picked, and every word the pane writes. It was 4, and 3 for the dim
+ * text, because the only way to lift a colour was to mix it with white or
+ * black, and at 4.5 that pulled a muted palette's `done` and `model` so far
+ * toward white they stopped reading as green and cyan. `readable` moves a
+ * colour along its own lightness now and keeps its hue, so the bar is the one
+ * anyone can check the pane against.
  */
-const READ = 4
+export const READ = 4.5
+
+/**
+ * The floor for the text itself: WCAG's enhanced bar.
+ *
+ * Every other word on the pane is held to `READ`, and the words have to stand
+ * clear of all of them — the cut-off state, the clock, the dim text — or the
+ * steps between them run out. Ten of the twelve palettes put their text past
+ * ten to one already; the two solarized ones put it at 5.6 and 5.0, which left
+ * no room between the text and a cut-off card's frame held to 4.5.
+ */
+export const TEXT_FLOOR = 7
+
+/** The roles held to `FLOOR` rather than `READ`: marks and lines, not words. */
+export const GRAPHIC_ROLES = ['idle', 'wire'] as const
+
+/** The role held to no floor at all: see `track` in `paletteOf`. */
+export const UNLIFTED_ROLES = ['track'] as const
 
 /**
  * How far the edges have to stand off the state tones, in degrees of hue.
@@ -402,13 +482,67 @@ function edgeOf(theme: Theme): Rgb {
   return clearance(theme.purple) >= clearance(theme.cyan) ? theme.purple : theme.cyan
 }
 
+/**
+ * How far apart the three coloured states have to stand, in degrees of hue.
+ *
+ * `done`, `running` and `failed` are told apart by hue first, and a terminal
+ * theme is not drawn against that: gruvbox's green is a yellow-green 19 degrees
+ * from its own gold, and solarized's 22, so a finished card and a working one
+ * were the same colour at a glance and only the mark in the corner differed.
+ */
+export const STATES_APART = 40
+
+/**
+ * A state's colour turned round the wheel, away from `from`, until it stands
+ * `STATES_APART` off it — keeping its saturation and lightness, and turning the
+ * way it already leans so a green that sat too near gold becomes a truer green
+ * rather than an orange.
+ */
+function awayFrom(color: Rgb, from: Rgb): Rgb {
+  if (turn(color, from) >= STATES_APART) {
+    return color
+  }
+
+  const [h, sat, l] = hslOf(color)
+  const [f] = hslOf(from)
+  const lean = ((h - f + 540) % 360) - 180 >= 0 ? 1 : -1
+  let moved = color
+
+  for (let step = 1; step <= 90 && turn(moved, from) < STATES_APART; step++) {
+    moved = fromHsl((h + lean * step + 360) % 360, sat, l)
+  }
+
+  return moved
+}
+
+/**
+ * Palettes already derived, by theme. Lifting a colour walks its lightness a
+ * step at a time and the pane asks for a palette on every theme change and
+ * every settings frame, so each theme is derived once.
+ */
+const derived = new WeakMap<Theme, Palette>()
+
 export function paletteOf(theme: Theme): Palette {
+  const known = derived.get(theme)
+
+  if (known) {
+    return known
+  }
+
+  const palette = derive(theme)
+
+  derived.set(theme, palette)
+
+  return palette
+}
+
+function derive(theme: Theme): Palette {
   const lift = (color: Rgb, floor = FLOOR) => readable(color, theme.bg, floor)
 
   return {
     running: lift(theme.yellow, READ),
-    done: lift(theme.green, READ),
-    failed: lift(theme.red, READ),
+    done: lift(awayFrom(theme.green, theme.yellow), READ),
+    failed: lift(awayFrom(theme.red, theme.yellow), READ),
     // Cut off is neutral, not a failure: an agent the run never let finish did
     // nothing wrong, and a pane that draws it in a red says two different
     // things in one hue. It is the grey carried toward the text tone rather
@@ -421,8 +555,8 @@ export function paletteOf(theme: Theme): Palette {
     // the borders and rules are drawn in, though — a node a reader has to look
     // twice at to tell from the boundary beside it is a node drawn wrong.
     idle: lift(mix(theme.grey, theme.surface, 0.2)),
-    dim: lift(theme.grey),
-    text: lift(theme.fg, READ),
+    dim: lift(theme.grey, READ),
+    text: lift(theme.fg, TEXT_FLOOR),
     accent: lift(theme.blue, READ),
     // The one role that is not lifted. A track is the ground of an empty meter
     // and the tone of a rule: what it has to say is that nothing is there, and
@@ -432,7 +566,11 @@ export function paletteOf(theme: Theme): Palette {
     clock: lift(mix(theme.fg, theme.grey, 0.6), READ),
     spend: lift(theme.purple, READ),
     model: lift(theme.cyan, READ),
-    wire: lift(mix(edgeOf(theme), theme.grey, 0.2)),
+    // The theme's own hue, unmixed. A fifth of grey was mixed in to keep the
+    // wires under the cards, and on a palette whose blue is already muted —
+    // gruvbox's is a grey-green — it left every line between two phases the
+    // same grey as the boundaries, so a drawing that was all joins read as flat.
+    wire: lift(edgeOf(theme)),
   }
 }
 

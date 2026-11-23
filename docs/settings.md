@@ -35,36 +35,45 @@ the state is one colour wherever it is said.
 Every derived role is then held to a contrast floor. Terminal themes are not
 designed against one: on nord, dracula and solarized the theme's own grey sits
 under WCAG's 3.0 against the theme's own ground, and the roles built from it —
-the idle tone, the dim text, the stopped red — sat under it too, which put the
+the idle tone, the dim text, the stopped grey — sat under it too, which put the
 tone that says *this phase was skipped* at 2.66 on solarized. A role that falls
-short is mixed away from the ground a twentieth at a time until it clears its
-floor, so a theme that is already legible keeps its colours exactly and one that
-is not gives up the least it can.
+short is moved along its own lightness, a hundredth at a time, until it clears
+its floor, so a theme that is already legible keeps its colours exactly and one
+that is not gives up the least it can.
 
-Away from the ground, not toward the foreground. Mixing a role toward the
-theme's own foreground drags its hue along: on solarized-light, whose foreground
-is a dark slate, the yellow that says *running* came out `#827a40`, an olive
-that reads as a third grey rather than as a warning. Mixed toward black instead
-— white on a dark ground, black on a light one — the same role comes out
-`#916e00`, which is the theme's yellow with the light taken out of it. The hue
-is what the role means; the lift is only how far it stands off the page.
+Along its own lightness, so the hue and the saturation stay. The lift used to be
+a mix — first toward the theme's foreground, which on solarized-light dragged
+the running yellow to `#827a40`, an olive that read as a third grey; then toward
+white or black, which kept the hue but still greyed the colour on the way. That
+mix is why the floors were set low: at 4.5 it pulled a muted palette's `done`
+and `model` so far toward white that they stopped reading as green and cyan.
+Held in lightness instead, solarized's green comes out a lighter green and its
+cyan a lighter cyan. The mix is kept only as the last step, for a colour no
+lightness clears the floor with.
 
-Two floors, because the roles do two different jobs. The ones a reader reads —
-the four states, the clock, the token count, the model, the accent — clear 4.0.
-The ones a reader reads past — the idle tone, the dim text, the wire — clear
-3.0. Both are under the 4.5 wanted for body text, because the pane is a drawing:
-held to 4.5 the quiet roles stop being quiet, and the layer meant to be read
-past starts competing with the layer meant to be read. Before the second floor
-the meaning-carrying roles sat where the quiet ones did — solarized-light's
-model at 3.02 and its done green at 3.04, nord's failed at 3.05, monokai's
-stopped at 3.10 — which is legible in the sense that a reader can find the cell,
-and not in the sense that they can tell green from grey at a glance.
+Three floors, because the roles do three jobs:
+
+| Floor | Roles | Why |
+| --- | --- | --- |
+| 7.0 | the text | Every other word stands somewhere between the text and the ground, and they need room to stand apart from it. The two solarized palettes put their text at 5.6 and 5.0, which left a cut-off card's frame held to 4.5 nearly the colour of the words inside it. |
+| 4.5 | the four states, the clock, the token count, the model, the accent, the dim text | Everything else the pane writes in words: WCAG's bar for body text. These were held to 4.0, and the dim text to 3.0, while the lift greyed what it moved. |
+| 3.0 | the idle tone, the wire | Marks and lines rather than words: WCAG's bar for a graphic. |
 
 The one role with no floor is the track — the ground of an empty meter and the
 tone of a rule. What it has to say is that nothing is there, and a track a
 reader can see clearly is a meter that looks half full when it is empty. Across
 all twelve themes it is the only role that measures under 3.0. `bun
-dev/contrast.ts` prints the table.
+dev/contrast.ts` prints the table and exits non-zero when a role falls short.
+
+The states are held apart on the wheel as well as off the ground. `done`,
+`running` and `failed` are told apart by hue first, and a terminal theme is not
+drawn against that: gruvbox's green is a yellow-green 19 degrees from its own
+gold, and solarized's 22, so a finished card and a working one were one colour
+at a glance and only the mark in the corner differed. Where the green or the red
+stands under 40 degrees from the yellow it is turned round the wheel, the way it
+already leans, until it stands 40 off — keeping its saturation and lightness —
+so gruvbox's green becomes a truer green rather than an orange. Ten of the
+twelve palettes clear 40 as they ship, and two move.
 
 Twelve of them ship: `tokyo-night`, `catppuccin`, `gruvbox`, `nord`, `dracula`,
 `solarized`, `monokai`, `vscode-dark` and `insider-one` on dark grounds,
@@ -89,7 +98,9 @@ agent is running* and *this one broke* are two shades of the same orange says
 neither.
 
 The edges are the fourth. They were the theme's blue mixed a fifth of the way to
-its grey, which is a blue line on the ten palettes whose blue is blue and a
+its grey; they are the theme's hue unmixed now, because on a palette whose blue
+is already muted — gruvbox's is a grey-green — the fifth of grey left every line
+between two phases the colour of the boundaries. That was a blue line on the ten palettes whose blue is blue and a
 red-orange line on the two whose accent is a brand colour — nineteen degrees off
 their own gold and their own red, close enough that a wire on the light one read
 as a row of small failures. An edge is not a state: what it has to say is that
@@ -106,8 +117,8 @@ that table under the contrast one.
 The light ones needed no special case. Every role is checked against the theme's
 own ground and lifted away from it, so the arithmetic never assumes which way
 round the two are: `readable` compares white and black against the ground and
-mixes toward whichever of them the ground is further from. What changes on a
-light ground is only which way that lift runs.
+moves the colour's lightness toward whichever of them the ground is further
+from. What changes on a light ground is only which way that lift runs.
 
 The choice is remembered per session in the plugin's own store, and the ◐ button
 walks the list. `/flowpane theme` prints it with `(on)` against the current one.
