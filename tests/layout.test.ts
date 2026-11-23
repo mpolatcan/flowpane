@@ -15,7 +15,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { Canvas } from '../hooks/canvas'
 import type { AgentRow, RunState } from '../hooks/journal'
-import { CARD_H, extentOf, layout, resolveOrientation, scrolled } from '../hooks/layout'
+import { barRowsOf, CARD_H, extentOf, layout, resolveOrientation, scrolled } from '../hooks/layout'
 import { paint } from '../hooks/paint'
 
 const STARTED = 1_700_000_000_000
@@ -528,7 +528,9 @@ test('across, the phases still ahead take a strip at the end, not a row under it
   // card, beside nothing.
   const column = lines.map(line => line.slice(view.ahead?.x ?? 0))
   const head = column.findIndex(row => row.includes('Verify'))
-  const top = Math.min(...view.lanes.flatMap(l => l.nodes.map(n => n.y)))
+  // Where the first card's frame is painted, which is under the headings
+  // wherever the drawing was moved down to stand in the middle of the body.
+  const top = lines.findIndex(line => line.slice(view.lanes[0]!.x).startsWith('\u256d'))
 
   expect(head).toBe(top)
   expect(column[head]).toMatch(/^. \u25cb Verify/)
@@ -1207,4 +1209,39 @@ test('across, a strip with more phases ahead than rows stops at its foot on a he
   expect(strip.length).toBeLessThan(6)
   expect(strip[strip.length - 1]).toBe(`${7 - strip.length} more`)
   expect(strip.slice(0, -1)).toEqual(['Verify', 'Escalate', 'Report', 'Publish', 'Notify'].slice(0, strip.length - 1))
+})
+
+test('a run shorter than the body stands in the middle of it, headings and all, in every layout', () => {
+  const run = runOf([
+    ['Survey', ['paint', 'layout']],
+    ['Review', ['paint']],
+  ])
+
+  for (const orientation of ['horizontal', 'vertical', 'timeline', 'list'] as const) {
+    const canvas = new Canvas(140, 60)
+
+    paint(canvas, run, { nowMs: STARTED + 20_000, tick: -1, orientation })
+
+    const rows: string[] = []
+
+    for (let y = 0; y < canvas.rows; y++) {
+      let line = ''
+
+      for (let x = 0; x < canvas.columns; x++) {
+        line += String.fromCodePoint(canvas.at(x, y) || 0x20)
+      }
+
+      rows.push(line)
+    }
+
+    const bar = barRowsOf(canvas.rows, canvas.columns)
+    const drawn = rows.map((row, y) => (y >= bar && row.trim() !== '' ? y : -1)).filter(y => y >= 0)
+    const above = Math.min(...drawn) - bar
+    const below = canvas.rows - 1 - Math.max(...drawn)
+
+    // The blank rows split above and below the drawing rather than pooling
+    // under it, give or take the row an odd split leaves over.
+    expect(above).toBeGreaterThan(10)
+    expect(Math.abs(above - below)).toBeLessThanOrEqual(3)
+  }
 })

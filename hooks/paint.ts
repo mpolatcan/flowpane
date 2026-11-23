@@ -36,6 +36,8 @@ import {
   entryOf,
   exitOf,
   extentOf,
+  lifted,
+  liftOf,
   INSET_W,
   layout,
   type LaneBox,
@@ -3520,6 +3522,10 @@ function paintPane(c: Canvas, run: RunState, options: PaintOptions): PaintResult
   const atY = Math.max(0, Math.min(spanY, Math.round(seat.y)))
 
   view = scrolled(view, -atX, -atY)
+  // A drawing the body holds whole stands in the middle of it. See `liftOf`.
+  view = lifted(view, spanY > 0 ? 0 : liftOf(view, bodyFoot))
+
+  const windowTop = view.orientation === 'horizontal' ? bodyTop + (view.lift ?? 0) : bodyTop
 
   const lanes = orderedLanes(run, opened)
   const carries = edgesOf(run)
@@ -3551,6 +3557,7 @@ function paintPane(c: Canvas, run: RunState, options: PaintOptions): PaintResult
     passes,
     hotspots,
     options.runPicker,
+    view.orientation === 'horizontal' ? view.lift ?? 0 : 0,
   )
 
   paintAheadCaption(c, view, overOf(run))
@@ -3569,7 +3576,7 @@ function paintPane(c: Canvas, run: RunState, options: PaintOptions): PaintResult
   // past the body are the stubs where a wire leaves the last card — and the
   // rail, drawn last, takes back whatever lands under it. Clipping the width as
   // well cut those stubs and left an arm pointing at nothing.
-  c.window(0, bodyTop, c.columns, bodyFoot - bodyTop)
+  c.window(0, windowTop, c.columns, bodyFoot - windowTop)
 
   // The flat list, and not merely a stack of one-row nodes: a band of rows still
   // has gutters to route through and still says which node fed which, so it is
@@ -6588,8 +6595,13 @@ function paintTimeline(
   }
 
   const footed = measure(false).spanX > 0
-  const { aheadRows, floor, top, shown, spanY, railed, width, labelW, axisX, facts, axisW, factsX, axisSpan, spanX } =
+  const { aheadRows, floor, top: measuredTop, shown, spanY, railed, width, labelW, axisX, facts, axisW, factsX, axisSpan, spanX } =
     measure(footed)
+  // A trace the body holds whole stands in the middle of it, ruler and all, the
+  // way the graph layouts do: see `liftOf`. The ruler, the window and every
+  // band read their row from `top`, so moving it moves the whole drawing. The
+  // phases named under the trace follow it, so they count as part of it.
+  const top = measuredTop + (spanY > 0 ? 0 : Math.max(0, Math.floor((shown - content - (aheadRows > 0 ? aheadRows + 1 : 0)) / 2)))
 
   // While the run is live the window looks where the work is, and a reader who
   // scrolled away is left there until the run enters a different phase: the
@@ -10134,8 +10146,9 @@ function paintHeader(
   passes: Map<string, Pass> = new Map(),
   hotspots?: Hotspot[],
   picker?: 'shut' | 'open',
+  lift = 0,
 ): void {
-  const barRows = Math.max(2, headerRows - (orientation === 'horizontal' ? 2 : 1))
+  const barRows = Math.max(2, headerRows - lift - (orientation === 'horizontal' ? 2 : 1))
   const quiet = quietOf(c.background)
 
   paintBar(c, run, nowMs, tick, barRows, columns, hotspots, picker)
@@ -10152,8 +10165,8 @@ function paintHeader(
     return
   }
 
-  const captionRow = barRows
-  const ruleRow = barRows + 1
+  const captionRow = barRows + lift
+  const ruleRow = captionRow + 1
   const borders = bordersOf(lanes, orientation)
 
   for (let x = 0; x < columns; x++) {

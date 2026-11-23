@@ -139,7 +139,12 @@ test('each phase heading starts where its column does, on its state mark', () =>
   paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'horizontal' })
 
   const view = layout(run, canvas.columns, canvas.rows, 'horizontal', 0)
-  const caption = rowsOf(canvas)[barRowsOf(canvas.rows, canvas.columns)] ?? ''
+  // The headings stand on one row under the bar, moved down with the drawing
+  // where the body is taller than it.
+  const caption =
+    rowsOf(canvas).find(
+      (row, y) => y >= barRowsOf(canvas.rows, canvas.columns) && row.includes(view.lanes[0]!.phase),
+    ) ?? ''
 
   expect(view.orientation).toBe('horizontal')
 
