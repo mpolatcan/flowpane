@@ -4538,7 +4538,9 @@ function paintAheadBand(
 
 /**
  * One heading of a phase nothing entered, across the width given: a dashed rule
- * with the heading set into it, flush left where every phase heading stands.
+ * with the heading set into it, flush left. A heading over cards stands over the
+ * middle of them; this one has no cards to stand over, so it keeps the place
+ * every heading had before they were centred, and the strip reads as a list.
  */
 function paintGhostHeading(c: Canvas, y: number, width: number, lead: number, facts: PhaseFacts): void {
   if (y < 0 || y >= c.rows) {
