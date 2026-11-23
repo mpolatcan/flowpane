@@ -334,7 +334,7 @@ spent should say which run this is.
 
 ## The phase names
 
-Laid out across, one heading per phase, set flush left over the column it names:
+Laid out across, one heading per phase, set over the middle of the column it names:
 the phase's state mark, its name, its landed count, — where a phase looped — the
 number of passes it took, and how long it has taken. The heading may run on over
 the gutter after its column, up to two cells short of the next heading. Under
@@ -497,29 +497,35 @@ seventeen hundred cells of the loudest ink the drawing has, saying of each band
 that it was finished, which is the one thing the row of `✔` marks underneath
 already said. The stroke is for the band a reader is watching.
 
-**A heading, read down one column.** The heading is the phase's state mark, its
-name, how many of its agents have landed and how long it took, two cells apart,
-set a cell in from the left edge, with the rule running from it to the right
-edge. The mark is the one a card carries — a spinner while any agent is
-working, `✔` once all have landed, `✖` if any failed, `⊘` where one was cut
-off or the run stopped before the phase began, `○` for a phase still ahead — so
-the state of the whole run reads down that first column before a word is read,
-the way the state of a band reads across its cards' marks. The time is first
-start to last landing, and to now for a phase still working.
+**A heading, over the cards it heads.** The heading is the phase's state mark,
+its name, how many of its agents have landed and how long it took, two cells
+apart. Down the pane it is set into the band's rule over the middle of the
+band's cards, with the rule running from it to both edges; across, it stands
+over the middle of its column. The mark is the one a card carries — a spinner
+while any agent is working, `✔` once all have landed, `✖` if any failed, `⊘`
+where one was cut off or the run stopped before the phase began, `○` for a
+phase still ahead. The time is first start to last landing, and to now for a
+phase still working.
 
-It replaced a name centred in the rule with its count trailing it. Centred, a
-stack of bands put every name in the middle of a rule running off both sides,
-and the bands read as dividers with words in them rather than as the steps of
-the run; the state of a phase was only the colour of its name. Centring also
-had to be defended down the pane, where the cards are centred and the spine
-runs down the middle of every rule — the one column a centred caption wants —
-and for a long while the caption walked to whichever end came free first, which
-put four bands of one drawing at four different columns. Flush left there is
-nothing to defend: every heading starts in the same column whatever crosses its
-rule.
+It was flush left, a cell in from the edge, for a long time, and before that a
+name centred in the rule with its count trailing it. Centred, a stack of bands
+put every name in the middle of a rule running off both sides, the state of a
+phase was only the colour of its name, and the caption walked along the rule to
+whichever stretch the spine left free, which put four bands of one drawing at
+four different columns. Flush left answered both: the mark led the heading, and
+every heading started in one column whatever crossed its rule.
+
+It is centred again, over the cards rather than the rule, because the cards
+spread now. A band with room to spare puts it between its cards and either side
+of them, so its cards span the pane, and a heading against the left edge stood
+over the margin of a drawing whose work was in the middle of it. The mark still
+leads, so the state is the first thing in each heading, and the caption still
+does not walk: it clears the cells it stands in and the one wire under it gives
+way for that row, so every band's heading stands exactly over its cards.
 
 The same heading stands over each column across the pane and in the gutter of a
-timeline, so a reader who crosses layouts meets one device. In the flat list it
+timeline, so a reader who crosses layouts meets one device. The timeline and
+the list set it flush left, having no cards to stand over. In the flat list it
 stands two cells in, over the marks of the rows under it, leaving the first two
 columns to the rails and forks the list draws there.
 
@@ -657,13 +663,21 @@ same distance from the one beside it and the pane's spare width at the two
 ends, so the first phase's section ran twenty cells to the left of a card
 sitting at its right-hand edge and the last one did the mirror of it.
 
+Down the pane a band does the same with its own width. What the band does not
+need is shared between its cards and either side of them, up to a card's width
+apiece. Packed two cells apart and centred, a band of three in a wide pane was a
+clump in the middle with a third of the pane blank on either side; spread
+without a cap, a band of two in a very wide one put its cards at opposite edges,
+and a pair stopped reading as a pair. A band wider than the pane keeps two
+cells between its cards, which is the narrowest gap a wire can run down.
+
 The boundary between two phases is drawn halfway between the cards either side
 of it, which is what makes the section symmetrical: as much room to the left of
 its cards as to the right. Every other line in the gutter is placed off that —
 the barrier's spine sits between the boundary and the cards it feeds, not at a
 fixed offset from the card. A card and the length of rule that fills as its
-agents land are then centred on the same middle, the heading starts where the
-column does, and a reader can tell which phase a card is in by looking at it
+agents land are then centred on the same middle, the heading stands over the
+middle of the column, and a reader can tell which phase a card is in by looking at it
 rather than by counting boundaries.
 
 A card is twenty-eight columns. Past about thirty the frame grows and the words

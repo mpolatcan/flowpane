@@ -758,7 +758,15 @@ function stackLayout(lanes: Lane[], columns: number, body: number, headerRows: n
       : 1
     const y = lane.folds.length === 0 ? top : top + lift
     const shown = Math.max(1, lane.folds.length)
-    const width = shown * colW + Math.max(0, shown - 1) * nodeGap
+    // The width the band has to spare goes between its cards and either side
+    // of them in equal parts, up to a card's width apiece. Packed two cells
+    // apart and centred, a band of three in a wide pane was a clump in the
+    // middle with a third of the pane blank on either side, and the across
+    // layout already gives each phase an equal share of the width. The cap is
+    // what keeps a band of two a pair rather than two cards at opposite edges.
+    const spare = columns - shown * colW
+    const gap = Math.max(nodeGap, Math.min(colW, Math.floor(spare / (shown + 1))))
+    const width = shown * colW + Math.max(0, shown - 1) * gap
     // Centred, which is what makes a fan read as a fan — and what a band of one
     // needs, since a lone card pinned to the left edge of a pane it has all of
     // is a drawing that ran out rather than one placed. A band wider than the
@@ -785,7 +793,7 @@ function stackLayout(lanes: Lane[], columns: number, body: number, headerRows: n
       busAt: lift > 1 ? top : Math.max(0, top - 1),
       nodes: lane.folds.map((fold, i) => ({
         ...boxOf(fold),
-        x: left + i * (colW + nodeGap),
+        x: left + i * (colW + gap),
         y,
         w: colW,
         h: nodeH,

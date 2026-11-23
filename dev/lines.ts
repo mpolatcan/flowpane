@@ -57,6 +57,9 @@ const BEHIND: Record<number, { dx: number; dy: number }> = {
 
 const blank = (code: number) => code === 0 || code === 0x20
 
+/** The heavy straights: see where the arms are checked. */
+const HEAVY = new Set([0x2501, 0x2503])
+
 /**
  * The block elements: a bar on the timeline, a card's own rule down its left
  * edge, the scrollbar's thumb. A fill rather than a word — nothing in one is
@@ -259,6 +262,14 @@ function loose(c: Canvas, rows: Set<number>): Fault[] {
       const arms = armsOf(code)
 
       if (arms === undefined || code === HOP) {
+        continue
+      }
+
+      // The heavy straights are a recorded carry's stroke, and also a phase
+      // rule's filled length, the timeline's critical path and the open card's
+      // frame, none of which is a line that has to reach anything. Only a piece
+      // laid by the line-drawing calls is a wire.
+      if (HEAVY.has(code) && !/^(line|cross) canvas\.ts/.test(writers.get(y * c.columns + x) ?? '')) {
         continue
       }
 

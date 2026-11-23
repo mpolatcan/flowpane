@@ -19,16 +19,20 @@ and the three kinds are drawn differently on purpose:
   characters, so a prompt that quotes its source late can hide the overlap and
   go unfound — which is the safe way to be wrong, since the carry below still
   says the same thing more weakly.
-- **Carry** — a dashed edge, read off the labels. Dashed, because a label
-  convention is a hint, not a record — and dashed is now the only thing on the
-  pane that is, which is why the border between two phases stopped being. When every agent of the later lane
+- **Carry** — a light edge, read off the labels; one the text proves is drawn
+  heavy. Light, because a label convention is a hint, not a record. It was
+  dashed, and since nearly every carry in a run is read off labels, nearly every
+  wire on the pane was a dotted line — in the stroke the pane keeps for work
+  that is not this run's own: the phases it skipped, the ones still ahead, a
+  nested run. A guessed carry is this run's own work, so it is a whole line, and
+  the weight is what says how sure the pane is of it. When every agent of the later lane
   has a named source and every agent of the earlier one feeds something, the
   barrier steps back and the carries draw alone.
 - **Pass** — an edge inside one lane, from one attempt at a piece of work to the
   next attempt at the same piece. A loop that keeps digging at one file until a
   pass turns up nothing new spawns every attempt into the same phase, so the lane
   holds a row of agents that look like siblings and are not. Drawn in whichever
-  register earned it, solid or dashed, but as a short hop between neighbours —
+  weight earned it, heavy or light, but as a short hop between neighbours —
   both ends are in the same band, so there is no gutter to route through and none
   is wanted.
 
@@ -185,8 +189,10 @@ the one bus they already look like, which says the same thing and says it once.
 Runs that only meet at a port do not count: that is a join, and a join is what a
 bus would draw there anyway. Edges that run flat across the gutter, node to node
 in the same row, never overlap at all, so a gutter of parallel chains is left
-alone. The spine is dashed like the edges it stands for: a bundle is a way of
-drawing them, not a stronger claim about them.
+alone. The spine is light like the edges it stands for: a bundle is a way of
+drawing them, not a stronger claim about them. A barrier's spine is light as
+well, though the journal states it: its junctions are light, and a heavy spine
+broken by a light tee at every card it feeds reads as a line in pieces.
 
 A bundle needs a line of its own in the gutter, clear of the line the arrowheads
 land on, or its junctions fall on its own heads and rub them out. So the spine
@@ -334,20 +340,18 @@ start reads as a line passing under the card it in fact leaves, and one at the
 end as a line passing over the arrowhead it in fact turns into — which is what
 tells an edge from a line merely crossing the same row.
 
-**The head grows out of a stem.** A dashed run ends on a gap as often as on a
-dash, and a filled triangle hung off a gap reads as a mark dropped beside the
-card rather than as a line arriving at it — `┄▸│`, a lollipop against the card's
-own border. The cell before the point is drawn whole whatever the rest of the
-run is, so the head comes out of a line: `┄─▸│`. Only that cell, and only where
-the run itself put a dash there — a corner in it is a corner, and squaring it
-off would give the turn an arm it does not have.
+**The head grows out of a stem.** A run ends on a whole stroke, so the point
+always comes out of a line. While inferred runs were dashed, a run ended on a
+gap as often as on a dash, and a filled triangle hung off a gap read as a mark
+dropped beside the card — `┄▸│` — so the cell before the point was drawn whole
+as a special case. There are no dashed runs left for it to mend.
 
 Every edge is drawn in one colour, whatever it joins. An edge used to take the
 colours of the two agents at its ends, which put it in the same hue as the
 frames it ran between, and a dim green line beside a green frame reads as part
 of the frame rather than as a line leaving it. What an edge has to say is that
 it is an edge; how the agents at its ends ended is said by the cards. Proven and
-inferred still stay apart by stroke — solid and full against dashed — which is a
+inferred still stay apart by stroke — heavy against light — which is a
 difference between two edges, not between an edge and a card.
 
 `bun dev/edges.ts <transcript dir>` prints all of this for a finished run: the
