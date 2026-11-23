@@ -259,6 +259,16 @@ test('the drawing this run makes overruns the pane both ways', async ($, on) => 
   expect(base.some(line => line.includes('\u25b4'))).toBe(true)
 })
 
+test('the rail along the foot shows where the pane stands as one heavy thumb on a light track', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  const base = await shownRun($, on, clock)
+  const rail = base[railRow(base)]!
+
+  expect(rail).toMatch(/^\u25c2[─━]+\u25b8$/)
+  expect(rail).toContain('─')
+  expect(rail.match(/━+/g)).toHaveLength(1)
+})
+
 test('a wheel over the rail along the foot moves the drawing sideways', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   const base = await shownRun($, on, clock)

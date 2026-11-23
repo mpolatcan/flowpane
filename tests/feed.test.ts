@@ -270,3 +270,16 @@ test('a subagent an agent started is told by the description it was given, or ba
 
   expect(lines.slice(-2)).toEqual([' 5.0s    Develop  started a subagent: review the diff', ' 9.0s    Develop  started a subagent'])
 })
+
+test('a word longer than the strip’s room is broken across lines rather than run past the edge', () => {
+  const path = `/${'x'.repeat(119)}`
+  const run = runOf([agent('Preflight', 'done', [], { verdict: { passed: true, summary: `kept ${path}` }, endedMs: STARTED + 4_000 })])
+  const { lines } = rows(run, 80, 30, 6)
+  const rule = lines.findIndex(line => line.includes(' activity '))
+  const strip = lines.slice(rule + 1).map(line => line.replace(/[▴▾]$/, '').trimEnd())
+  const holding = strip.filter(line => line.includes('x'))
+
+  expect(holding.length).toBeGreaterThan(1)
+  expect(holding.join('').split('x').length - 1).toBe(119)
+  expect(Math.max(...strip.map(line => line.length))).toBeLessThanOrEqual(78)
+})
