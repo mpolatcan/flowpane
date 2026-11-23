@@ -398,6 +398,30 @@ test('the wheel over the activity strip moves the strip, and the drawing stays',
   expect(v.bodyScroll).toEqual({ x: 0, y: 2 })
 })
 
+test('the wheel over the strip moves the strip while a dialog is open over the drawing', () => {
+  const v = view()
+  const feed = { y: 24, rows: 4, top: 16, lines: 20 }
+  const detail = { panes: [{ total: 40, visible: 10, scroll: 5 }], tab: 0 }
+
+  applyPress(v, 'a1', { hasRun: true })
+  v.detailScroll = [5]
+
+  wheel(v, { feed, detail }, -3, 25)
+
+  expect(v.selectedId).toBe('a1')
+  expect(v.feedTop).toBe(13)
+  expect(v.detailScroll).toEqual([5])
+})
+
+test('showing another run forgets the place the strip was scrolled to', () => {
+  const v = view()
+
+  v.feedTop = 5
+
+  expect(applyPress(v, 'run:wf_other', { hasRun: true })).toEqual({ run: 'wf_other' })
+  expect(v.feedTop).toBeNull()
+})
+
 test('the strip scrolled back down to its newest line follows the run again', () => {
   const v = view()
   const feed = { y: 24, rows: 4, top: 16, lines: 20 }

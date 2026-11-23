@@ -101,3 +101,24 @@ test('the rows it draws are the spans it was handed, in their colours, on the pa
   expect(row.children.map(t => t.props.children)).toEqual([' 5.0s', '  lint'])
   expect(row.children[0]!.props.color).toBe('#777777')
 })
+
+test('home sends the strip to its oldest line', () => {
+  const s = surfaceOf()
+
+  Feed({ lines: [] }, s.surface as never)
+  s.key('home')
+  s.tick()
+
+  expect(s.posts).toEqual([{ by: 0, to: 'top' }])
+})
+
+test('down moves it a line and page down a page, towards the newest', () => {
+  const s = surfaceOf()
+
+  Feed({ lines: [] }, s.surface as never)
+  s.key('down')
+  s.key('pagedown')
+  s.tick()
+
+  expect(s.posts).toEqual([{ by: 9 }])
+})

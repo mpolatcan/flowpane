@@ -1569,3 +1569,14 @@ test('an agent that changed files has a tab listing them, last of the tabs', () 
   // An edit that failed changed nothing, and is said to have failed.
   expect(rows.some(row => /0 edits\s+\/wt\/feature\/README\.md\s+1 failed/.test(row))).toBe(true)
 })
+
+test('the word on a call’s shelf stands in the middle of the bar', () => {
+  const rows = rowsOf(opened({ id: 'two', input: 'command: ls -la', result: 'total 0' }))
+  const box = dialogOf(rows)
+  const row = rows.find(r => r.includes('─ output ─')) ?? ''
+  const bar = row.slice(box.left + 1, box.right)
+  const [, left, right] = bar.match(/^(─*) output (─*)$/) ?? []
+
+  expect(left).toBeDefined()
+  expect(Math.abs(left!.length - right!.length)).toBeLessThanOrEqual(1)
+})
