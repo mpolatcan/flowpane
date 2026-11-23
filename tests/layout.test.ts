@@ -1221,13 +1221,13 @@ test('across, a strip with more phases ahead than rows stops at its foot on a he
   expect(strip.slice(0, -1)).toEqual(['Verify', 'Escalate', 'Report', 'Publish', 'Notify'].slice(0, strip.length - 1))
 })
 
-test('a run shorter than the body stands in the middle of it, headings and all, in every layout', () => {
+test('a run shorter than the body stands in the middle of it, headings and all, in every layout but across', () => {
   const run = runOf([
     ['Survey', ['paint', 'layout']],
     ['Review', ['paint']],
   ])
 
-  for (const orientation of ['horizontal', 'vertical', 'timeline', 'list'] as const) {
+  for (const orientation of ['vertical', 'timeline', 'list'] as const) {
     const canvas = new Canvas(140, 60)
 
     paint(canvas, run, { nowMs: STARTED + 20_000, tick: -1, orientation })
@@ -1254,4 +1254,40 @@ test('a run shorter than the body stands in the middle of it, headings and all, 
     expect(above).toBeGreaterThan(10)
     expect(Math.abs(above - below)).toBeLessThanOrEqual(3)
   }
+})
+
+test('across, a run shorter than the body starts under the header, and its phases divide the pane to the foot', () => {
+  const run = runOf([
+    ['Survey', ['paint', 'layout']],
+    ['Review', ['paint']],
+  ])
+  const canvas = new Canvas(140, 60)
+  const drawn = paint(canvas, run, { nowMs: STARTED + 20_000, tick: -1, orientation: 'horizontal' })
+  const view = layout(run, 140, 60, 'horizontal')
+  const rows: string[] = []
+
+  for (let y = 0; y < canvas.rows; y++) {
+    let line = ''
+
+    for (let x = 0; x < canvas.columns; x++) {
+      line += String.fromCodePoint(canvas.at(x, y) || 0x20)
+    }
+
+    rows.push(line)
+  }
+
+  const bar = barRowsOf(canvas.rows, canvas.columns)
+  const heading = rows.findIndex((row, y) => y >= bar && row.includes('Survey'))
+
+  // No blank rows above the headings: the spare ones are under the cards, in
+  // the columns the boundaries divide them into.
+  expect(heading - bar).toBeLessThanOrEqual(1)
+
+  const x = view.lanes[1]!.edgeAt
+  const down = rows.map((row, y) => (row[x] === '\u2502' ? y : -1)).filter(y => y >= 0)
+  const cards = Math.max(...view.lanes.flatMap(lane => lane.nodes.map(node => node.y + node.h)))
+
+  expect(x).toBeGreaterThan(0)
+  expect(Math.max(...down)).toBeGreaterThan(cards + 10)
+  expect(drawn.hotspots.length).toBeGreaterThan(0)
 })
