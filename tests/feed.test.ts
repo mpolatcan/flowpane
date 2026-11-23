@@ -101,7 +101,7 @@ test('the strip says what the run did, newest last, under a rule with its label 
     ' 10.0s  · Develop    edited stores/config.ts',
     ' 12.0s  ✖ Develop    ran the linter, which failed',
     ' 14.0s  · Develop    wrote stores/ai-status.ts',
-    ' 16.0s  \u28fe Develop    ran the tests',
+    ' 16.0s  \u25b8 Develop    ran the tests',
   ])
 })
 
@@ -116,7 +116,7 @@ test('the strip follows the newest lines under its column names, and its bar say
   expect(lines.slice(-3)).toEqual([
     '  time    agent      what happened',
     edge(' 14.0s  \u00b7 Develop    wrote stores/ai-status.ts', '\u25b4'),
-    edge(' 16.0s  \u28fe Develop    ran the tests', '\u25be'),
+    edge(' 16.0s  \u25b8 Develop    ran the tests', '\u25be'),
   ])
   // The arrow towards more is lit and the one at the end it stands at is not.
   expect(canvas.cell(99, 28).fg).not.toEqual(canvas.cell(99, 29).fg)

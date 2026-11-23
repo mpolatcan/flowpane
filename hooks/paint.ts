@@ -11251,10 +11251,11 @@ const FEED_NAME_MAX = 26
  * included.
  *
  * A step that simply happened is a grey dot, and its name is in the words'
- * own tone: it is not a state. A call still open takes the spinner's first
- * frame and holds it. The strip is drawn by a module of its own whose rows are
- * re-sent whenever they change, so a mark that turned with the clock would
- * re-send the whole strip every frame.
+ * own tone: it is not a state. A call still open is `▸` in the running tone.
+ * The strip is drawn by a module of its own whose rows are re-sent whenever
+ * they change, so a mark that turned with the clock would re-send the whole
+ * strip every frame; and a spinner's first frame held still was tried and read
+ * as a run that had hung, since every other spinner on the pane turns.
  */
 function feedMark(mark: FeedRow['mark']): [number, Rgb] {
   return mark === 'passed'
@@ -11262,6 +11263,6 @@ function feedMark(mark: FeedRow['mark']): [number, Rgb] {
     : mark === 'failed'
       ? [0x2716, COLORS.failed]
       : mark === 'running'
-        ? [spinnerAt(0), COLORS.running]
+        ? [0x25b8, COLORS.running]
         : [0x00b7, COLORS.dim]
 }

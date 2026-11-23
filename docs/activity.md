@@ -11,7 +11,7 @@ line of it whole.
                     `v-if` is false it renders as a comment node, so the element does not  │
                     re-point after the flip. → read AiStatusPill.test.ts                   ┃
  19m24s  · Develop  edited header/AiStatusPill.test.ts                                     ┃
- 19m47s  ⣾ Develop  All 87 pass. Let me run the full unit suite to confirm no regressions  │
+ 19m47s  ▸ Develop  All 87 pass. Let me run the full unit suite to confirm no regressions  │
                     from the shared-file edits (MiddleSlot, bridge). → ran npx vitest run  ▾
 ```
 
@@ -150,15 +150,17 @@ grey, under a row naming the three columns — `time`, `agent`, `what happened` 
 that stands still while the lines scroll.
 
 Every line has a mark, for what that line says: `✔` a gate that passed, `✖` a
-gate or a call that failed, the spinner's first frame for a command still
-running, and a grey `·` for a step that simply happened. The name takes the
+gate or a call that failed, `▸` for a command still running, and a grey `·`
+for a step that simply happened. The name takes the
 mark's colour, and a plain step's name is in the words' own tone. The marks used
 to stand only on the lines that were news, so three lines in ten had one and the
 other seven read as missing something; and the name took the colour of the
 agent's state *now*, so an agent that failed at the end turned every one of its
 earlier lines red, the ones that went fine included. The running mark holds
 still because the strip's rows are re-sent whenever they change, and a mark
-that turned with the clock would re-send the whole strip every frame.
+that turned with the clock would re-send the whole strip every frame. It is
+`▸` rather than a spinner held on one frame: every other spinner on the pane
+turns, so one that did not read as a run that had hung.
 
 The name is the phase and the agent, `Verify · bugs`. The card leaves the phase
 off because it stands under its phase's heading; the strip has no heading over
