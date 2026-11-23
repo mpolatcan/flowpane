@@ -17,6 +17,7 @@ import {
   MIN_DETAIL,
   nextOrientation,
   scrollDetail,
+  scrollFeed,
   wheel,
   ZOOM_IN,
   ZOOM_OUT,
@@ -378,6 +379,42 @@ test('the wheel over the rail along the foot moves the drawing sideways', () => 
   wheel(v, { body, foot: 28 }, 3, 27)
 
   expect(v.bodyScroll).toEqual({ x: 24, y: 3 })
+})
+
+test('the wheel over the activity strip moves the strip, and the drawing stays', () => {
+  const v = view()
+  const body = { x: 0, y: 0, spanX: 0, spanY: 40 }
+  // Twenty lines of history on a strip of four rows at the foot, rows 24 to 27.
+  const feed = { y: 24, rows: 4, top: 16, lines: 20 }
+
+  wheel(v, { body, feed }, -3, 25)
+
+  expect(v.feedTop).toBe(13)
+  expect(v.bodyScroll).toEqual({ x: 0, y: 0 })
+
+  // The row above the strip is the drawing's.
+  wheel(v, { body, feed }, 2, 23)
+
+  expect(v.bodyScroll).toEqual({ x: 0, y: 2 })
+})
+
+test('the strip scrolled back down to its newest line follows the run again', () => {
+  const v = view()
+  const feed = { y: 24, rows: 4, top: 16, lines: 20 }
+
+  scrollFeed(v, feed, -5)
+
+  expect(v.feedTop).toBe(11)
+
+  scrollFeed(v, { ...feed, top: 11 }, 99)
+
+  // Null rather than 16: a strip held at line 16 would stop there while the run
+  // wrote more under it.
+  expect(v.feedTop).toBeNull()
+
+  scrollFeed(v, feed, -99)
+
+  expect(v.feedTop).toBe(0)
 })
 
 test('the wheel with a node open moves the dialog, not the drawing', () => {

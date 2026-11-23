@@ -11,7 +11,7 @@ workflow writes, and everything it says has to fit in cells.
 ## Commands
 
 ```bash
-claude plugin test .          # the test suite — 450 tests across 32 files
+claude plugin test .          # the test suite — 459 tests across 33 files
 bunx tsc --noEmit             # typecheck (hooks/ and types/ only; see tsconfig.json)
 ```
 
@@ -206,8 +206,9 @@ test and wrong in a terminal.
 - **A phase heading stands over its cards and leads with its state.** Mark,
   name, landed count, loop and time, two cells apart — over the middle of its
   column across, set into the band's rule over the middle of its cards down,
-  and flush left in the timeline's gutter and the list, which have no cards to
-  stand over.
+  and in the middle of its rule in the timeline's gutter and the list, which
+  have no cards to stand over. Every title on the pane is centred: a heading,
+  a dialog's title, the activity strip's label.
   The time goes first, then the count; the name goes last. A phase nothing
   entered is its heading alone — `○` ahead, `⊘` skipped — with the line its
   script declared where the count goes, on a dashed rule. See

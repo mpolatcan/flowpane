@@ -137,6 +137,16 @@ function paneOf(node: unknown): string[] {
       continue
     }
 
+    // The activity strip, where the table has a `Client`: its rows arrive as
+    // the props its surface module draws.
+    if (row.type === 'Client') {
+      const given = (row.props as unknown as { props?: { lines?: { t: string }[][] } }).props
+
+      lines.push(...(given?.lines ?? []).map(spans => spans.map(span => span.t).join('')))
+
+      continue
+    }
+
     const parts = elementsOf(row)
     const isFooter =
       row.props?.flexDirection === 'column' ||
@@ -489,7 +499,8 @@ test('while the wheel turns the drawing is one picture, and its cards can be pre
   expect(cards(keysOf(await renderPane($))).length).toBeGreaterThan(0)
 })
 
-test('a run read back from disk draws its activity strip from the agents’ own transcripts', async ($, on) => {
+/** A finished run of one agent that ran the linter, read back off disk, with the pane open on it. */
+async function diskRun($: any, on: any): Promise<void> {
   const transcriptDir = `${BASE}/subagents/workflows/wf_00`
   const files: Record<string, string> = {
     [`${BASE}/workflows/wf_00.json`]: JSON.stringify({
@@ -532,9 +543,11 @@ test('a run read back from disk draws its activity strip from the agents’ own 
 
   await $.session.start({ cwd: HOME, surface: 'terminal', isInteractive: true })
   await $.command.run({ command: 'flowpane', args: '' })
+}
 
-  const lines = paneOf(
-    await $.ui.render({
+/** The pane as the engine renders it, at 106 by 40 with a strip of six rows. */
+function renderPane($: any): Promise<unknown> {
+  return $.ui.render({
       surface: 'terminal',
       component: 'Pane',
       requestId: 'flowpane',
@@ -547,11 +560,37 @@ test('a run read back from disk draws its activity strip from the agents’ own 
         scroll: { bodyRows: 36, offset: 0, height: 36 },
         view: {},
       },
-    }),
-  )
+    })
+}
+
+test('a run read back from disk draws its activity strip from the agents’ own transcripts', async ($, on) => {
+  await diskRun($, on)
+
+  const lines = paneOf(await renderPane($))
 
   expect(lines.some(line => line.includes(' activity '))).toBe(true)
   expect(lines.some(line => line.includes('ran the linter'))).toBe(true)
+})
+
+/** The strip's `Client` in a rendered tree, where there is one. */
+function feedOf(node: unknown): Node | undefined {
+  const walk = (at: Node): Node | undefined =>
+    at.type === 'Client' ? at : elementsOf(at).map(walk).find(Boolean)
+
+  return walk(node as Node)
+}
+
+test('the activity strip is a region of its own that can be dragged, holding the rows the paint drew', async ($, on) => {
+  await diskRun($, on)
+
+  const client = feedOf(await renderPane($))
+  const props = client?.props as unknown as { key: string; module: string; props: { lines: { t: string }[][] } }
+
+  expect(props.key).toBe('feed')
+  // Written `./feed.ts` beside the hooks module; the tree carries it as the
+  // plugin's own path.
+  expect(props.module).toBe('hooks/feed.ts')
+  expect(props.props.lines.map(spans => spans.map(span => span.t).join('')).join('\n')).toContain('ran the linter')
 })
 
 test('a wheel once the drawing is one picture writes into it rather than building the tree again', async ($, on) => {

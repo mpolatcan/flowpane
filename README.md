@@ -93,7 +93,7 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | --- | --- |
 | A node's label | opens that agent's detail dialog; click again to close |
 | ⚙ Settings | opens the settings dialog over the drawing |
-| `FlowPane 0.12.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
+| `FlowPane 0.13.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
 | A setting's value | unrolls that setting's list where it stands; press it again to roll the list up |
 | The graph, with any dialog open | takes no presses — it is pushed back behind the dialog until the dialog shuts |
 | Layout | **across**, **down**, **timeline**, **list**, or **fits** the shape — picked by name |
@@ -104,7 +104,7 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | A tab in the detail dialog | shows that pane across the dialog's whole width; which tab is open is kept from node to node |
 | A pass number on a node's row | opens that attempt's detail: `✔ 1  ✔ 2  ✖ 3` is one row and three presses |
 | A trip number on the detail dialog's own strip | shows that trip of a phase the run entered more than once, in the tab already open |
-| The ▸ on a nested run's name, or its `▸ 23 agents` | unfolds that run into its own agents, each one pressable — in any layout. The mark turns ▾ while it is open |
+| A nested run's `▸ 23 agents` | unfolds that run into its own agents, each one pressable — in any layout. It reads `▾ 23 agents` while it is open, and folds the run back |
 | A nested run's own name, on its row or its card | opens the run as a list of every agent it ran, one row each; pressing a row opens that agent in full |
 | `◂ Back`, in an agent's dialog | returns to the nested run's list it was opened from, at the row it was left on |
 | The `▾ 6 agents` on a step of an opened nested run | folds the rows that ran at once in that step into one row saying how many; press it again to stand them out |
@@ -112,6 +112,7 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | ▴ / ▾ (in a dialog) | scrolls the open pane three lines. Grey at either end |
 | ▴ / ▾ ◂ / ▸ (at the pane's edges) | scrolls the drawing, where it is larger than the pane. A live run is drawn with the window on the phase it is working in, so scrolling away is a peek: it goes back when the run enters a new phase |
 | The wheel, over the pane | moves the drawing, or the open dialog while one is open |
+| The wheel, a drag, or the keys, over the activity strip | moves the strip back through everything the run did, every line whole; back at the newest line it follows the run again. The keys reach it once a press has given it the focus |
 | The wheel, over the rail along the foot | moves the drawing sideways — as does the wheel anywhere over a drawing that only goes that way |
 | The run's name | opens the session's other runs as a menu under it, once there is more than one; grouped by state, most recent first, each with the second it started on, and opening on the run the pane is drawing. Picking one moves the drawing to it, live or finished |
 | ▴ / ▾ (down a run list) | scrolls the runs three rows, in the menu or on the idle pane, with a thumb saying whereabouts in the list they are. The wheel over an open list moves it too |
@@ -174,7 +175,7 @@ it changed:
 | [docs/nodes.md](docs/nodes.md) | What a node says, and the four states |
 | [docs/graph.md](docs/graph.md) | What the files state, what the pane infers, and how each is drawn |
 | [docs/detail.md](docs/detail.md) | The dialog a node opens |
-| [docs/activity.md](docs/activity.md) | The strip at the foot: what the run did, newest last |
+| [docs/activity.md](docs/activity.md) | The strip at the foot: what the run did, newest last, scrolled and dragged |
 | [docs/data.md](docs/data.md) | The files a run writes, and recovering a run already going |
 | [docs/demo-workflow.md](docs/demo-workflow.md) | The audit run under dev/ |
 | [docs/engine.md](docs/engine.md) | What the function-hooks API allows, and what it does not |
@@ -183,7 +184,7 @@ it changed:
 ## Status
 
 Loads and runs on **Claude Code 2.1.272**: hooks register, `/flowpane` lists, the launch
-hook fires and reads the journal. 450 tests run over the engine with `claude
+hook fires and reads the journal. 459 tests run over the engine with `claude
 plugin test .`; `dev/lines.ts` checks every line of every run on disk at twelve
 widths and ten heights. Nothing the pane reads leaves the machine.
 

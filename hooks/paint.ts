@@ -501,6 +501,15 @@ export type PaintOptions = {
    * {@link paintFeed}.
    */
   feedRows?: number
+  /**
+   * The first line on screen in the activity strip, counted from the oldest;
+   * absent, the strip follows the newest.
+   *
+   * Counted from the oldest rather than back from the newest, so a reader who
+   * scrolled back keeps the lines they were reading while new ones arrive under
+   * them.
+   */
+  feedTop?: number
 }
 
 /**
@@ -589,6 +598,8 @@ export type PaintResult = {
    * asking where a box ended up has to ask the painter.
    */
   view?: Layout
+  /** Where the activity strip is, when one is drawn. */
+  feed?: FeedView
 }
 
 /**
@@ -906,6 +917,19 @@ function truncate(s: string, max: number): string {
  */
 const FOLD_SHUT = '\u25b8 '
 const FOLD_OPEN = '\u25be '
+
+/**
+ * A phase's name without the engine's mark in front of a nested run.
+ *
+ * The heading of a nested run used to keep that mark, and flip it to `▾` once
+ * the run was open, beside a handle reading `▸ 3 agents` that did the same
+ * thing. Two marks on one line, both saying *press to unfold*, read as two
+ * controls doing two things, and a reader had to try both to find out they did
+ * not. The handle is the control; the name is a name.
+ */
+function bareName(phase: string): string {
+  return phase.startsWith(FOLD_SHUT) ? phase.slice(FOLD_SHUT.length) : phase
+}
 
 /**
  * A nested run's name, in the cells it has, and whatever the cells could not
@@ -1611,7 +1635,15 @@ function edgeRoom(node: NodeBox): number {
  * read as three strips stacked up rather than as one box with shelves in it. A
  * tee costs nothing and says which of the two lines is the wall.
  */
-function paintCrossbar(c: Canvas, rect: Rect, y: number, edge: Rgb, word?: string): void {
+function paintCrossbar(
+  c: Canvas,
+  rect: Rect,
+  y: number,
+  edge: Rgb,
+  word?: string,
+  /** Where the word opens a strip of presses after it, which is read from the left. */
+  lead = false,
+): void {
   for (let dx = 1; dx < rect.w - 1; dx++) {
     c.put(rect.x + dx, y, LIGHT.across, quietOf(c.background))
   }
@@ -1623,11 +1655,15 @@ function paintCrossbar(c: Canvas, rect: Rect, y: number, edge: Rgb, word?: strin
     return
   }
 
-  // Set into the shelf from the left rather than centred on it. A shelf names
-  // the compartment under it, and a name in the middle of a rule reads as a
-  // heading for the whole box — which is what the dialog's own title is.
+  // Centred on the shelf, as every word set into a rule on the pane is. It was
+  // set in from the left once, on the grounds that a word in the middle of a
+  // rule reads as a heading for the whole box; but the title says which box
+  // this is in its own border, and a shelf word on the left and a title in the
+  // middle read as two kinds of label where there is one. The one exception is
+  // a word that leads a strip of presses, like the trips of a loop: that is a
+  // row of controls read from its first, and it stays where it starts.
   const said = truncate(word, Math.max(0, rect.w - 10))
-  const at = rect.x + 4
+  const at = lead ? rect.x + 4 : rect.x + Math.max(4, Math.floor((rect.w - cells(said)) / 2))
 
   for (let dx = -1; dx <= cells(said); dx++) {
     c.put(at + dx, y, 0x20, edge)
@@ -2973,18 +3009,13 @@ function paintSections(
     }
 
     const fold = laneAgents[lane.index]
-    // `▸` is the press that opens a nested run, so once it is open the mark has
-    // to stop saying *press me to open*. A marker that never changes is a
-    // control with no state, and a reader who has opened two of three nested
-    // runs cannot see which two.
-    const open = fold?.nested === true && fold.shut !== true
     // A phase nothing entered is drawn as its heading alone, in the dashed
     // stroke, saying what it was for where a count would be.
     const empty = (fold?.agents.length ?? 0) === 0
     const lead = view.list === true ? 2 : 0
     const facts = ghostFacts(
       phaseFactsOf(
-        open ? FOLD_OPEN + lane.phase.slice(FOLD_SHUT.length) : lane.phase,
+        bareName(lane.phase),
         lane.index,
         fold?.agents ?? [],
         passes,
@@ -3046,14 +3077,19 @@ facts.total > 0 && facts.landed < facts.total ? Math.round((facts.landed / facts
     // by a heading rather than as two lines with a word between them. It stands
     // there whatever crosses the rule, and the wire gives way: the heading
     // clears the cells it stands in, so a wire passing through loses this one
-    // row of itself and runs on above and below. The list has no cards to stand
-    // over, so there it stays flush left, a cell in.
+    // row of itself and runs on above and below. A band with no cards under it
+    // — the list, and a phase nothing entered — stands in the middle of its own
+    // rule instead, so every heading on the pane is centred on something.
     //
     // It was centred once before, when the caption gave way to the wire,
     // stepping along the rule to a window with no wire in it, and every band of
     // a stack stepped aside by a different amount. Then it went flush left,
     // which left a heading far from cards spread across a wide pane. Now it
-    // stands still over its cards and the wire gives way. See `docs/header.md`.
+    // stands still over its cards and the wire gives way. The list and the
+    // phases nothing entered stayed flush left a while longer, on the grounds
+    // that they had no cards to stand over; but a column of headings with the
+    // ones over cards centred and the rest on the left read as two kinds of
+    // heading. See `docs/header.md`.
     const nested = fold?.nested === true
     const shut = fold?.shut === true
     const handle = nested ? foldHandle(shut, fold?.agents.length ?? 0, width) : ''
@@ -3063,7 +3099,7 @@ facts.total > 0 && facts.landed < facts.total ? Math.round((facts.landed / facts
     const cards = view.orientation === 'vertical' && view.list !== true ? lane.nodes : []
     const span =
       cards.length === 0
-        ? undefined
+        ? { x: lead, w: width - lead }
         : {
             x: Math.min(...cards.map(n => n.x)),
             w: Math.max(...cards.map(n => n.x + n.w)) - Math.min(...cards.map(n => n.x)),
@@ -3084,9 +3120,9 @@ facts.total > 0 && facts.landed < facts.total ? Math.round((facts.landed / facts
 
     // A run of twenty-three agents drawn as one row has to have a way in, and a
     // way back out once it is open. Both are the handle after the caption. The
-    // mark the name opens with takes the press only where there was no room for
-    // the handle: it is a coloured cell, and a Button strips the colour, so it
-    // is a target of last resort rather than the ordinary one.
+    // head of the name takes the press only where there was no room for the
+    // handle: it is coloured text, and a Button strips the colour, so it is a
+    // target of last resort rather than the ordinary one.
     if (nested) {
       const drew = paintFoldHandle(
         c,
@@ -3370,9 +3406,7 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
       }
     }
 
-    paintFeed(c, run, feed, above.rows, strip)
-
-    return result
+    return { ...result, feed: paintFeed(c, run, feed, above.rows, strip, options.feedTop) }
   }
 
   return paintPane(c, run, options)
@@ -4538,11 +4572,21 @@ function paintAheadBand(
 
 /**
  * One heading of a phase nothing entered, across the width given: a dashed rule
- * with the heading set into it, flush left. A heading over cards stands over the
- * middle of them; this one has no cards to stand over, so it keeps the place
- * every heading had before they were centred, and the strip reads as a list.
+ * with the heading set into it, in the middle. A heading over cards stands over
+ * the middle of them; this one has no cards, so it stands in the middle of its
+ * own rule. It was flush left once, so the strip read as a list, but a pane
+ * whose headings over cards were centred and whose headings without them were
+ * not read as two kinds of heading.
  */
-function paintGhostHeading(c: Canvas, y: number, width: number, lead: number, facts: PhaseFacts): void {
+function paintGhostHeading(
+  c: Canvas,
+  y: number,
+  width: number,
+  lead: number,
+  facts: PhaseFacts,
+  /** Flush left, where the heading opens a row that goes on after it. */
+  opens = false,
+): void {
   if (y < 0 || y >= c.rows) {
     return
   }
@@ -4553,7 +4597,7 @@ function paintGhostHeading(c: Canvas, y: number, width: number, lead: number, fa
     c.put(x, y, SEAM_H, tone)
   }
 
-  const label = paintPhaseLabel(c, lead, y, width - lead, facts, 2)
+  const label = paintPhaseLabel(c, lead, y, width - lead, facts, 2, 0, opens ? undefined : { x: lead, w: width - lead })
 
   c.put(label.x - 1, y, 0x20, tone)
   c.put(label.x + label.used, y, 0x20, tone)
@@ -4654,7 +4698,9 @@ function paintAheadRow(c: Canvas, phases: string[], row: number, over: boolean, 
   // the order they come, set into the same dashed rule.
   const facts = ghostFactsOf(`${phases.length} ${over ? 'skipped' : 'ahead'}`, undefined, over, width - lead)
 
-  paintGhostHeading(c, row, width, lead, facts)
+  // Flush left: the names follow the heading along the rule, so the heading
+  // opens a row rather than standing in the middle of one.
+  paintGhostHeading(c, row, width, lead, facts, true)
 
   const at = lead + 1 + 2 + cells(facts.name) + PHASE_GAP
   const fields = aheadFields(phases, Math.max(1, width - at - 2), tone, over)
@@ -5927,7 +5973,7 @@ function paintListBar(
   for (let row = 0; row < track; row++) {
     const filled = row >= at && row < at + size
 
-    c.put(x, y + 1 + row, filled ? 0x2588 : 0x2502, filled ? COLORS.dim : COLORS.track)
+    c.put(x, y + 1 + row, filled ? 0x2503 : 0x2502, filled ? COLORS.dim : COLORS.track)
   }
 }
 
@@ -6297,6 +6343,13 @@ function paintPhaseHead(
   width: number,
   facts: PhaseFacts,
   reserve: number,
+  /**
+   * Stood in the middle of the gutter, with the rule either side of it, rather
+   * than at its left edge: in the middle where that leaves `reserve` after
+   * it, and as far left of the middle as it takes to leave it where it does
+   * not, so the handle and the rule's own minimum keep their cells.
+   */
+  centred = false,
 ): { x: number; used: number } {
   // The rule is not what is left over after the name. A phase called
   // `▸ code-review:ai-review` takes a gutter whole, and the stroke that went
@@ -6327,10 +6380,21 @@ function paintPhaseHead(
   ]
   const used = 2 + Math.min(room, widthOf(fields, PHASE_GAP))
 
-  c.put(x, y, facts.mark, facts.markTone)
-  drawFields(c, x + 2, y, room, fields, PHASE_GAP)
+  const middle = x + Math.floor((width - x - used) / 2)
+  const at = centred ? Math.max(x, Math.min(middle, width - used - reserve)) : x
 
-  return { x, used }
+  // Cleared, a blank either side included, since a centred heading is set into
+  // a rule already drawn under it.
+  if (centred) {
+    for (let dx = -1; dx <= used; dx++) {
+      c.put(at + dx, y, 0x20, facts.tone)
+    }
+  }
+
+  c.put(at, y, facts.mark, facts.markTone)
+  drawFields(c, at + 2, y, room, fields, PHASE_GAP)
+
+  return { x: at, used }
 }
 
 /** The rule that runs from a timeline heading to the end of the gutter. */
@@ -6712,7 +6776,7 @@ function paintTimeline(
     const open = lane.nested === true && lane.shut !== true
     const indent = open ? INSET_W : 0
     const band = phaseFactsOf(
-      open ? FOLD_OPEN + lane.phase.slice(FOLD_SHUT.length) : lane.phase,
+      bareName(lane.phase),
       lanes.indexOf(lane),
       lane.agents,
       passes,
@@ -6726,6 +6790,14 @@ function paintTimeline(
     // what is left minus the rule's own minimum. Fitted in plain order, a long
     // phase name took the gutter whole and a nested run came out with no handle
     // to press.
+    // One rule the width of the gutter, filled as far as the phase has landed,
+    // with the heading stood in the middle of it as every other heading on the
+    // pane is stood in the middle of something. It used to open the gutter, the
+    // mark over the marks of the rows under it and the rule after it; a column
+    // of headings on the left here and in the middle everywhere else read as
+    // two kinds of heading.
+    paintHeadRule(c, CHAIN_W + 1, y, labelW, band.landed, band.total, lane.nested === true, quiet)
+
     const label = paintPhaseHead(
       c,
       CHAIN_W,
@@ -6733,6 +6805,7 @@ function paintTimeline(
       labelW,
       band,
       HEAD_RULE + (lane.nested ? HANDLE_GAP + HANDLE_W : 0),
+      true,
     )
     let ruleFrom = label.x + label.used + 1
 
@@ -6763,8 +6836,6 @@ function paintTimeline(
         hotspots.push(markSpot(lane.phase, label.x, y, 0))
       }
     }
-
-    paintHeadRule(c, ruleFrom + 1, y, labelW, band.landed, band.total, lane.nested === true, quiet)
 
     y++
 
@@ -7553,7 +7624,7 @@ function paintPassStrip(
   // it are counting before reading one of them.
   const lead = loopMark(passes.length)
 
-  paintCrossbar(c, rect, y, edge, lead)
+  paintCrossbar(c, rect, y, edge, lead, true)
 
   const rule = quietOf(c.background)
   const first = rect.x + 4 + cells(lead) + 2
@@ -8733,13 +8804,20 @@ const KEEP_ROWS = 12
 
 /**
  * A rule with a word set into it, opening a section of the call's reading.
+ *
+ * The word stands in the middle of the rule, as every word set into a rule on
+ * this pane does: the dialog's title, its shelves, the activity strip's label
+ * and the phases' headings. Set in from the left, a section's word and a
+ * phase's heading read as two kinds of label, and a reader looking for the one
+ * looked in the wrong place for the other.
  */
 function sectionRule(word: string, width: number, tone: Rgb): DetailLine {
   const rule = String.fromCodePoint(LIGHT.across)
   const said = ` ${word} `
+  const left = Math.max(2, Math.floor((width - said.length) / 2))
 
   return {
-    text: `${rule.repeat(2)}${said}${rule.repeat(Math.max(0, width - 2 - said.length))}`,
+    text: `${rule.repeat(left)}${said}${rule.repeat(Math.max(0, width - left - said.length))}`,
     color: tone,
   }
 }
@@ -8886,6 +8964,9 @@ export const BAND_OPEN = '@band:'
  * which is what it is.
  */
 const HANDLE_GAP = 3
+
+/** The cells the handle's last rung takes after a caption: the gap, the mark and its two blanks. */
+const HANDLE_LEAST = HANDLE_GAP + 3
 
 function foldRungs(shut: boolean, agents: number): string[] {
   const mark = shut ? FOLD_SHUT : FOLD_OPEN
@@ -9177,7 +9258,7 @@ function paintBodyRail(
   for (let row = 0; row < track; row++) {
     const filled = row >= thumb.from && row < thumb.from + thumb.size
 
-    c.put(x, y + 1 + row, filled ? 0x2588 : 0x2502, filled ? COLORS.dim : COLORS.track)
+    c.put(x, y + 1 + row, filled ? 0x2503 : 0x2502, filled ? COLORS.dim : COLORS.track)
   }
 }
 
@@ -9220,7 +9301,7 @@ function paintFootRail(
   for (let col = 0; col < track; col++) {
     const filled = col >= thumb.from && col < thumb.from + thumb.size
 
-    c.put(1 + col, y, filled ? 0x2588 : 0x2500, filled ? COLORS.dim : COLORS.track)
+    c.put(1 + col, y, filled ? 0x2501 : 0x2500, filled ? COLORS.dim : COLORS.track)
   }
 }
 
@@ -9258,7 +9339,7 @@ function paintScrollbar(
   for (let row = 0; row < track; row++) {
     const filled = row >= at && row < at + thumb
 
-    c.put(x, y + 1 + row, filled ? 0x2588 : 0x2502, filled ? COLORS.dim : COLORS.track)
+    c.put(x, y + 1 + row, filled ? 0x2503 : 0x2502, filled ? COLORS.dim : COLORS.track)
   }
 }
 
@@ -9891,11 +9972,13 @@ function paintPhaseLabel(
   const rungs = Array.from({ length: tags.length + 1 }, (_, i) => tags.slice(0, tags.length - i))
   const fits = (room: number) =>
     rungs.find(rung => cells(facts.name) + widthOf(rung, PHASE_GAP) + (rung.length > 0 ? PHASE_GAP : 0) <= room)
-  // The handle's cells are taken only where the name keeps every letter with
-  // them; a name already short of room has nowhere to put a handle either.
+  // The handle takes its whole width where the name keeps every letter beside
+  // it, and otherwise the name gives way to the handle's last rung, the mark
+  // alone. The handle is the only way into a nested run, so a heading that kept
+  // its name whole and dropped the handle was a run a reader could not open.
   const roomWith = Math.max(1, width - inset - extra - 2)
-  const roomAlone = Math.max(1, width - inset - 2)
-  const room = fits(roomWith) !== undefined ? roomWith : roomAlone
+  const roomLeast = Math.max(1, width - inset - Math.min(extra, HANDLE_LEAST) - 2)
+  const room = fits(roomWith) !== undefined ? roomWith : roomLeast
   const kept = fits(room) ?? []
   const fields: Field[] = [
     { text: runName(facts.name, Math.max(1, room - widthOf(kept, PHASE_GAP) - (kept.length > 0 ? PHASE_GAP : 0))), color: facts.tone },
@@ -10224,7 +10307,7 @@ function paintHeader(
     const empty = (fold?.agents.length ?? 0) === 0
     const facts = ghostFacts(
       phaseFactsOf(
-        open ? FOLD_OPEN + lane.phase.slice(FOLD_SHUT.length) : lane.phase,
+        bareName(lane.phase),
         lane.index,
         fold?.agents ?? [],
         passes,
@@ -10333,26 +10416,31 @@ type FeedRow = {
 }
 
 /**
- * An agent's words cut to one line: the markdown taken out, the lines run
- * together, and the whole of it kept up to `max` — ended at a sentence where
- * one ends in reach, so a line stops on a full stop rather than mid-word.
+ * Where the activity strip is: the rows it takes on the canvas, and which of
+ * the lines its history wraps to are on screen.
  */
-function gist(text: string, max: number): string {
-  const flat = text
+export type FeedView = {
+  /** The canvas row the strip's first line is drawn on. */
+  y: number
+  rows: number
+  /** The first line on screen, counted from the oldest. */
+  top: number
+  /** Every line the history wraps to. */
+  lines: number
+}
+
+/**
+ * An agent's words as one paragraph: the markdown taken out and the lines run
+ * together. Kept whole: the strip wraps and scrolls, so it no longer cuts a
+ * reason at four hundred characters and ends it on an ellipsis.
+ */
+function gist(text: string): string {
+  return text
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/\*\*|__|^#+\s*/gm, '')
     .replace(/^\s*[-*]\s+/gm, '')
     .replace(/\s+/g, ' ')
     .trim()
-
-  if (flat.length <= max) {
-    return flat
-  }
-
-  const cut = flat.slice(0, max)
-  const stop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf(': '), cut.lastIndexOf('; '))
-
-  return stop > max * 0.5 ? cut.slice(0, stop + 1) : `${cut.slice(0, max - 1).trimEnd()}\u2026`
 }
 
 /** The `description` a call carries beside its arguments, where it carries one. */
@@ -10483,7 +10571,7 @@ function feedOf(run: RunState): FeedRow[] {
       rows.push({
         atMs: told.calls[0]!.startedMs,
         agent,
-        text: gist(told.why, 400),
+        text: gist(told.why),
         tail: didOf(told.calls),
         ...(failed ? { mark: 'failed' as const } : open ? { mark: 'running' as const } : {}),
       })
@@ -10610,7 +10698,7 @@ function feedRowsFor(rows: number, asked: number, lines: number): number {
  * still running — the agent's name in its state's colour, and what it did in
  * plain words, so colour says state here as it does everywhere else.
  */
-function paintFeed(c: Canvas, run: RunState, feed: FeedRow[], ruleY: number, rows: number): void {
+function paintFeed(c: Canvas, run: RunState, feed: FeedRow[], ruleY: number, rows: number, asked?: number): FeedView {
   const quiet = quietOf(c.background)
   const prose = mix(quiet, COLORS.text, 0.7)
   const done = mix(quiet, COLORS.text, 0.35)
@@ -10619,94 +10707,120 @@ function paintFeed(c: Canvas, run: RunState, feed: FeedRow[], ruleY: number, row
     c.put(x, ruleY, RULE_LEFT, quiet)
   }
 
-  c.text(2, ruleY, ' activity ', COLORS.dim)
+  // In the middle of its rule, as every title on the pane is.
+  const label = ' activity '
 
-  // The columns are measured over the lines that could be shown, which is no
-  // more than one per row.
-  const near = feed.slice(-rows)
+  c.text(Math.max(2, Math.floor((c.columns - cells(label)) / 2)), ruleY, label, COLORS.dim)
+
+  // The columns are measured over the whole history rather than over what is
+  // on screen, so scrolling the strip never moves the column its words start in.
   const clockOf = (row: FeedRow) => elapsed(Math.max(0, row.atMs - run.startedMs))
-  const clockW = Math.max(...near.map(row => cells(clockOf(row))))
-  const nameW = Math.min(18, Math.max(...near.map(row => cells(feedName(row)))))
+  const clockW = Math.max(...feed.map(row => cells(clockOf(row))))
+  const nameW = Math.min(18, Math.max(...feed.map(row => cells(feedName(row)))))
   const textX = 1 + clockW + 2 + 2 + nameW + 2
-  const room = Math.max(0, c.columns - 1 - textX)
+  // The last column is the strip's own: the arrows that say there is more.
+  const room = Math.max(1, c.columns - 2 - textX)
 
   /**
-   * One row as the lines it takes: the agent's words over two where they run
-   * past one, since the words are why the strip is there, and what it did after
-   * them in what is left. A tail takes at most this much of a line: it says
-   * what the reader can see in the cards and the dialog already.
+   * One row as every line it takes, the words wrapped at word boundaries and
+   * the tail after them in the same stream, quieter.
+   *
+   * Each row used to be cut to one or two lines, the words ended on an ellipsis
+   * and the tail held to a few cells, so what an agent said was the one thing on
+   * the strip a reader could not read whole anywhere. The strip scrolls now, so
+   * a row takes the lines it needs.
    */
-  const TAIL_MAX = 24
-  const linesOf = (row: FeedRow): { text: string; tail: string }[] => {
-    const tail = row.tail ? ` \u2192 ${row.tail}` : ''
-    const whole = cells(row.text) + cells(tail)
-
-    if (whole <= room || !row.tail) {
-      return cells(row.text) <= room || !row.tail
-        ? [{ text: row.text, tail: whole <= room ? tail : '' }]
-        : [{ text: row.text, tail: '' }]
-    }
-
-    if (cells(row.text) + Math.min(cells(tail), TAIL_MAX) <= room) {
-      return [{ text: row.text, tail: truncate(tail, room - cells(row.text)) }]
-    }
-
-    // The first line broken at a word, and the second all the rest, cut where
-    // it runs out: `wrap` drops what will not fit, and a reason that stops
-    // without saying it stopped reads as the whole reason.
-    const first = wrap(row.text, room, 1)[0] ?? ''
-    const second = row.text.replace(/\s+/g, ' ').trim().slice(first.length).trim()
-    const tailW = cells(second) + cells(tail) <= room ? cells(tail) : Math.min(cells(tail), TAIL_MAX)
-
-    return [
-      { text: first ?? '', tail: '' },
-      { text: truncate(second, room - tailW), tail: tailW >= 10 ? truncate(tail, tailW) : '' },
+  const linesOf = (row: FeedRow): { text: string; tone: Rgb }[][] => {
+    const words = [
+      ...row.text.split(/\s+/).filter(Boolean).map(text => ({ text, tone: prose })),
+      ...(row.tail ? ['\u2192', ...row.tail.split(/\s+/).filter(Boolean)].map(text => ({ text, tone: done })) : []),
     ]
+    const lines: { text: string; tone: Rgb }[][] = []
+    let line: { text: string; tone: Rgb }[] = []
+    let used = 0
+
+    for (const word of words) {
+      // A word longer than the whole line is broken into pieces that fit,
+      // rather than run past the edge.
+      for (let piece = word.text; piece.length > 0; ) {
+        const gap = line.length > 0 ? 1 : 0
+
+        if (used + gap + cells(piece) <= room) {
+          line.push({ text: `${gap ? ' ' : ''}${piece}`, tone: word.tone })
+          used += gap + cells(piece)
+          piece = ''
+        } else if (line.length > 0) {
+          lines.push(line)
+          line = []
+          used = 0
+        } else {
+          line.push({ text: piece.slice(0, room), tone: word.tone })
+          lines.push(line)
+          line = []
+          piece = piece.slice(room)
+        }
+      }
+    }
+
+    if (line.length > 0 || lines.length === 0) {
+      lines.push(line)
+    }
+
+    return lines
   }
 
-  // Newest last, and as many whole rows as the strip holds: a row's second line
-  // is never shown without its first, which carries the clock and the name.
-  const shown: { row: FeedRow; lines: { text: string; tail: string }[] }[] = []
-  let used = 0
+  const all: { row: FeedRow; first: boolean; parts: { text: string; tone: Rgb }[] }[] = []
 
-  for (let i = feed.length - 1; i >= 0 && used < rows; i--) {
-    const lines = linesOf(feed[i]!)
-    const fit = lines.slice(0, rows - used)
-
-    shown.unshift({ row: feed[i]!, lines: fit })
-    used += fit.length
+  for (const row of feed) {
+    linesOf(row).forEach((parts, i) => all.push({ row, first: i === 0, parts }))
   }
 
+  const last = Math.max(0, all.length - rows)
+  const from = asked === undefined ? last : Math.max(0, Math.min(last, Math.floor(asked)))
   let y = ruleY + 1
 
-  for (const { row, lines } of shown) {
-    let x = 1
+  for (let i = from; i < from + rows && i < all.length; i++) {
+    const { row, first, parts } = all[i]!
 
-    x += c.text(x, y, clockOf(row).padStart(clockW), quiet)
-    x += 2
+    if (first) {
+      let x = 1
 
-    if (row.mark) {
-      const [glyph, tone] =
-        row.mark === 'passed'
-          ? [0x2714, COLORS.done]
-          : row.mark === 'failed'
-            ? [0x2716, COLORS.failed]
-            : [0x25b8, COLORS.running]
+      x += c.text(x, y, clockOf(row).padStart(clockW), quiet)
+      x += 2
 
-      c.put(x, y, glyph, tone)
-    }
+      if (row.mark) {
+        const [glyph, tone] =
+          row.mark === 'passed'
+            ? [0x2714, COLORS.done]
+            : row.mark === 'failed'
+              ? [0x2716, COLORS.failed]
+              : [0x25b8, COLORS.running]
 
-    x += 2
-    c.text(x, y, truncate(feedName(row), nameW).padEnd(nameW), row.agent ? colorOf(row.agent.state) : COLORS.failed)
-
-    for (const line of lines) {
-      const at = textX + c.text(textX, y, truncate(line.text, room), prose)
-
-      if (line.tail) {
-        c.text(at, y, line.tail, done)
+        c.put(x, y, glyph, tone)
       }
 
-      y++
+      x += 2
+      c.text(x, y, truncate(feedName(row), nameW).padEnd(nameW), row.agent ? colorOf(row.agent.state) : COLORS.failed)
     }
+
+    let x = textX
+
+    for (const part of parts) {
+      x += c.text(x, y, part.text, part.tone)
+    }
+
+    y++
   }
+
+  // Grey, like every rail on the pane: they say where the strip goes, not what
+  // state anything is in.
+  if (from > 0) {
+    c.put(c.columns - 1, ruleY + 1, ARROW_UP, COLORS.dim)
+  }
+
+  if (from < last) {
+    c.put(c.columns - 1, ruleY + rows, ARROW_DOWN, COLORS.dim)
+  }
+
+  return { y: ruleY + 1, rows, top: from, lines: all.length }
 }

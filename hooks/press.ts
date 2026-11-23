@@ -41,6 +41,7 @@ import {
   ZOOMS,
   type BodyScroll,
   type DetailView,
+  type FeedView,
   type RunWindow,
   type SettingMenu,
 } from './paint'
@@ -58,6 +59,11 @@ export type PaneView = {
   detailRows: number
   /** Rows of the activity strip under the drawing; 0 turns it off. */
   feedRows: number
+  /**
+   * The first line on screen in the activity strip, counted from the oldest;
+   * null while it follows the newest. Back at the newest line, it follows again.
+   */
+  feedTop?: number | null
   /**
    * What the detail dialog is open on: an agent by its id, or a nested run by
    * `@run:<phase>`, which has no agent of its own.
@@ -271,6 +277,7 @@ export function wheel(
     body?: BodyScroll | null
     foot?: number | null
     runList?: RunWindow | null
+    feed?: FeedView | null
   },
   by: number,
   over?: number,
@@ -285,6 +292,16 @@ export function wheel(
   // would move nothing at all.
   if (context.runList) {
     scrollRuns(view, context.runList, by)
+
+    return
+  }
+
+  // The strip under the pointer before the dialog: a dialog is drawn over the
+  // drawing and stops above the strip, which is still there to be read.
+  const feed = context.feed ?? null
+
+  if (feed && typeof over === 'number' && over >= feed.y && over < feed.y + feed.rows) {
+    scrollFeed(view, feed, by)
 
     return
   }
@@ -324,6 +341,24 @@ export function wheel(
   }
 
   scrollBody(view, body, 0, by)
+}
+
+/**
+ * The activity strip moved by `by` lines, down towards the newest for a
+ * positive one, the way the wheel and a drag both move it.
+ *
+ * Reaching the newest line hands the strip back to the run, so a reader who
+ * looked back and came down again is following without a control to say so.
+ */
+export function scrollFeed(view: PaneView, feed: FeedView | null, by: number): void {
+  if (!feed || by === 0) {
+    return
+  }
+
+  const last = Math.max(0, feed.lines - feed.rows)
+  const top = Math.max(0, Math.min(last, (view.feedTop ?? feed.top) + by))
+
+  view.feedTop = top >= last ? null : top
 }
 
 /**
@@ -449,6 +484,7 @@ export function applyPress(
     view.bodyScroll = { x: 0, y: 0 }
     view.following = true
     view.opened = []
+    view.feedTop = null
 
     return { run: pressed.slice(4) }
   }

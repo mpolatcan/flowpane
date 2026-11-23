@@ -160,7 +160,7 @@ test('down a tall pane, the phases still ahead are counted in when the drawing i
   )
   const { rows } = drawn(run, 90, 40)
   const blank = (row: string) => row.trim() === ''
-  const lastAhead = rows.map((row, y) => (/^ ○ /.test(row) ? y : -1)).reduce((a, b) => Math.max(a, b), -1)
+  const lastAhead = rows.map((row, y) => (/^╌+ ○ /.test(row) ? y : -1)).reduce((a, b) => Math.max(a, b), -1)
   const firstBody = rows.findIndex((row, y) => y > 2 && !blank(row))
   let headerEnd = firstBody - 1
 

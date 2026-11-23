@@ -51,6 +51,7 @@ import {
   useTheme,
   type BodyScroll,
   type DetailView,
+  type FeedView,
   type Hotspot,
   type PaintOptions,
   type PaintResult,
@@ -58,9 +59,9 @@ import {
   type RunWindow,
   type SettingMenu,
 } from './paint'
-import { applyPress, DEFAULT_FEED, drew, MAX_DETAIL, MAX_FEED, MIN_DETAIL, ORIENTATIONS, showDetail, wheel } from './press'
+import { applyPress, DEFAULT_FEED, drew, MAX_DETAIL, MAX_FEED, MIN_DETAIL, ORIENTATIONS, scrollFeed, showDetail, wheel } from './press'
 import { DEFAULT_THEME, hexOf, paletteOf, themeOf, THEMES } from './theme'
-import { bandsOf, pictureOf, type Band } from './tree'
+import { bandsOf, groundOf, pictureOf, stripLines, type Band } from './tree'
 
 const PANE_ID = 'flowpane'
 /**
@@ -186,6 +187,10 @@ const state: {
   detailRows: number
   /** Rows of the activity strip under the drawing; 0 turns it off. */
   feedRows: number
+  /** The first line on screen in the activity strip; null follows the newest. */
+  feedTop: number | null
+  /** What the last paint said about the strip, for scrolling it. */
+  feedView: FeedView | null
   /** Which palette the drawing is painted in. */
   theme: string
   /** Rows the pane asks for while seated inline above the prompt. */
@@ -224,6 +229,10 @@ const state: {
   about: boolean
   /** Whether this build's table has a Button, so the run's name can be pressed. */
   canChoose: boolean
+  /** Whether this build's table has a `Client`, so the activity strip can be dragged. */
+  hasClient: boolean
+  /** The strip's rows as last handed to its `Client`, so the same rows are not handed again. */
+  feedSent: string
 } = {
   runs: [],
   shown: null,
@@ -252,6 +261,10 @@ const state: {
   orientation: 'auto',
   detailRows: 24,
   feedRows: DEFAULT_FEED,
+  feedTop: null,
+  feedView: null,
+  hasClient: false,
+  feedSent: '',
   theme: DEFAULT_THEME,
   paneRows: null,
   nowMs: 0,
@@ -724,6 +737,7 @@ function kept(drawn: PaintResult): void {
   state.detailView = drawn.detail ?? null
   state.bodyView = drawn.body ?? null
   state.runListView = drawn.runList ?? null
+  state.feedView = drawn.feed ?? null
 
   drew(state, drawn)
 }
@@ -740,6 +754,7 @@ function paintOptions(nowMs: number): PaintOptions {
     callOutScroll: state.callOutScroll,
     detailRows: state.detailRows,
     feedRows: state.feedRows,
+    feedTop: state.feedTop ?? undefined,
     detailScroll: state.detailScroll,
     detailTab: state.detailTab,
     bodyScroll: state.bodyScroll,
@@ -774,7 +789,7 @@ function repaint($: EngineInterface, run: RunState, nowMs: number): void {
   // puts a node's label on a different row, those Rasters no longer cover the
   // rows they did, so the tree has to be built again before anything is written
   // into it.
-  const bands = bandsOf(state.canvas.rows, pressable())
+  const bands = bandsOf(state.canvas.rows, pressable(), held())
 
   if (!sameBands(bands, state.bands)) {
     // The Rasters this frame would have written into are about to be replaced,
@@ -811,8 +826,33 @@ function repaint($: EngineInterface, run: RunState, nowMs: number): void {
       .catch(() => state.sent.delete(band.key as string))
   }
 
-  if (state.tick % REDRAW_EVERY === 0 && bands.some(b => !b.key)) {
+  if (state.tick % REDRAW_EVERY === 0 && bands.some(b => !b.key && !b.client)) {
     $.ui.invalidate('ui.render')
+  }
+}
+
+/**
+ * The rows the activity strip's `Client` takes, where it has one: a strip on
+ * screen, over the drawing of a run, on a build whose table has a `Client`.
+ */
+function held(): { from: number; rows: number } | undefined {
+  return state.hasClient && state.shown && state.feedView ? { from: state.feedView.y, rows: state.feedView.rows } : undefined
+}
+
+/** The strip's rows as its `Client` draws them: the cells the last paint put there. */
+function feedProps(): { lines: ReturnType<typeof stripLines>; ground?: string; columns: number } | null {
+  const strip = held()
+
+  if (!strip || !state.canvas) {
+    return null
+  }
+
+  const ground = groundOf(state.canvas)
+
+  return {
+    lines: stripLines(state.canvas, strip.from, strip.rows),
+    ...(ground ? { ground } : {}),
+    columns: state.canvas.columns,
   }
 }
 
@@ -1437,11 +1477,13 @@ export function register(on: On, options: PluginOptions) {
       Button?: Element
       Select?: Element
       Raster?: Element
+      Client?: Element
     }
-    const { Box, Text, Button, Select, Raster } = table
+    const { Box, Text, Button, Select, Raster, Client } = table
 
     state.hasRaster = typeof Raster === 'function'
     state.canChoose = typeof Button === 'function'
+    state.hasClient = typeof Client === 'function' && state.hasRaster
     state.isPaneOpen = true
 
     const run = state.shown
@@ -1482,7 +1524,24 @@ export function register(on: On, options: PluginOptions) {
     // `pictureOf` cuts it at the rows that carry a node's label and draws those
     // as elements, where the label becomes a Button; the cut comes back with it
     // so the next frame blits the same Rasters.
-    const picture = pictureOf(state.canvas, { Box, Text, Button, Raster }, pressable(), pressNode)
+    const strip = held()
+    const props = feedProps()
+
+    state.feedSent = JSON.stringify(props)
+    const picture = pictureOf(
+      state.canvas,
+      { Box, Text, Button, Raster },
+      pressable(),
+      pressNode,
+      strip && props && Client
+        ? {
+            ...strip,
+            // The path is read off the source, so it is written here as a
+            // literal rather than passed in.
+            element: Client({ key: 'feed', module: './feed.ts', props, width: columns, height: strip.rows }),
+          }
+        : undefined,
+    )
 
     state.bands = picture.bands
     // These Rasters are mounted with the cells this paint produced, so what a
@@ -1526,6 +1585,48 @@ export function register(on: On, options: PluginOptions) {
     return result
   })
 
+  // The strip's `Client` posts on its own clock: how many lines a drag or a key
+  // moved it since the last post, which is nothing at all on most of them. The
+  // answer is its next rows, so the same post that carries a drag brings in the
+  // lines the run wrote meanwhile, and none of it costs a render of the pane.
+  on('ui.message', async ($, e, next) => {
+    if (e.requestId !== PANE_ID || e.element !== 'feed') {
+      return next(e)
+    }
+
+    // Posted by code on the drawing thread, so read as input rather than trusted.
+    const data = (typeof e.data === 'object' && e.data !== null ? e.data : {}) as { by?: unknown; to?: unknown }
+    const by = typeof data.by === 'number' && Number.isFinite(data.by) ? Math.max(-500, Math.min(500, Math.trunc(data.by))) : 0
+    const to = data.to === 'top' || data.to === 'end' ? data.to : null
+
+    if (to === 'end') {
+      state.feedTop = null
+    } else if (to === 'top') {
+      state.feedTop = 0
+    }
+
+    if (by !== 0) {
+      scrollFeed(state, state.feedView, by)
+    }
+
+    if ((by !== 0 || to) && state.shown) {
+      repaint($, state.shown, state.nowMs)
+    }
+
+    const props = feedProps()
+    const said = JSON.stringify(props)
+
+    // The module posts whether or not anything moved, so most posts are
+    // answered with nothing: the same rows handed again would draw them again.
+    if (!props || said === state.feedSent) {
+      return {}
+    }
+
+    state.feedSent = said
+
+    return { props }
+  })
+
   on('ui.select', { plugin: PANE_ID }, async ($, e, next) => {
     if (e.element === 'run') {
       state.pressed = `run:${e.value}`
@@ -1567,6 +1668,7 @@ export function register(on: On, options: PluginOptions) {
         // Only where the list is what the reader is looking at: unrolled under
         // the bar, or drawn in place of a graph there is no run to draw.
         runList: !state.shown || state.picking ? state.runListView : null,
+        feed: state.feedView,
       },
       e.by,
       e.pointer?.row,

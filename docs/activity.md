@@ -1,18 +1,57 @@
 # The activity strip
 
 The rows at the foot of the pane, under a rule: what the run has done, one line
-per thing a reader of a pipeline waits to hear about, newest last.
+per thing a reader of a pipeline waits to hear about, newest last, and every
+line of it whole.
 
 ```
-── activity ─────────────────────────────────────────────────────────────────────────────
- 17m31s    Develop  Lint clean. Now run the affected unit tests. → ran npx vitest run __tests…
- 18m51s    Develop  The pill test failures are a mounting artifact: when the pill's root
-                    `v-if` is false it renders as a comment node, so … → read AiStatusPill…
+──────────────────────────────────────── activity ────────────────────────────────────────
+ 18m51s    Develop  The pill test failures are a mounting artifact: when the pill's root   ▴
+                    `v-if` is false it renders as a comment node, so the element does not
+                    re-point after the flip. → read AiStatusPill.test.ts
  19m24s    Develop  edited header/AiStatusPill.test.ts
- 19m29s    Develop  Re-run the AiStatusPill test alone → ran npx vitest run __tests__/unit/…
  19m47s  ▸ Develop  All 87 pass. Let me run the full unit suite to confirm no regressions
-                    from the shared-file edits (MiddleSlot, bridge). → ran npx vitest run 2…
+                    from the shared-file edits (MiddleSlot, bridge). → ran npx vitest run
 ```
+
+## Whole lines, scrolled
+
+A line takes as many rows as its words need, wrapped at word boundaries, with
+what the calls did after an arrow in the same stream. The clock, the mark and
+the name stand on its first row only.
+
+It used to be cut: the words to two rows ending on `…`, the words themselves to
+four hundred characters before that, and what the calls did to a few cells, so
+the agent's reasoning — the one thing on the strip a reader cannot read whole
+anywhere else on the pane — was the thing it cut. The strip scrolls instead.
+
+It is a window of `feedRows` rows over every line the run has written, following
+the newest until the reader moves it. Moved back, it stays on the lines the
+reader is reading while new ones arrive under them, and moved down to the newest
+again, it follows the run again. There is no control for following: arriving at
+the bottom is the control. A `▴` in the strip's last column says there is more
+above, a `▾` that there is more below; both are grey, like every rail on the
+pane.
+
+It moves by:
+
+- the wheel over its rows, a line a step as the engine reports them;
+- a press held and dragged: the lines are carried with the pointer, so dragged
+  up they go up and the newer lines come into view, and the drag goes on past
+  the strip's edges until the button is let go;
+- the keys once a press has given it the focus: up and down a line, page up and
+  page down eight, home and end to either end. Escape gives the focus back.
+
+The drag is why the strip's rows are a `Client` of their own
+(`hooks/feed.ts`) rather than part of the drawing's Rasters: pointer down, move
+and up reach only a surface module, and a surface module cannot hold a Raster.
+The paint still draws the strip onto the canvas as it draws everything else,
+which is what the tests read, and the module is handed those rows as plain data.
+It posts how far it was moved on its own clock, at the pane's frame rate, and the
+answer is its next rows, so the same post that carries a drag brings in the
+lines the run wrote meanwhile and none of it costs a render of the pane. On a
+build whose table has no `Client`, the strip stays in the drawing and the wheel
+still moves it.
 
 ## The agent's words first
 
@@ -26,10 +65,8 @@ redacted, so that narration is the only reasoning a transcript keeps.
 So every call carries the words of the request that issued it (`why` on the
 call — see `hooks/journal.ts`), read from the transcript or, live, from the
 request's own stream as it arrives. Calls one request issued share its words
-and get one line between them: the words, run together onto at most two lines,
-and after an arrow, quieter, what the calls did — `read config.ts, ran the
-tests for stores`. The words keep the line; what was done gives way first, to at most
-a third of it, then to nothing.
+and get one line between them: the words, run together, and after an arrow,
+quieter, what the calls did — `read config.ts, ran the tests for stores`.
 
 An agent that says nothing between calls — a small model sent to commit, say —
 still says what a command is for, in the `description` the shell tool asks for
@@ -104,7 +141,8 @@ here as it does everywhere else in the pane; the words are not coloured.
 
 ## How much room it takes
 
-`feedRows` rows, four unless set otherwise, and a rule: see
+`feedRows` rows, four unless set otherwise, and a rule with ` activity ` in the
+middle of it, as every title on the pane stands in the middle of its rule: see
 [settings.md](settings.md). The setting is in the settings dialog as `Activity`,
 and `/flowpane activity <n>` or `/flowpane activity off` sets it.
 

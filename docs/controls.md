@@ -8,7 +8,7 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | --- | --- |
 | A node's label | opens that agent's detail dialog; click again to close |
 | ⚙ Settings | opens the settings dialog over the drawing |
-| `FlowPane 0.12.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
+| `FlowPane 0.13.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
 | A setting's value | unrolls that setting's list where it stands; press it again to roll the list up |
 | The graph, with any dialog open | takes no presses — it is pushed back behind the dialog until the dialog shuts |
 | Layout | horizontal, vertical, timeline, list, or fits the shape — picked by name |
@@ -19,12 +19,12 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | A tab in the detail dialog | shows that pane across the dialog's whole width. Which tab is open is kept as the reader moves from node to node |
 | A pass number on a node's row | opens that attempt's detail: `✔ 1  ✔ 2  ✖ 3` is one row and three presses |
 | A trip number on the detail dialog's own strip | shows that trip of a phase the run entered more than once, in the tab already open. `↻10 ✔ 1 ✔ 2 ┤ ✔ 3 ├ …` — the open one bracketed, the rest a press each. Where the strip is too narrow for all of them, ◂ and ▸ at its ends step to the trip just outside the window |
-| The ▸ on a nested run's name | unfolds that run into every agent it ran, each one a press of its own, in one press. It is on the band's rule — the column head across, the band rule down the pane and along the timeline — which is the one row of the drawing that is about the run rather than about the agents in it. Down the pane the agents stand one step in, behind a gutter of their own, closed by what the whole of the run came to. The mark turns ▾ while it is open, and takes the cell either side of it as a press |
 | A nested run's own name, on its row or its card | opens the run as the list of every agent it ran: state, name, what it answered, what it took and spent, one row each. The row stands for a whole workflow and has no agent of its own, so this used to open the one agent whose figures the row was drawn from. Pressing a row of the list opens that agent in full |
 | `◂ Back`, in an agent's dialog | returns to the nested run's list it was opened from, at the row it was left on. Offered only where there is a list behind: an agent pressed in the drawing has the drawing behind it |
-| The `▸ 23 agents` handle after a nested run's caption | opens the run, and folds it back once it is open, when it reads `▾ 23 agents`. One control, the same shape in both states, and the only one: the node used to carry the same count as a second way in, on a row in the slot that says what the agent is saying and on a card in the edge that says its model, and it overlapped both. It gives way to `▸ 23` and then to `▸`; a column with room for none of them leaves the press on the mark the name opens with |
+| The `▸ 23 agents` handle after a nested run's caption | unfolds that run into every agent it ran, each one a press of its own, and folds it back once it is open, when it reads `▾ 23 agents`. It is on the band's rule — the column head across, the band rule down the pane and along the timeline — which is the one row of the drawing that is about the run rather than about the agents in it. One control, the same shape in both states, and the only one. The name used to open with a `▸` of its own that did the same, and two marks on one heading read as two controls that did different things; the name is the name now, and pressing it opens the run's list of agents as it always did. The node used to carry the count as a way in as well, on a row and on a card, and overlapped both. The handle gives way to `▸ 23` and then to `▸`, and the heading's name gives way before the handle's last rung does |
 | ▴ / ▾ (in a dialog) | scrolls the open pane three lines. Grey at either end |
 | ▴ / ▾ (at the pane's right edge) | scrolls the drawing three rows, where the drawing is taller than the body. While a run is live this is a peek: the window goes back to the phase at work when the run enters a new one. The timeline scrolls its bands the same way, under the fixed run line and ruler |
+| The wheel, a drag, or the keys, over the activity strip | moves the strip back through everything the run did, every line whole; back at the newest line it follows the run again. The keys reach it once a press has given it the focus |
 | The wheel, over the pane | moves the drawing by the rows the wheel asks for; moves the open dialog instead while one is open |
 | The wheel, over the rail along the foot | moves the drawing eight cells sideways a tick. A drawing that can only go sideways — one that overruns the pane's width and not its height, which is what the phases in a row usually come to — takes the wheel this way wherever it is turned |
 | The `▾ 6 agents` on a step of an opened nested run | folds the rows that ran at once in that step into one row saying how many; press it again to stand them out. Only a step holding more than one row carries it, and only inside a nested run: a phase of the calling run that fanned out to six agents is six cards either way. Folding the run itself back forgets every fold made inside it |
@@ -43,7 +43,7 @@ taller than the pane and one along the foot where it is wider:
 ```
 ──────────────────────────── Commit (code) 3/3 ↻3 ──────────────────────── █
   ▌✔ Commit (code)  ✔ 1  ✔ 2  ✔ 3                    1m48s  ∑25k  Haiku 4.5 █
-╍╍╍╍╍╍╍╍ ▸ code-review:ai-review-agentic 23/23 ↻3 ╍╍ ▸ 23 agents ╍╍╍╍╍╍╍╍╍ █
+╍╍╍╍╍╍╍╍ code-review:ai-review-agentic 23/23 ↻3 ╍╍ ▸ 23 agents ╍╍╍╍╍╍╍╍╍ ┃
   ▌✔ code-review:ai-review-agentic  ✔ 1  ✔ 2  ✔ 3            ∑198k   ▾
 ```
 
@@ -181,7 +181,7 @@ them.
 
 ```
 ────────────────────────────────────────────────────────────────────────────────────────────────
-⚙ Settings │ fits │ tokyo-night │ 24 rows       3 running │ 3 runs this session  FlowPane 0.12.0
+⚙ Settings │ fits │ tokyo-night │ 24 rows       3 running │ 3 runs this session  FlowPane 0.13.0
 ```
 
 A line divides it from the drawing. Everything above the line is one canvas and
@@ -244,11 +244,11 @@ most.
 The same pane at 96, 88, 72, 44, 30 and 22 columns:
 
 ```
-⚙ Settings │ fits │ tokyo-night │ 24 rows       3 running │ 3 runs this session  FlowPane 0.12.0
-⚙ Settings │ fits │ tokyo-night │ 24 rows                                FlowPane 0.12.0
-⚙ Settings │ fits │ tokyo-night │ 24 rows                FlowPane 0.12.0
-⚙ Settings │ fits            FlowPane 0.12.0
-⚙ Settings     FlowPane 0.12.0
+⚙ Settings │ fits │ tokyo-night │ 24 rows       3 running │ 3 runs this session  FlowPane 0.13.0
+⚙ Settings │ fits │ tokyo-night │ 24 rows                                FlowPane 0.13.0
+⚙ Settings │ fits │ tokyo-night │ 24 rows                FlowPane 0.13.0
+⚙ Settings │ fits            FlowPane 0.13.0
+⚙ Settings     FlowPane 0.13.0
 ⚙ Settings │ fits     
 ```
 
@@ -274,7 +274,7 @@ reader presses to find out what this is, is what it is called.
 ## What the pane is
 
 ```
-╭─────────────────── FlowPane 0.12.0 ───────────────────── ✕ ─╮
+╭─────────────────── FlowPane 0.13.0 ───────────────────── ✕ ─╮
 │                                                            │
 │ A live picture of the agents a workflow runs: what each    │
 │ one is doing, what it has spent, and what it answered.     │

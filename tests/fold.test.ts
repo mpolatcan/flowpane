@@ -140,7 +140,7 @@ test('a nested workflow is one row saying how many agents ran inside it', () => 
   expect(text).not.toContain('review:bugs')
 })
 
-test('a nested run unfolds on its own mark, and folds back on the same one', () => {
+test('a nested run unfolds on its handle, and folds back on the same one', () => {
   at = 0
 
   const phase = '\u25b8 code-review'
@@ -153,9 +153,8 @@ test('a nested run unfolds on its own mark, and folds back on the same one', () 
   const canvas = new Canvas(110, 20)
   const shut = paint(canvas, run, { nowMs: STARTED + 20_000, tick: -1, orientation: 'vertical' })
 
-  // The press is on the ▸ the band's name already opens with: a run of
-  // twenty-three agents drawn as one row has to have a way in, and the mark is
-  // where a reader looking for one already is.
+  // A run of twenty-three agents drawn as one row has to have a way in, and it
+  // is the handle on the band's rule.
   expect(shut.hotspots.some(spot => spot.agentId === `@band:${phase}`)).toBe(true)
 
   const open = new Canvas(110, 20)
@@ -172,7 +171,12 @@ test('a nested run unfolds on its own mark, and folds back on the same one', () 
   // the count it carried moves to the handle on the rule, where it is the way
   // back rather than the way in.
   expect(rows.some(row => row.includes('\u2570') && row.includes('3 agents'))).toBe(false)
-  expect(rows.some(row => row.includes('\u25be code-review') && row.includes('\u25be 3 agents'))).toBe(true)
+  expect(rows.some(row => row.includes(' code-review') && row.includes('\u25be 3 agents'))).toBe(true)
+
+  // The name carries no mark of its own: the handle is the one control, and a
+  // second `▾` before the name read as a second control doing something else.
+  expect(text).not.toContain('\u25be code-review')
+  expect(text).not.toContain('\u25b8 code-review')
 })
 
 test('the count of what is inside is the way in, in every layout', () => {
@@ -267,11 +271,14 @@ test('a nested run says whether it is open', () => {
   paint(shut, run, { nowMs: STARTED + 40_000, tick: -1, orientation: 'vertical' })
   paint(open, run, { nowMs: STARTED + 40_000, tick: -1, orientation: 'vertical', opened: [phase] })
 
-  // The mark is the press that opens the run, so once it is open it has to stop
-  // saying *press me to open*: a reader who has opened two of three nested runs
-  // can see which two.
-  expect(rowsOf(shut).join('\n')).toContain('\u25b8 code-review:ai-review')
-  expect(rowsOf(open).join('\n')).toContain('\u25be code-review:ai-review')
+  // The handle is the press that opens the run, so once it is open it has to
+  // stop saying *press me to open*: a reader who has opened two of three nested
+  // runs can see which two. It says so even on a pane too narrow for the name
+  // and the whole handle, where the name gives way to the handle's mark.
+  expect(rowsOf(shut).join('\n')).toMatch(/code-review:ai-review.*\u25b8 3/)
+  expect(rowsOf(open).join('\n')).toMatch(/code-review:ai-review.*\u25be 3/)
+  expect(rowsOf(shut).join('\n')).not.toContain('\u25b8 code-review')
+  expect(rowsOf(open).join('\n')).not.toContain('\u25be code-review')
 
   // Folded back, the gutter goes with it.
   expect(rowsOf(shut).join('\n')).not.toContain('\u254e')
@@ -565,7 +572,8 @@ test('the timeline stands a shut nested run one bar a trip, not one an agent', (
   const rows = rowsOf(canvas)
   // Past the gutter the critical chain is drawn in, which every row of the
   // timeline opens with and only the rows on that chain have anything in.
-  const bars = rows.filter(row => /^.\s✔ code-r/.test(row))
+  // The heading opens the same way and is told apart by its handle.
+  const bars = rows.filter(row => /^.\s✔ code-r/.test(row) && !/[▸▾]/.test(row))
 
   // A run entered twice is two stretches of clock with the calling run's own
   // work in the gap. One bar spanning both would draw over a gap the nested run
@@ -588,7 +596,8 @@ test('the timeline opens a nested run into a row an agent, each one pressable', 
   const rows = rowsOf(canvas)
 
   expect(rows.filter(row => row.includes(' plan'))).toHaveLength(2)
-  expect(rows.some(row => row.includes(' ▾ code-review'))).toBe(true)
+  expect(rows.some(row => row.includes('✔ code-review') && row.includes('▾'))).toBe(true)
+  expect(rows.some(row => row.includes('▾ code-review'))).toBe(false)
 
   // Each of them takes a press of its own, which is what a reader opened the
   // run for: the detail behind one agent of another workflow.
@@ -789,12 +798,12 @@ test('a nested run carries one handle, the same shape open and shut', () => {
   // what crosses them.
   const showing = open.rule.replace(/[\u2022\u2502\u2506]/g, '\u254c')
 
-  expect(showing).toContain('\u25be code-review:ai-review  3/3')
+  expect(showing).toContain(' code-review:ai-review  3/3')
   expect(showing).toContain('\u25be 3 agents')
 
   // The run's own name comes first, after its state mark, and what follows it
   // trails off its right.
-  const name = '\u25be code-review:ai-review'
+  const name = 'code-review:ai-review'
 
   for (const rule of [open.rule, ruleOf([phase], 100).rule]) {
     const at = rule.indexOf(name)
@@ -878,7 +887,7 @@ test('a drawing far longer than its rail still has a thumb to look at', () => {
 
   const rows = rowsOf(canvas)
   const railX = (rows.find(row => row.includes('\u25b4')) ?? '').indexOf('\u25b4')
-  const thumb = rows.filter(row => row[railX] === '\u2588').length
+  const thumb = rows.filter(row => row[railX] === '\u2503').length
 
   // At this ratio the share of the drawing on the pane rounds to nothing, and
   // the rail is drawn as a track with no thumb in it: a control saying where
@@ -899,7 +908,7 @@ test('a thumb says how much of the drawing is on the pane', () => {
     const rows = rowsOf(canvas)
     const railX = (rows.find(row => row.includes('\u25b4')) ?? '').indexOf('\u25b4')
 
-    return rows.filter(row => row[railX] === '\u2588').length
+    return rows.filter(row => row[railX] === '\u2503').length
   }
 
   // The floor of one cell is a floor, not the whole rule: a run barely longer

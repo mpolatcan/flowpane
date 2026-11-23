@@ -7,7 +7,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { Canvas } from '../hooks/canvas'
 import { applyRunFile, noteCallStart, noteStep, type AgentRow, type AgentState, type RunState, type ToolCall } from '../hooks/journal'
-import { paint } from '../hooks/paint'
+import { paint, type FeedView } from '../hooks/paint'
 
 const STARTED = 1_700_000_000_000
 const NOW = STARTED + 60_000
@@ -64,10 +64,16 @@ function pipeline(): RunState {
   ])
 }
 
-function rows(run: RunState, columns: number, height: number, feedRows: number): { canvas: Canvas; lines: string[] } {
+function rows(
+  run: RunState,
+  columns: number,
+  height: number,
+  feedRows: number,
+  feedTop?: number,
+): { canvas: Canvas; lines: string[]; feed?: FeedView } {
   const canvas = new Canvas(columns, height)
 
-  paint(canvas, run, { nowMs: NOW, tick: 0, orientation: 'vertical', feedRows })
+  const drawn = paint(canvas, run, { nowMs: NOW, tick: 0, orientation: 'vertical', feedRows, feedTop })
 
   const lines: string[] = []
 
@@ -81,14 +87,14 @@ function rows(run: RunState, columns: number, height: number, feedRows: number):
     lines.push(text.trimEnd())
   }
 
-  return { canvas, lines }
+  return { canvas, lines, feed: drawn.feed }
 }
 
-test('the strip says what the run did, newest last, under a rule at the foot', () => {
+test('the strip says what the run did, newest last, under a rule with its label in the middle', () => {
   const { lines } = rows(pipeline(), 100, 30, 6)
 
   expect(lines.slice(-7)).toEqual([
-    `── activity ${'─'.repeat(88)}`,
+    `${'─'.repeat(45)} activity ${'─'.repeat(45)}`,
     '  4.0s  ✔ Preflight  passed: plan located, tools ready',
     '  5.0s    Develop    read 2 files, searched once',
     ' 10.0s    Develop    edited stores/config.ts',
@@ -98,10 +104,38 @@ test('the strip says what the run did, newest last, under a rule at the foot', (
   ])
 })
 
-test('only the newest lines are kept where there are more than the strip holds', () => {
+/** A strip line with an arrow in the pane's last column, at 100 columns. */
+function edge(line: string, arrow: string): string {
+  return `${line.padEnd(99)}${arrow}`
+}
+
+test('the strip follows the newest lines, and an arrow says there is more above', () => {
   const { lines } = rows(pipeline(), 100, 30, 2)
 
-  expect(lines.slice(-2)).toEqual([' 14.0s    Develop  wrote stores/ai-status.ts', ' 16.0s  ▸ Develop  ran the tests'])
+  expect(lines.slice(-2)).toEqual([
+    edge(' 14.0s    Develop    wrote stores/ai-status.ts', '\u25b4'),
+    ' 16.0s  \u25b8 Develop    ran the tests',
+  ])
+})
+
+test('scrolled back, the strip shows older lines, with an arrow either way there is more', () => {
+  const { lines, feed } = rows(pipeline(), 100, 30, 2, 2)
+
+  expect(lines.slice(-2)).toEqual([
+    edge(' 10.0s    Develop    edited stores/config.ts', '\u25b4'),
+    edge(' 12.0s  \u2716 Develop    ran the linter, which failed', '\u25be'),
+  ])
+  expect(feed).toEqual({ y: 28, rows: 2, top: 2, lines: 6 })
+})
+
+test('the strip cannot be scrolled past its oldest line', () => {
+  const { lines, feed } = rows(pipeline(), 100, 30, 2, -5)
+
+  expect(lines.slice(-2)).toEqual([
+    '  4.0s  \u2714 Preflight  passed: plan located, tools ready',
+    edge('  5.0s    Develop    read 2 files, searched once', '\u25be'),
+  ])
+  expect(feed?.top).toBe(0)
 })
 
 test('the mark and the name carry the state, and the words stay grey', () => {
@@ -166,7 +200,7 @@ test('an agent that said why it made its calls is quoted, with what it did after
   ])
 })
 
-test('words too long for one line take a second under the first, and the strip keeps whole rows', () => {
+test('words too long for one line wrap over as many as they need, whole', () => {
   const why = 'The pill test failures are a mounting artifact: when the root v-if is false it renders as a comment node, so the element does not re-point after the flip. The fix is to mount it inside a stable wrapper.'
   const run = runOf([
     agent('Develop', 'running', [
@@ -174,13 +208,16 @@ test('words too long for one line take a second under the first, and the strip k
       call('Edit', 'file_path: /wt/feature/src/AiStatusPill.test.ts', 6, { why }),
     ]),
   ])
-  const { lines } = rows(run, 80, 30, 2)
+  const { lines } = rows(run, 80, 30, 6)
 
-  expect(lines.slice(-3)).toEqual([
-    `── activity ${'─'.repeat(68)}`,
-    ' 6.0s    Develop  The pill test failures are a mounting artifact: when the root',
-    '                  v-if is false it renders as a commen\u2026 \u2192 edited AiStatusPill.\u2026',
+  expect(lines.slice(-5)).toEqual([
+    ' 6.0s    Develop  The pill test failures are a mounting artifact: when the',
+    '                  root v-if is false it renders as a comment node, so the',
+    '                  element does not re-point after the flip. The fix is to',
+    '                  mount it inside a stable wrapper. \u2192 edited',
+    '                  AiStatusPill.test.ts',
   ])
+  expect(lines.join('\n')).not.toContain('\u2026')
 })
 
 test('what a request says before its calls is what those calls are stamped with, live', () => {
@@ -217,7 +254,7 @@ test('a run that failed after every agent landed closes the strip with what the 
 
   const { lines } = rows(run, 100, 30, 6)
 
-  const strip = lines.slice(lines.findIndex(line => line.startsWith('── activity')) + 1).filter(line => line !== '')
+  const strip = lines.slice(lines.findIndex(line => line.includes(' activity ')) + 1).filter(line => line !== '')
 
   expect(strip).toEqual(['  5.0s    Gate  ran the tests', ' 40.0s  ✖ run   gate tests failed: 3 tests failed'])
 })
