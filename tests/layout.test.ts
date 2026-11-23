@@ -1291,3 +1291,29 @@ test('across, a run shorter than the body starts under the header, and its phase
   expect(Math.max(...down)).toBeGreaterThan(cards + 10)
   expect(drawn.hotspots.length).toBeGreaterThan(0)
 })
+
+test('across, the seam before the phases still ahead runs to the foot of the body, as the boundaries beside it do', () => {
+  const run = runOf([
+    ['Survey', ['paint', 'layout']],
+    ['Review', ['paint']],
+    ['Verify', []],
+    ['Escalate', []],
+    ['Report', []],
+  ])
+  const canvas = new Canvas(150, 60)
+
+  paint(canvas, run, { nowMs: STARTED + 20_000, tick: -1, orientation: 'horizontal' })
+
+  const view = layout(run, 150, 60, 'horizontal')
+  const lines = rowsOf(canvas)
+  const seam = view.ahead?.x ?? -1
+  const edge = view.lanes[1]!.edgeAt
+  const rowsWith = (x: number, glyph: string) => lines.map((line, y) => (line[x] === glyph ? y : -1)).filter(y => y >= 0)
+  const cards = Math.max(...view.lanes.flatMap(lane => lane.nodes.map(node => node.y + node.h)))
+  const list = lines.findIndex(line => line.slice(seam).includes('Report'))
+
+  expect(seam).toBeGreaterThan(0)
+  expect(list).toBeGreaterThan(0)
+  expect(Math.max(...rowsWith(seam, '╎'))).toBeGreaterThan(Math.max(cards, list) + 10)
+  expect(Math.max(...rowsWith(seam, '╎'))).toBe(Math.max(...rowsWith(edge, '│')))
+})
