@@ -1354,3 +1354,80 @@ test('a carry the files record is drawn heavy, and a guessed one light, neither 
   expect(arriving(guessed)).toContain('\u2500')
   expect(rows.join('\n')).not.toMatch(/[\u2504\u2506]/)
 })
+
+test('a bundle of crowded carries is drawn whole and light, never dashed', () => {
+  // One source fans out far enough that its run along the gutter overlaps the
+  // other source's, so the gutter is drawn as the one bus the two already look
+  // like. The bus stands for carries read off labels, and those used to be
+  // dashed; a guessed carry is this run's own work, so it is a whole line now.
+  const run = runOf('haiku', ['Gather', 'Draft'], [
+    agentOf('g0', 'gather:rivers', 'Gather', 0, 4_000),
+    agentOf('g1', 'gather:reefs', 'Gather', 0, 4_000),
+    agentOf('d0', 'draft:rivers alpha', 'Draft', 5_000, 4_000),
+    agentOf('d1', 'draft:rivers beta', 'Draft', 5_000, 4_000),
+    agentOf('d2', 'draft:rivers gamma', 'Draft', 5_000, 4_000),
+    agentOf('d3', 'draft:rivers delta', 'Draft', 5_000, 4_000),
+    agentOf('d4', 'draft:reefs alpha', 'Draft', 5_000, 4_000),
+  ])
+  const { rows, view } = drawn(run, 200, 30, 'vertical')
+  const gather = view.lanes.find(lane => lane.phase === 'Gather')?.nodes ?? []
+  const draft = view.lanes.find(lane => lane.phase === 'Draft')
+  const targets = draft?.nodes ?? []
+
+  expect(gather.length).toBe(2)
+  expect(targets.length).toBe(5)
+
+  const busAt = draft?.busAt ?? 0
+  const ends = targets.map(node => entryOf(node, 'vertical').x)
+  const spine = (rows[busAt] as string).slice(Math.min(...ends), Math.max(...ends) + 1)
+
+  expect(spine).toMatch(/^[─┬┴┼╭╮]+$/)
+  expect(spine).toContain('─')
+  expect(spine).not.toMatch(/[┄┆]/)
+
+  for (const x of ends) {
+    expect((rows[busAt + 1] as string)[x]).toBe(LINE_V)
+  }
+
+  for (const node of gather) {
+    const leaves = exitOf(node, 'vertical')
+
+    expect((rows[leaves.y + 1] as string)[leaves.x]).toBe(LINE_V)
+  }
+
+  expect(rows.join('\n')).not.toMatch(/[┄┆]/)
+})
+
+test('a source written across a recorded carry stands whole, and the heavy line gives way for that row alone', () => {
+  // The heavy upright a recorded carry draws is a line passing through, like
+  // the light one: the caption over the card takes its cell for one row, and
+  // the line runs whole above it. Counted as a shape instead, it cut the row in
+  // two and left the name too little room to be written whole.
+  const LATER = 'The retry loop sleeps on the request thread, so a slow upstream stalls every caller behind it.'
+  const run = runOf('audit', ['Research', 'Widen', 'Draft'], [
+    agentOf('g0', 'research:alpha', 'Research', 0, 4_000),
+    { ...agentOf('w0', 'widen:one', 'Widen', 5_000, 3_000), result: FOUND },
+    { ...agentOf('w1', 'widen:two', 'Widen', 5_000, 3_000), result: LATER },
+    { ...agentOf('d0', 'draft:alpha', 'Draft', 9_000, 4_000), prompt: `Fix what was found. ${FOUND}` },
+    { ...agentOf('d1', 'draft:beta', 'Draft', 9_000, 4_000), prompt: `Fix what was found. ${LATER}` },
+  ])
+
+  expect(edgesOf(run).find(e => e.fromId === 'w0' && e.toId === 'd0')?.confirmed).toBe(true)
+
+  const { rows, view } = drawn(run, 104, 52, 'vertical')
+  const node = view.lanes.find(lane => lane.phase === 'Draft')?.nodes[0]
+
+  expect(node?.agent.agentId).toBe('d0')
+
+  const into = entryOf(node!, 'vertical')
+  const caption = node!.y - 2
+  const said = (rows[caption] as string).slice(node!.x, node!.x + node!.w)
+  const at = (rows[caption] as string).indexOf('▾ from Research')
+
+  expect(said).toContain('▾ from Research')
+  expect(at).toBeLessThanOrEqual(into.x)
+  expect(at + '▾ from Research'.length).toBeGreaterThan(into.x)
+  expect((rows[caption - 1] as string)[into.x]).toBe('┃')
+  expect((rows[caption - 2] as string)[into.x]).toBe('┃')
+  expect((rows[into.y] as string)[into.x]).toBe(ARROW_DOWN)
+})
