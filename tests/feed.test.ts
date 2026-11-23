@@ -381,3 +381,42 @@ test('a pane too short for the lines asked for shows as many as leave the drawin
   expect(lines.some(line => line.includes(' activity '))).toBe(true)
   expect(feed?.rows).toBe(3)
 })
+
+test('a pane never told the size of its strip offers it at six rows in the settings', () => {
+  const canvas = new Canvas(100, 40)
+
+  paint(canvas, pipeline(), { nowMs: NOW, tick: 0, orientation: 'vertical', settings: true })
+
+  const text = Array.from({ length: canvas.rows }, (_, y) =>
+    Array.from({ length: canvas.columns }, (_, x) => String.fromCodePoint(canvas.at(x, y) || 0x20)).join(''),
+  ).join('\n')
+
+  expect(text).toContain('6 rows')
+})
+
+test('a strip asked for one line shows one line, on a pane with room for it and on one that is short', () => {
+  for (const height of [30, 21]) {
+    const { lines, feed } = rows(pipeline(), 100, height, 1)
+
+    expect(feed?.rows).toBe(1)
+    expect(lines.at(-1)).toContain('ran the tests')
+    expect(lines.at(-3)).toContain(' activity ')
+  }
+})
+
+test('a pane too short even for one line of the strip leaves it out', () => {
+  const { lines, feed } = rows(pipeline(), 100, 18, 6)
+
+  expect(feed).toBeUndefined()
+  expect(lines.some(line => line.includes(' activity '))).toBe(false)
+})
+
+test('a phase the script named with a colon keeps its words; only a plugin’s namespace is dropped', () => {
+  const run = runOf([
+    agent('reviewer', 'done', [call('Bash', 'npm test', 4)], { phase: 'Stage 2: Verify' }),
+    agent('panel', 'done', [call('Bash', 'npm run lint', 6)], { phase: '▸ code-review:ai-review-panel' }),
+  ])
+  const strip = rows(run, 120, 30, 6).lines.filter(line => / ran (?:the tests|the linter)/.test(line))
+
+  expect(strip).toEqual([' 4.0s  · Stage 2: Verify · reviewer  ran the tests', ' 6.0s  · ai-review-panel · panel     ran the linter'])
+})

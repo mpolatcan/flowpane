@@ -15,7 +15,7 @@ import { Canvas, DEFAULT_COLOR } from '../hooks/canvas'
 import type { AgentRow, RunState, ToolCall } from '../hooks/journal'
 import { barRowsOf } from '../hooks/layout'
 import { NAME, noteShipped, VERSION } from '../hooks/about'
-import { paint, paintIdle, useTheme, type PaintOptions, type RunEntry } from '../hooks/paint'
+import { COLORS, paint, paintIdle, quietOf, useTheme, type PaintOptions, type RunEntry } from '../hooks/paint'
 import { themeOf } from '../hooks/theme'
 
 const STARTED = 1_700_000_000_000
@@ -1755,4 +1755,48 @@ test('an unclosed quote followed by a run of backslashes is read in one pass', (
   opened({ id: 'slashes', input: `command: echo "${'\\'.repeat(60)}x` })
 
   expect(Date.now() - started).toBeLessThan(500)
+})
+
+test('an Edit drops the syntax hues on its tinted lines, and keeps them on the rest', () => {
+  const input = ['file_path: /wt/src/a.ts', 'old_string: const a = 1', 'new_string: const a = 2'].join('\n')
+  const canvas = opened({ id: 'hues', name: 'Edit', input })
+
+  expect(hueOf(canvas, 'file_path')).toBe(JSON.stringify(COLORS.syntaxKey))
+  expect(hueOf(canvas, 'old_string')).toBe(JSON.stringify(quietOf(COLORS.text)))
+  expect(hueOf(canvas, 'old_string')).not.toBe(hueOf(canvas, 'file_path'))
+})
+
+test('an argument that is JSON whole names its fields in the key hue and its strings in the string hue', () => {
+  const input = JSON.stringify({ id: 'first', status: 'pending' }, null, 2)
+  const canvas = opened({ id: 'whole', name: 'TodoWrite', input, result: 'ok' })
+
+  expect(hueOf(canvas, '"status"')).toBe(JSON.stringify(COLORS.syntaxKey))
+  expect(hueOf(canvas, '"pending"')).toBe(JSON.stringify(COLORS.syntaxString))
+})
+
+test('a payload value written as JSON reads its fields, strings and numbers each in their own hue', () => {
+  const input = ['todos: [{"id":"a","n":4242}]', 'mode: replace'].join('\n')
+  const canvas = opened({ id: 'valued', name: 'TodoWrite', input })
+
+  expect(hueOf(canvas, '"id"')).toBe(JSON.stringify(COLORS.syntaxKey))
+  expect(hueOf(canvas, '"a"')).toBe(JSON.stringify(COLORS.syntaxString))
+  expect(hueOf(canvas, '4242')).toBe(JSON.stringify(COLORS.syntaxNumber))
+})
+
+test('a line of new text that starts like a property every object has is still tinted as added', () => {
+  const input = ['file_path: /wt/src/a.ts', 'old_string: class Old {}', 'new_string: class New {', 'constructor: () => {}', '__proto__: null', '}'].join('\n')
+  const canvas = opened({ id: 'proto', name: 'Edit', input })
+  const fresh = groundOf(canvas, 'class New {')
+
+  expect(fresh).not.toBe(groundOf(canvas, 'class Old {}'))
+  expect(groundOf(canvas, 'constructor: ')).toBe(fresh)
+  expect(groundOf(canvas, '__proto__: ')).toBe(fresh)
+})
+
+test('a removed line that read `-- a comment` is tinted as removed, not drawn as a header', () => {
+  const result = ['diff --git a/q.sql b/q.sql', '--- a/q.sql', '+++ b/q.sql', '@@ -1,2 +1,1 @@', '-- an old note', ' select 1;'].join('\n')
+  const canvas = opened({ id: 'sql', input: 'command: git diff', result })
+
+  expect(groundOf(canvas, '- an old note')).not.toBe(groundOf(canvas, 'select 1;'))
+  expect(groundOf(canvas, '- an old note')).not.toBe(groundOf(canvas, '+++ b/q.sql'))
 })

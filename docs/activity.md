@@ -183,10 +183,12 @@ and a band that opened empty on every run would spend four rows saying what the
 drawing already says.
 
 On a pane too short for the lines asked for, as many as leave the drawing
-sixteen rows, and none when that is fewer than two. The strip is read beside
-the drawing, never instead of it. It used to be all or nothing, which was right
-while the strip asked for four lines; at six and a row of column names it would
-have taken the strip away from every pane that showed one at twenty rows.
+sixteen rows, down to one, and none when there is not one to spare. The strip
+is read beside the drawing, never instead of it. It used to be all or nothing,
+which was right while the strip asked for four lines; at six and a row of
+column names it would have taken the strip away from every pane that showed
+one at twenty rows. A floor of two lines took it away from a reader who had
+asked for one, while the setting still said one.
 
 The drawing is painted as a pane that many rows shorter and the strip drawn
 under it, rather than every layout being taught to stop short of it. To the
