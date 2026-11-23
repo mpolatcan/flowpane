@@ -1809,3 +1809,36 @@ test('a second file in a diff that is not git’s still has its header drawn as 
   expect(groundOf(canvas, '--- a/two.sql')).toBe(groundOf(canvas, 'keep one'))
   expect(groundOf(canvas, '+++ b/two.sql')).toBe(groundOf(canvas, 'keep one'))
 })
+
+test('a number standing alone in a command takes the number hue, and a number led by a dash stays a flag', () => {
+  const counted = opened({ id: 'count', input: 'command: head -n 4242 file.txt' })
+  const flagged = opened({ id: 'flag', input: 'command: tail -4242 f' })
+
+  expect(hueOf(counted, '4242')).toBe(JSON.stringify(COLORS.syntaxNumber))
+  expect(hueOf(flagged, '-4242')).not.toBe(JSON.stringify(COLORS.syntaxNumber))
+  expect(hueOf(flagged, '-4242')).toBe(hueOf(counted, '-n'))
+})
+
+test('a comment in a command drops back with the operators, words and all', () => {
+  const canvas = opened({ id: 'note', input: 'command: ls && pwd # list it' })
+
+  expect(hueOf(canvas, '# list it')).toBe(hueOf(canvas, '&&'))
+  expect(hueOf(canvas, 'list it')).toBe(hueOf(canvas, '&&'))
+})
+
+test('a payload value that is a bare number or flag takes the number hue, and a word stays in the block’s own tone', () => {
+  const input = ['pattern: needle', 'limit: 4242', 'dry_run: false'].join('\n')
+  const canvas = opened({ id: 'scalars', name: 'Grep', input })
+
+  expect(hueOf(canvas, '4242')).toBe(JSON.stringify(COLORS.syntaxNumber))
+  expect(hueOf(canvas, 'false')).toBe(JSON.stringify(COLORS.syntaxNumber))
+  expect(hueOf(canvas, 'needle')).toBe(JSON.stringify(quietOf(COLORS.text)))
+})
+
+test('a line of a Write’s content that is JSON whole names its fields in the key hue and its numbers in the number hue', () => {
+  const input = ['file_path: /wt/data.jsonl', 'content: first line', '{"id":"a","n":4242}', 'last line'].join('\n')
+  const canvas = opened({ id: 'written', name: 'Write', input })
+
+  expect(hueOf(canvas, '"id"')).toBe(JSON.stringify(COLORS.syntaxKey))
+  expect(hueOf(canvas, '4242')).toBe(JSON.stringify(COLORS.syntaxNumber))
+})
