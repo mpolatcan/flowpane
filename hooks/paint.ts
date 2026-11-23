@@ -2347,7 +2347,8 @@ function roomOf(c: Canvas, run: { x: number; w: number }, y: number, end: number
  * its cells, and the wire gives way for that one row and runs whole above and
  * below it. This is the same bargain for the same reason.
  *
- * A plain upright only — the light one and the dashed one. A tee, an elbow, an
+ * A plain upright only — the light one an inferred carry draws, the heavy one a
+ * recorded carry draws, and the dashed one. A tee, an elbow, an
  * arrowhead or a card's frame is a shape a reader follows rather than a line
  * passing through, and rubbing one out loses a fact rather than a cell of a
  * line that is drawn again on the next row.
@@ -2363,7 +2364,7 @@ function wireRun(c: Canvas, x: number, y: number, width: number): { x: number; w
 
   for (let at = x; at <= end; at++) {
     const cell = at < end ? c.at(at, y) : 1
-    const free = cell === 0 || cell === 0x20 || cell === LIGHT.down || cell === DASH_V
+    const free = cell === 0 || cell === 0x20 || cell === LIGHT.down || cell === HEAVY.down || cell === DASH_V
 
     if (free && start < 0) {
       start = at
@@ -3040,25 +3041,26 @@ facts.total > 0 && facts.landed < facts.total ? Math.round((facts.landed / facts
       ink(x, y, empty ? SEAM_H : ruleOf(fold?.nested === true, landed), tone)
     }
 
-    // The heading is set into the rule flush left, a cell in, with a blank cell
-    // either side of it, so the rule reads as one line broken by a heading
-    // rather than as two lines with a word between them. It stands there
-    // whatever crosses the rule, and the wire gives way: the heading clears the
-    // cells it stands in, so a wire passing through loses this one row of
-    // itself and runs on above and below.
+    // The heading is set into the rule over the middle of the band's cards,
+    // with a blank cell either side of it, so the rule reads as one line broken
+    // by a heading rather than as two lines with a word between them. It stands
+    // there whatever crosses the rule, and the wire gives way: the heading
+    // clears the cells it stands in, so a wire passing through loses this one
+    // row of itself and runs on above and below. The list has no cards to stand
+    // over, so there it stays flush left, a cell in.
     //
-    // It used to be centred, and the caption used to give way to the wire,
-    // stepping along the rule to a window with no wire in it. The spine of a
-    // stack of centred cards runs down the middle of every rule, so every band
-    // stepped aside by a different amount. Flush left there is nothing to
-    // defend. See `docs/header.md`.
+    // It was centred once before, when the caption gave way to the wire,
+    // stepping along the rule to a window with no wire in it, and every band of
+    // a stack stepped aside by a different amount. Then it went flush left,
+    // which left a heading far from cards spread across a wide pane. Now it
+    // stands still over its cards and the wire gives way. See `docs/header.md`.
     const nested = fold?.nested === true
     const shut = fold?.shut === true
     const handle = nested ? foldHandle(shut, fold?.agents.length ?? 0, width) : ''
     // In the list the heading stands in from the gutter the rails and forks
     // take, so its mark sits over the marks of the rows under it and the stem
     // a fan forks from keeps its cell on the rule: see `lead` above.
-    const cards = view.orientation === 'vertical' ? lane.nodes : []
+    const cards = view.orientation === 'vertical' && view.list !== true ? lane.nodes : []
     const span =
       cards.length === 0
         ? undefined
@@ -3948,9 +3950,10 @@ function paintPane(c: Canvas, run: RunState, options: PaintOptions): PaintResult
   const armsAt = (x: number, y: number) => armsOf(c.at(x, y)) ?? 0
 
   // Two registers, and the difference is the point. A confirmed edge is drawn
-  // solid and at full strength: this agent's answer is in that agent's prompt,
-  // which is a record of what flowed. An inferred one stays dashed and dimmed,
-  // because a shared label is a hint about the run, not a fact about it.
+  // heavy: this agent's answer is in that agent's prompt, which is a record of
+  // what flowed. An inferred one is drawn light, because a shared label is a
+  // hint about the run, not a fact about it. Neither is dashed any more; see
+  // the stroke choice below for what the dashed register used to cost.
   for (const carry of isList ? [] : wires) {
     const from = byId.get(carry.fromId)
     const to = byId.get(carry.toId)
@@ -6605,8 +6608,10 @@ function paintTimeline(
   // A trace the body holds whole stands in the middle of it, ruler and all, the
   // way the graph layouts do: see `liftOf`. The ruler, the window and every
   // band read their row from `top`, so moving it moves the whole drawing. The
-  // phases named under the trace follow it, so they count as part of it.
-  const top = measuredTop + (spanY > 0 ? 0 : Math.max(0, Math.floor((shown - content - (aheadRows > 0 ? aheadRows + 1 : 0)) / 2)))
+  // phases named under the trace follow it, so they count as part of it —
+  // already, since `shown` is measured down to `floor`, which stands above
+  // their rows. Only the row between the trace and them is left to count.
+  const top = measuredTop + (spanY > 0 ? 0 : Math.max(0, Math.floor((shown - content - (aheadRows > 0 ? 1 : 0)) / 2)))
 
   // While the run is live the window looks where the work is, and a reader who
   // scrolled away is left there until the run enters a different phase: the

@@ -197,6 +197,21 @@ test('a stacked band carries its heading in its own rule, over the middle of its
   expect(Math.abs(middle - (left + right) / 2)).toBeLessThanOrEqual(1)
 })
 
+test('in the list a heading stays flush left, over the marks of the rows under it', () => {
+  const run = loaded()
+  const canvas = new Canvas(120, 30)
+
+  paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'list' })
+
+  const rule = rowsOf(canvas).find(row => row.includes(PHASES[0]!)) ?? ''
+  const mark = / (\S) (\S+) {2}\d+\/\d+/.exec(rule)
+
+  // The list has no cards to stand over: centring it over rows that span the
+  // pane put it near the middle, far from the marks it heads.
+  expect(mark).not.toBeNull()
+  expect(mark?.index ?? 99).toBeLessThanOrEqual(4)
+})
+
 test('a band rule stops at the scroll rail, and its heading keeps clear of it', () => {
   const run = loaded()
   // Short enough that the stack runs past the foot, which is what puts the
