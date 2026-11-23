@@ -5,15 +5,15 @@
  *   bun dev/contrast.ts
  *
  * WCAG's own ratio, which is the only number anyone can check the pane against.
- * 4.5 is the bar for body text, 3.0 for a large glyph or a line. A role under
- * 3.0 is one a reader has to lean in for.
+ * Each role is held to its own floor — 7 for the text, 4.5 for every other word,
+ * 3.0 for a mark or a line — and the run exits non-zero when one falls short.
  *
  * The second table is a different question with the same shape: an edge that
  * shares a hue with `done`, `running` or `failed` reads as a state, and no
  * contrast ratio catches that.
  */
 
-import { paletteOf, THEMES, hexOf } from '../hooks/theme'
+import { FLOOR, GRAPHIC_ROLES, hexOf, paletteOf, READ, TEXT_FLOOR, THEMES, UNLIFTED_ROLES } from '../hooks/theme'
 
 const channel = (v: number) => {
   const s = v / 255
@@ -30,6 +30,8 @@ const ratio = (a: number, b: number) => {
   return (hi + 0.05) / (lo + 0.05)
 }
 
+let short = 0
+
 for (const theme of THEMES) {
   const palette = paletteOf(theme)
   const rows = Object.entries(palette)
@@ -39,7 +41,16 @@ for (const theme of THEMES) {
   console.log(`\n${theme.name}  bg ${hexOf(theme.bg)}`)
 
   for (const row of rows) {
-    const flag = row.r < 3 ? '  under 3.0' : row.r < 4.5 ? '  under 4.5' : ''
+    const target = (UNLIFTED_ROLES as readonly string[]).includes(row.role)
+      ? 0
+      : (GRAPHIC_ROLES as readonly string[]).includes(row.role)
+        ? FLOOR
+        : row.role === 'text'
+          ? TEXT_FLOOR
+          : READ
+    const flag = row.r < target ? `  under ${target.toFixed(1)}` : ''
+
+    short += flag ? 1 : 0
 
     console.log(`  ${row.role.padEnd(9)} ${hexOf(row.color as number)}  ${row.r.toFixed(2)}${flag}`)
   }
@@ -87,4 +98,10 @@ for (const theme of THEMES) {
   const read = gaps.map(g => `${g.role} ${String(Math.round(g.gap)).padStart(3)}`).join('  ')
 
   console.log(`  ${theme.name.padEnd(18)} ${hexOf(palette.wire)}  ${read}${worst.gap < 45 ? '  under 45' : ''}`)
+}
+
+console.log(`\n${short === 0 ? 'every role clears its floor' : `${short} role(s) under their floor`}`)
+
+if (short > 0) {
+  process.exitCode = 1
 }

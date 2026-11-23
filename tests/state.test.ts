@@ -16,7 +16,17 @@
 import { expect, test } from 'claude-code/testing'
 
 import { frameOf, quietOf, useTheme } from '../hooks/paint'
-import { DEFAULT_THEME, paletteOf, THEMES } from '../hooks/theme'
+import {
+  DEFAULT_THEME,
+  FLOOR,
+  GRAPHIC_ROLES,
+  paletteOf,
+  READ,
+  STATES_APART,
+  TEXT_FLOOR,
+  THEMES,
+  UNLIFTED_ROLES,
+} from '../hooks/theme'
 
 const STATES = ['done', 'running', 'failed', 'stopped'] as const
 
@@ -57,13 +67,13 @@ function light(color: number): number {
 test('a card frame stops short of the state colour it carries', () => {
   // A frame encloses a name and a row of figures, and at full strength it is
   // the brightest thing inside its own card — the border is read first and the
-  // agent second. Four fifths of the way leaves it a boundary that says
+  // agent second. Nine tenths of the way leaves it a boundary that says
   // something; the whole way leaves it a slab.
   for (const theme of THEMES) {
     useTheme(theme.name)
 
     for (const state of STATES) {
-      expect(`${theme.name} ${state} ${carried(state, theme) <= 0.85}`).toBe(`${theme.name} ${state} true`)
+      expect(`${theme.name} ${state} ${carried(state, theme) <= 0.92}`).toBe(`${theme.name} ${state} true`)
     }
   }
 
@@ -134,4 +144,71 @@ test('every theme puts the cut-off state on the words side of the ground', () =>
   }
 
   useTheme(DEFAULT_THEME)
+})
+
+/** WCAG's contrast ratio between two colours. */
+function ratio(a: number, b: number): number {
+  const channel = (v: number) => {
+    const s = v / 255
+
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+  }
+  const lum = (c: number) =>
+    0.2126 * channel((c >> 16) & 0xff) + 0.7152 * channel((c >> 8) & 0xff) + 0.0722 * channel(c & 0xff)
+  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x)
+
+  return (hi + 0.05) / (lo + 0.05)
+}
+
+/** Where a colour sits on the wheel, in degrees. */
+function hue(color: number): number {
+  const [r, g, b] = [(color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff].map(c => c / 255) as [
+    number,
+    number,
+    number,
+  ]
+  const top = Math.max(r, g, b)
+  const span = top - Math.min(r, g, b)
+  const sixth = top === r ? ((g - b) / span) % 6 : top === g ? (b - r) / span + 2 : (r - g) / span + 4
+
+  return (sixth * 60 + 360) % 360
+}
+
+test('every role in every theme clears its own floor against the ground', () => {
+  // Seven for the text, four and a half for every other word, three for a mark
+  // or a line. The figures, the states and the dim text were held to four and
+  // three before, and on the solarized palettes a reader leaned in for them.
+  for (const theme of THEMES) {
+    for (const [role, color] of Object.entries(paletteOf(theme))) {
+      const floor = (UNLIFTED_ROLES as readonly string[]).includes(role)
+        ? 0
+        : (GRAPHIC_ROLES as readonly string[]).includes(role)
+          ? FLOOR
+          : role === 'text'
+            ? TEXT_FLOOR
+            : READ
+
+      expect(`${theme.name} ${role} ${ratio(color, theme.bg) >= floor}`).toBe(`${theme.name} ${role} true`)
+    }
+  }
+})
+
+test('done, running and failed stand apart on the wheel in every theme', () => {
+  // gruvbox drew `done` 19 degrees from `running` and solarized 22, so a
+  // finished card and a working one were one colour at a glance.
+  for (const theme of THEMES) {
+    const palette = paletteOf(theme)
+    const pairs = [
+      ['done', 'running'],
+      ['done', 'failed'],
+      ['running', 'failed'],
+    ] as const
+
+    for (const [a, b] of pairs) {
+      const gap = Math.abs(hue(palette[a]) - hue(palette[b])) % 360
+      const turn = gap > 180 ? 360 - gap : gap
+
+      expect(`${theme.name} ${a}/${b} ${turn >= STATES_APART - 0.5}`).toBe(`${theme.name} ${a}/${b} true`)
+    }
+  }
 })

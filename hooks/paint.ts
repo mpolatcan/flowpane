@@ -633,11 +633,14 @@ function colorOf(state: AgentRow['state']): Rgb {
  * them. The hue has to survive being drawn one cell wide in a line glyph, which
  * is a fraction of the ink a word of the same colour puts down.
  *
+ * Nine tenths since: at four fifths a pane of cards still read as mostly grey on
+ * the muted palettes, where the state colour itself is already soft.
+ *
  * It stops short of the state colour itself so the frame stays a boundary: at
  * full strength the border is the brightest thing on the card and is read
  * before the name and the figures it encloses.
  */
-const STATE_EDGE = 0.8
+const STATE_EDGE = 0.9
 
 /**
  * A card's frame, tinted by the state of the agent it encloses.
