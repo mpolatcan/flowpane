@@ -21,6 +21,8 @@ export type Segment = {
   bg: Rgb
   /** Set when these cells are a node's label, and so a Button. */
   agentId?: string
+  /** The hotspot's `quiet`: the Button is dim until it is pointed at, and lights in this. */
+  quiet?: Rgb
 }
 
 /** One element constructor of a surface's table, read loosely. */
@@ -58,7 +60,8 @@ export function segmentsOf(canvas: Canvas, y: number, hotspots: Hotspot[] = []):
     breaks.add(spot.x + spot.w)
   }
 
-  const ownerAt = (x: number) => onThisRow.find(h => x >= h.x && x < h.x + h.w)?.agentId
+  const spotAt = (x: number) => onThisRow.find(h => x >= h.x && x < h.x + h.w)
+  const ownerAt = (x: number) => spotAt(x)?.agentId
 
   const segments: Segment[] = []
   let current: Segment | null = null
@@ -88,7 +91,7 @@ export function segmentsOf(canvas: Canvas, y: number, hotspots: Hotspot[] = []):
         segments.push(current)
       }
 
-      current = { text: char, fg: cell.fg, bg: cell.bg, agentId: owner }
+      current = { text: char, fg: cell.fg, bg: cell.bg, agentId: owner, ...(spotAt(x)?.quiet ? { quiet: spotAt(x)!.quiet } : {}) }
     }
 
     // `current` is pushed at index `segments.length`, so that is the index this
@@ -301,6 +304,11 @@ export function rowsOf(
               key: `node:${agentId}`,
               label: s.text,
               plain: true,
+              // Dim at rest and lit under the pointer, through the surface's
+              // own hover, so nothing crosses back to the plugin to light it.
+              ...(s.quiet
+                ? { dimColor: true, hover: { scope: `flowpane:${agentId}`.slice(0, 64), dimColor: false, color: hex(s.quiet), bold: true } }
+                : {}),
               onPress: () => onNode(agentId),
             })
           }

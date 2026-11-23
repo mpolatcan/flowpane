@@ -354,6 +354,18 @@ export type Hotspot = {
   x: number
   y: number
   w: number
+  /**
+   * A control that stays back until it is pointed at: a closed tab, a trip not
+   * being read, `◂ Back`, `✕`. Its Button is dim at rest and full strength under
+   * the pointer or the focus.
+   *
+   * The canvas paints these in the dim tone already, but a Button draws its
+   * label in the plain text colour whatever the cells under it were, so live
+   * every tab read as open and the dim was only true in a test. `dimColor` is
+   * the one way a Button's label can be set back. The value is the colour it
+   * lights in under the pointer, the accent, as the footer's two buttons do.
+   */
+  quiet?: Rgb
 }
 
 /**
@@ -5466,7 +5478,7 @@ function paintSettings(c: Canvas, options: PaintOptions, hotspots: Hotspot[]): R
   )
 
   paintControl(c, closeX, y, String.fromCodePoint(CLOSE_MARK), edge)
-  hotspots.push({ agentId: SETTINGS_CLOSE, x: closeX, y, w: 3 })
+  hotspots.push({ agentId: SETTINGS_CLOSE, x: closeX, y, w: 3, quiet: COLORS.accent })
 
   const at = x + 2 + SETTING_NAME_W
   const open = options.menu
@@ -5621,7 +5633,7 @@ function paintAbout(c: Canvas, options: PaintOptions, hotspots: Hotspot[]): Rect
   )
 
   paintControl(c, closeX, y, String.fromCodePoint(CLOSE_MARK), rule)
-  hotspots.push({ agentId: ABOUT_CLOSE, x: closeX, y, w: 3 })
+  hotspots.push({ agentId: ABOUT_CLOSE, x: closeX, y, w: 3, quiet: COLORS.accent })
 
   let lead = true
 
@@ -7719,7 +7731,13 @@ function paintPassStrip(
     c.put(at, y, markOf(pass.agent.state, tick), colorOf(pass.agent.state))
     c.put(at + 1, y, 0x20, rule)
     c.text(at + 2, y, digits, index === openAt ? COLORS.text : COLORS.dim)
-    hotspots.push({ agentId: `${PASS_OPEN}${pass.agent.agentId}`, x: at + 2, y, w: cells(digits) })
+    hotspots.push({
+      agentId: `${PASS_OPEN}${pass.agent.agentId}`,
+      x: at + 2,
+      y,
+      w: cells(digits),
+      ...(index === openAt ? {} : { quiet: COLORS.accent }),
+    })
 
     at += w + PASS_SIDES
   }
@@ -7877,7 +7895,7 @@ function paintDetail(
   // drawing. Three cells, as the scroll arrows are: the glyph is one cell and a
   // one-cell target is one cell to miss.
   paintControl(c, closeX, headY, String.fromCodePoint(CLOSE_MARK), edge)
-  hotspots.push({ agentId: DETAIL_CLOSE, x: closeX, y: headY, w: 3 })
+  hotspots.push({ agentId: DETAIL_CLOSE, x: closeX, y: headY, w: 3, quiet: COLORS.accent })
 
   // Opened out of a nested run's list, the dialog says so and offers the way
   // back — the same corner, the same word, the same press a call's own dialog
@@ -8157,7 +8175,7 @@ function paintBack(
   }
 
   paintControl(c, x + 1, y, back, edge)
-  hotspots.push({ agentId: key, x: x + 2, y, w: cells(back) })
+  hotspots.push({ agentId: key, x: x + 2, y, w: cells(back), quiet: COLORS.accent })
 }
 
 /**
@@ -8286,7 +8304,7 @@ function paintRun(
   )
 
   paintControl(c, closeX, rect.y, String.fromCodePoint(CLOSE_MARK), edge)
-  hotspots.push({ agentId: DETAIL_CLOSE, x: closeX, y: rect.y, w: 3 })
+  hotspots.push({ agentId: DETAIL_CLOSE, x: closeX, y: rect.y, w: 3, quiet: COLORS.accent })
 
   if (ruleY > rect.y) {
     paintCrossbar(c, rect, ruleY, edge)
@@ -8493,7 +8511,7 @@ function paintCall(
   paintBack(c, rect.x, rect.y, closeX, edge, CALL_BACK, hotspots)
 
   paintControl(c, closeX, rect.y, String.fromCodePoint(CLOSE_MARK), edge)
-  hotspots.push({ agentId: DETAIL_CLOSE, x: closeX, y: rect.y, w: 3 })
+  hotspots.push({ agentId: DETAIL_CLOSE, x: closeX, y: rect.y, w: 3, quiet: COLORS.accent })
 
   if (ruleY > rect.y) {
     paintCrossbar(c, rect, ruleY, edge)
@@ -9360,7 +9378,7 @@ function paintTabs(
     c.put(at - 1, y, 0x20, rule)
     c.put(at + w, y, 0x20, rule)
     c.text(at, y, name, i === on ? COLORS.text : COLORS.dim)
-    hotspots.push({ agentId: `${DETAIL_TAB}${i}`, x: at, y, w })
+    hotspots.push({ agentId: `${DETAIL_TAB}${i}`, x: at, y, w, ...(i === on ? {} : { quiet: COLORS.accent }) })
 
     at += w + SIDES
   })

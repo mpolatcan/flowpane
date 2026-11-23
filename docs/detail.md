@@ -588,6 +588,14 @@ gap in a rule reads as the rule broken off rather than as something placed in
 it; ending the rule a half-stroke short each side brackets both alike, so the two
 ways out read as one kind of thing and are told from a title by their ends.
 
+A closed tab, a trip not being read, `◂ Back` and `✕` are dim at rest and light
+in the accent under the pointer, the way the footer's two buttons do. A Button
+draws its label in the plain text colour whatever the cells under it were, so
+the dim the canvas painted these in was true in a test and never in a terminal:
+live, every tab read as open. `dimColor` and the surface's own `hover` are the
+two things a Button's label can be given, and nothing crosses back to the plugin
+to light one.
+
 Squeezed, the strip goes down a ladder of its own, the same shape the header's
 groups and the token units go down. `Tool Calls (20)` first; then the count,
 since it is what a reader would have found by pressing the tab anyway; then the
