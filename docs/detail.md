@@ -255,8 +255,9 @@ structure everywhere else, where what the words say is the content and the
 scaffolding around it is grey. The body keeps the strength it had, so nothing a
 reader came to read is quieter than it was, and a heading is findable while
 scrolling because it is the one line in view in a different colour. That is the
-whole of the styling: marking quotes, code spans and emphasis as well would be
-a syntax highlighter in a pane that is not an editor.
+whole of the styling: marking quotes, code spans and emphasis in prose as well
+would be a syntax highlighter over somebody's sentences. The syntax hues are for
+a call's argument and output, which are code and data rather than writing.
 
 The pane runs to the end of the document. The wrapper came from the calls list,
 where an argument was a block of rows among other blocks and stopping at two
@@ -419,26 +420,49 @@ the column rather than wrapped at the spaces:
           git status --short
 ```
 
-### Three weights, and no fourth colour
+### Three weights, and three hues inside the call
 
-The text of a call is set in three weights of the block's own grey:
+The text of a call is set in three weights of the block's own grey, and a
+field's name, a quoted string and a number in hues of their own:
 
 ```
- command: git status --porcelain && git diff HEAD --stat
- ───────  ───        ───────────    ───        ─────────
- dropped  lifted     dropped        lifted     dropped
+ command: git commit -m "fix 42 things" && git push
+ ───────  ───    ──  ───────────────    ───
+ key hue  lifted dropped  string hue    lifted
 ```
 
 Lifted is what identifies the line: the word that ran, the mark down the left of
 a `git status` or a diff, the file at the end of a path. Dropped is the
-punctuation holding it together: the `key:` in front of a payload field, the
-operators joining one command to the next, a flag, the directory in front of a
-file name. Everything else stays exactly the weight it was.
+punctuation holding it together: the colon after a payload field's name, the
+operators joining one command to the next, a flag, a comment, the directory in
+front of a file name. Everything else stays exactly the weight it was.
 
-Tone and not hue, and three weights at most. Colour in this pane already says
-one of two things — what state a node is in, or that a line is a wire — and a
-third meaning taken on here would cost the first two theirs. A reader who does
-not notice reads the same text in the same grey it was in before.
+The hues are the palette's three syntax roles, `syntaxKey`, `syntaxString` and
+`syntaxNumber`, taken from the theme's blue, cyan and purple and carried a step
+toward the text tone. They are the one place on the pane where colour says
+something other than a node's state or a wire, and they are drawn only inside an
+opened call's argument and output: somebody else's text, quoted in a block of
+its own, where no card and no wire is drawn. None of them is the theme's green,
+yellow or red, so none can be read as a state even there. The call used to be
+tone alone, and a JSON answer forty lines long was forty lines of one grey a
+reader searched line by line for the field they wanted.
+
+What gets a hue is decided by what the text is, not by how it looks:
+
+- **A command** is read as shell: its quoted strings, and the numbers that
+  stand alone as arguments.
+- **JSON** is read as JSON only when the whole value parses, an object or an
+  array. An answer that starts with `{` and goes on in prose stays prose.
+- **A diff** is a tool's answer that carries a `diff --git` or `@@` header, or
+  an Edit's payload. Its added and removed lines are set on a ground tinted a
+  fifth of the way to the done and failed tones, in the block's own letters.
+  In the state green and red, an added line read as a call that passed.
+- **Everything else** — a prompt, a file's contents, a tool's prose — keeps the
+  weights alone.
+
+One tokenizer reads every line, quoted strings first, so the digits inside a
+string are never coloured as a number. Its readings are kept per call, width
+and theme, since the dialog repaints every frame while it is open.
 
 Two rules keep the weights honest. A quoted string is one thing however many
 words are inside it, so its first word is not lifted as a command; and nothing

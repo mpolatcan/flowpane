@@ -63,6 +63,21 @@ export type Palette = {
    * divides the drawing by colour alone, before either is traced.
    */
   wire: Rgb
+  /**
+   * What a call's text is set in inside the detail dialog: a field's name, a
+   * quoted string, and a number.
+   *
+   * The one place hue says something other than state or wire. They are drawn
+   * only inside an opened call's argument and output, which is somebody else's
+   * text quoted in a block of its own, never on a card, a rule or the strip. So
+   * a reader who sees them has already chosen a call to read, and none of them
+   * can be taken for a node's state there. They come from the theme's blue,
+   * cyan and purple, never its green, yellow or red, and are carried a step
+   * toward the text tone so they read as words rather than marks.
+   */
+  syntaxKey: Rgb
+  syntaxString: Rgb
+  syntaxNumber: Rgb
 }
 
 export const THEMES: Theme[] = [
@@ -571,6 +586,9 @@ function derive(theme: Theme): Palette {
     // gruvbox's is a grey-green — it left every line between two phases the
     // same grey as the boundaries, so a drawing that was all joins read as flat.
     wire: lift(edgeOf(theme)),
+    syntaxKey: lift(mix(theme.blue, theme.fg, 0.25), READ),
+    syntaxString: lift(mix(theme.cyan, theme.fg, 0.2), READ),
+    syntaxNumber: lift(mix(theme.purple, theme.fg, 0.2), READ),
   }
 }
 
