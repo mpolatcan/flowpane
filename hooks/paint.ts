@@ -10129,8 +10129,12 @@ function shortPath(path: string, keep = 2): string {
 /** The first line of a value, cut to `max` cells with an ellipsis where it was cut. */
 function clipped(text: string, max: number): string {
   const line = text.split('\n').find(l => l.trim().length > 0)?.trim() ?? ''
+  // By code points, the unit the strip wraps in: a cut by UTF-16 units lands
+  // inside a surrogate pair whenever an astral character sits at the cut, and
+  // the strip drew the half that was left.
+  const points = [...line]
 
-  return line.length > max ? `${line.slice(0, Math.max(1, max - 1))}\u2026` : line
+  return points.length > max ? `${points.slice(0, Math.max(1, max - 1)).join('')}\u2026` : line
 }
 
 /** The argument that says what a call works on, for each tool that has one. */

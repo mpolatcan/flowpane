@@ -290,17 +290,22 @@ test('a row taller than the strip, followed to its newest line, still says whose
 
 test('a word broken across lines is broken between characters, never inside one', () => {
   const faces = '\u{1F600}'.repeat(120)
-  const run = runOf([agent('Preflight', 'done', [], { verdict: { passed: true, summary: `a${faces}` }, endedMs: STARTED + 4_000 })])
-  const { canvas } = rows(run, 80, 30, 6)
-  const codes: number[] = []
 
-  for (let y = 0; y < canvas.rows; y++) {
-    for (let x = 0; x < canvas.columns; x++) {
-      codes.push(canvas.at(x, y))
+  // One letter ahead of the faces and two: the summary is clipped before it is
+  // wrapped, and a cut by UTF-16 units lands inside a pair for one of the two.
+  for (const lead of ['a', 'ab']) {
+    const run = runOf([agent('Preflight', 'done', [], { verdict: { passed: true, summary: `${lead}${faces}` }, endedMs: STARTED + 4_000 })])
+    const { canvas } = rows(run, 80, 30, 6)
+    const codes: number[] = []
+
+    for (let y = 0; y < canvas.rows; y++) {
+      for (let x = 0; x < canvas.columns; x++) {
+        codes.push(canvas.at(x, y))
+      }
     }
-  }
 
-  expect(codes.filter(code => code >= 0xd800 && code <= 0xdfff)).toEqual([])
+    expect(codes.filter(code => code >= 0xd800 && code <= 0xdfff)).toEqual([])
+  }
 })
 
 test('a word longer than the strip’s room is broken across lines rather than run past the edge', () => {
