@@ -1256,7 +1256,7 @@ test('a run shorter than the body stands in the middle of it, headings and all, 
   }
 })
 
-test('across, a run shorter than the body starts under the header, and its phases divide the pane to the foot', () => {
+test('across, a run shorter than the body starts under the header, and its boundaries run from the header to the cards and no further', () => {
   const run = runOf([
     ['Survey', ['paint', 'layout']],
     ['Review', ['paint']],
@@ -1279,8 +1279,7 @@ test('across, a run shorter than the body starts under the header, and its phase
   const bar = barRowsOf(canvas.rows, canvas.columns)
   const heading = rows.findIndex((row, y) => y >= bar && row.includes('Survey'))
 
-  // No blank rows above the headings: the spare ones are under the cards, in
-  // the columns the boundaries divide them into.
+  // No blank rows above the headings: the spare ones are all under the cards.
   expect(heading - bar).toBeLessThanOrEqual(1)
 
   const x = view.lanes[1]!.edgeAt
@@ -1288,11 +1287,12 @@ test('across, a run shorter than the body starts under the header, and its phase
   const cards = Math.max(...view.lanes.flatMap(lane => lane.nodes.map(node => node.y + node.h)))
 
   expect(x).toBeGreaterThan(0)
-  expect(Math.max(...down)).toBeGreaterThan(cards + 10)
+  expect(Math.min(...down)).toBe(view.headerRows)
+  expect(Math.max(...down)).toBe(cards)
   expect(drawn.hotspots.length).toBeGreaterThan(0)
 })
 
-test('across, the seam before the phases still ahead runs to the foot of the body, as the boundaries beside it do', () => {
+test('across, the seam before the phases still ahead stops where the boundaries beside it do', () => {
   const run = runOf([
     ['Survey', ['paint', 'layout']],
     ['Review', ['paint']],
@@ -1314,6 +1314,6 @@ test('across, the seam before the phases still ahead runs to the foot of the bod
 
   expect(seam).toBeGreaterThan(0)
   expect(list).toBeGreaterThan(0)
-  expect(Math.max(...rowsWith(seam, '╎'))).toBeGreaterThan(Math.max(cards, list) + 10)
+  expect(Math.max(...rowsWith(seam, '╎'))).toBeLessThanOrEqual(Math.max(cards, list) + 3)
   expect(Math.max(...rowsWith(seam, '╎'))).toBe(Math.max(...rowsWith(edge, '│')))
 })

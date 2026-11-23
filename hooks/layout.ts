@@ -922,11 +922,10 @@ export function extentOf(view: Layout): { w: number; h: number } {
  * drawing keeps them together. A drawing taller than the body is not moved: it
  * starts at the top and scrolls.
  *
- * Across, `paint` does not call for it. There the phases' boundaries run from
- * the header to the foot of the body, so the drawing starts at the top of
- * columns that already fill the pane, and the rows under it are the columns'
- * own rather than a drawing that ran out. Lifted, it stood in the middle of the
- * pane with its headings floating over a short stub of boundary.
+ * Across, `paint` does not call for it. Lifted, the drawing stood in the middle
+ * of the pane with its headings over a short stub of boundary and blank rows
+ * above them, which read as lines that had not been finished. Started under the
+ * header, the boundaries run unbroken from the header's rule to the cards.
  */
 export function liftOf(view: Layout, foot: number): number {
   const boxes = view.lanes.flatMap(lane => [...lane.nodes, ...(lane.ghost ? [lane.ghost] : [])])

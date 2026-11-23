@@ -443,9 +443,8 @@ that divides every other pair of phases.
 The strip's own heading stands with the column headings beside it and the way
 they stand: flush left on a mark, saying how many it holds — `⊘ 3 skipped`,
 `○ 2 ahead`. Each phase in it is a heading, with its line under the name. They
-start on the row the cards beside them start on, and the boundary runs to the
-foot of the body, as the boundaries between the phases do. It used to run as
-far as whichever was longer, the cards or the list.
+start on the row the cards beside them start on, and the boundary runs as far
+as whichever is longer, the cards or the list.
 
 The strip is as wide as the longest name needs, and wider — up to a third of
 the pane — to hold the lines, but only where the drawing beside it still fits:
@@ -649,12 +648,13 @@ middle of it — headings, cards, wires, and the phases named under it — down 
 pane, in the timeline, its ruler included, and in the list.
 
 Across is the exception. There the drawing starts under the header, and the
-boundaries between the phases run from the header's rule to the foot of the
-body, so the phases divide the whole pane into columns and the rows the cards
-do not need are the columns' own. Across was centred too once, and its
-boundaries ran only as far as the cards: the headings stood in the middle of
-the pane over a short stub of line, with blank rows above and below, and a
-reader saw lines that had not been finished.
+boundaries between the phases run unbroken from the header's rule to the row
+under the last card; the rows the cards do not need are all below. Across was
+centred too once: the headings stood in the middle of the pane over a short
+stub of line, with blank rows above and below, and a reader saw lines that had
+not been finished. Running the boundaries on to the foot of the body was tried
+next and taken back, for the reason they stop at the cards at all: on a tall
+pane a short run was a few cards under a page of bare vertical lines.
 
 In the other layouts the drawing used to start at the top and leave what the
 body did not need under it, so a run of two phases on a tall pane sat over
