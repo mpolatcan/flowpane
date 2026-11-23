@@ -33,8 +33,8 @@
     "feedRows": {
       "type": "number",
       "title": "Activity",
-      "description": "Rows of the activity strip at the foot of the pane (0 to 10; 0 turns it off): the newest file changes, commands and gate verdicts of the run, one line each, newest last.",
-      "default": 4
+      "description": "Lines of the activity strip at the foot of the pane (0 to 14; 0 turns it off): the newest file changes, commands and gate verdicts of the run, newest last.",
+      "default": 6
     },
     "paneRows": {
       "type": "number",

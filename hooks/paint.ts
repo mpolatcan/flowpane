@@ -3398,7 +3398,7 @@ export function paint(c: Canvas, run: RunState, options: PaintOptions): PaintRes
     // rather than every layout being taught to stop short of it: the strip is
     // a fixed band at the foot, and to the layouts, the rails and the dialogs
     // the pane is simply that much shorter.
-    const above = new Canvas(c.columns, c.rows - strip - 1, c.background)
+    const above = new Canvas(c.columns, c.rows - strip - FEED_CHROME, c.background)
     const result = paintPane(above, run, options)
 
     c.clear()
@@ -10398,8 +10398,8 @@ function paintHeader(
 export { COLORS }
 
 /** The most rows the activity strip may take, and how many it takes unless told. */
-export const MAX_FEED = 10
-export const DEFAULT_FEED = 4
+export const MAX_FEED = 14
+export const DEFAULT_FEED = 6
 
 /**
  * Rows of drawing a pane keeps before it gives any to the strip.
@@ -10677,17 +10677,86 @@ function feedOf(run: RunState): FeedRow[] {
   return rows.sort((a, b) => a.atMs - b.atMs)
 }
 
-/** Who a line of the strip is about: the agent, or the run for its own failure. */
-function feedName(row: FeedRow): string {
-  return row.agent ? nodeLabel(row.agent) : 'run'
+/**
+ * Who a line of the strip is about, as its phase and its name: the agent, or
+ * the run for its own failure.
+ *
+ * The name alone was the card's name, which is the label with its phase taken
+ * off because the card stands under its phase's heading. The strip has no
+ * heading over it, so the same name in two phases — a `bugs` reviewer and the
+ * `bugs` verifier after it — was two agents the strip could not tell apart. A
+ * label that already says its phase keeps its own words rather than saying it
+ * twice.
+ */
+function feedName(row: FeedRow): { phase?: string; name: string } {
+  if (!row.agent) {
+    return { name: 'run' }
+  }
+
+  const phase = feedPhase(row.agent.phase)
+  const label = row.agent.label
+  const name = nodeLabel(row.agent)
+
+  if (!phase) {
+    return { name: label }
+  }
+
+  if (name !== label) {
+    return { phase, name }
+  }
+
+  return label.toLowerCase().includes(phase.toLowerCase()) ? { name: label } : { phase, name: label }
 }
 
 /**
- * How many rows the strip takes on a pane of this height.
+ * A phase as the strip names it.
+ *
+ * A nested run's phase arrives as `\u25b8 code-review:ai-review-panel`. The mark
+ * is the pane's press-to-unfold control and there is nothing to unfold on the
+ * strip, and the plugin's namespace in front of the workflow's name took
+ * thirteen of the column's cells to say which plugin the reviewer came from, so
+ * the name was cut down to `code-review:…` and said neither.
+ */
+function feedPhase(phase: string | undefined): string | undefined {
+  const bare = phase?.trim().replace(/^\u25b8\s*/, '')
+
+  return bare ? bare.slice(bare.lastIndexOf(':') + 1) || bare : undefined
+}
+
+/** How a line's name reads: `Review · bugs`. */
+function feedNameText(who: { phase?: string; name: string }): string {
+  return who.phase ? `${who.phase} \u00b7 ${who.name}` : who.name
+}
+
+/**
+ * The name cut to its column, the phase giving way before the agent's own name:
+ * the name is what tells two lines apart inside a phase, and the phase is the
+ * part a reader can also see on the cards above.
+ */
+function feedNameFit(who: { phase?: string; name: string }, width: number): string {
+  const whole = feedNameText(who)
+
+  if (cells(whole) <= width || !who.phase) {
+    return truncate(whole, width)
+  }
+
+  const room = width - cells(who.name) - 3
+
+  return room >= 2 ? `${truncate(who.phase, room)} \u00b7 ${who.name}` : truncate(who.name, width)
+}
+
+/**
+ * How many lines the strip shows on a pane of this height, under its rule and
+ * its row of column names.
  *
  * None until there is a line to put in it: the strip is a band of the pane's
  * own, and a band that opened empty on every run would cost the drawing four
  * rows to say that nothing has happened yet, which the drawing already says.
+ *
+ * A pane too short for the lines asked for gets as many as leave the drawing
+ * its floor, rather than none. All or nothing was right while the strip asked
+ * for four; asking for six and a row of column names on top, it would have
+ * taken the strip away from every pane that showed one at twenty rows.
  */
 function feedRowsFor(rows: number, asked: number, lines: number): number {
   const want = Math.max(0, Math.min(MAX_FEED, Math.floor(asked)))
@@ -10696,8 +10765,16 @@ function feedRowsFor(rows: number, asked: number, lines: number): number {
     return 0
   }
 
-  return rows - want - 1 >= FEED_FLOOR ? want : 0
+  const fit = Math.min(want, rows - FEED_CHROME - FEED_FLOOR)
+
+  return fit >= FEED_MIN ? fit : 0
 }
+
+/** The rows the strip takes beyond its lines: the rule and the column names. */
+const FEED_CHROME = 2
+
+/** The fewest lines worth a strip: one is a ticker, and a ticker with a scrollbar is two arrows. */
+const FEED_MIN = 2
 
 /**
  * The activity strip: the newest of what the run has done, newest last, under
@@ -10727,11 +10804,24 @@ function paintFeed(c: Canvas, run: RunState, feed: FeedRow[], ruleY: number, row
   // The columns are measured over the whole history rather than over what is
   // on screen, so scrolling the strip never moves the column its words start in.
   const clockOf = (row: FeedRow) => elapsed(Math.max(0, row.atMs - run.startedMs))
-  const clockW = Math.max(...feed.map(row => cells(clockOf(row))))
-  const nameW = Math.min(18, Math.max(...feed.map(row => cells(feedName(row)))))
-  const textX = 1 + clockW + 2 + 2 + nameW + 2
-  // The last column is the strip's own: the arrows that say there is more.
+  const clockW = Math.max(cells(FEED_HEADS.time), ...feed.map(row => cells(clockOf(row))))
+  const nameW = Math.min(
+    FEED_NAME_MAX,
+    Math.max(cells(FEED_HEADS.agent), ...feed.map(row => cells(feedNameText(feedName(row))))),
+  )
+  const markX = 1 + clockW + 2
+  const nameX = markX + 2
+  const textX = nameX + nameW + 2
+  // The last column is the strip's own: its scrollbar.
   const room = Math.max(1, c.columns - 2 - textX)
+  const headY = ruleY + 1
+
+  // The column names, under the rule and above the lines, standing still while
+  // the lines scroll. Grey, as every heading on the pane is: they name the
+  // columns, and say nothing about the state of anything in them.
+  c.text(1 + clockW - cells(FEED_HEADS.time), headY, FEED_HEADS.time, COLORS.dim)
+  c.text(nameX, headY, FEED_HEADS.agent, COLORS.dim)
+  c.text(textX, headY, FEED_HEADS.what, COLORS.dim)
 
   /**
    * One row as every line it takes, the words wrapped at word boundaries and
@@ -10793,7 +10883,8 @@ function paintFeed(c: Canvas, run: RunState, feed: FeedRow[], ruleY: number, row
 
   const last = Math.max(0, all.length - rows)
   const from = asked === undefined ? last : Math.max(0, Math.min(last, Math.floor(asked)))
-  let y = ruleY + 1
+  const firstY = headY + 1
+  let y = firstY
 
   for (let i = from; i < from + rows && i < all.length; i++) {
     const { row, first, parts } = all[i]!
@@ -10802,24 +10893,12 @@ function paintFeed(c: Canvas, run: RunState, feed: FeedRow[], ruleY: number, row
     // than the strip, followed to its newest line, would otherwise fill it with
     // words and nothing to say which agent wrote them or when.
     if (first || i === from) {
-      let x = 1
+      c.text(1, y, clockOf(row).padStart(clockW), quiet)
 
-      x += c.text(x, y, clockOf(row).padStart(clockW), quiet)
-      x += 2
+      const [glyph, tone] = feedMark(row.mark)
 
-      if (row.mark) {
-        const [glyph, tone] =
-          row.mark === 'passed'
-            ? [0x2714, COLORS.done]
-            : row.mark === 'failed'
-              ? [0x2716, COLORS.failed]
-              : [0x25b8, COLORS.running]
-
-        c.put(x, y, glyph, tone)
-      }
-
-      x += 2
-      c.text(x, y, truncate(feedName(row), nameW).padEnd(nameW), row.agent ? colorOf(row.agent.state) : COLORS.failed)
+      c.put(markX, y, glyph, tone)
+      c.text(nameX, y, feedNameFit(feedName(row), nameW), row.mark ? tone : prose)
     }
 
     let x = textX
@@ -10831,15 +10910,46 @@ function paintFeed(c: Canvas, run: RunState, feed: FeedRow[], ruleY: number, row
     y++
   }
 
-  // Grey, like every rail on the pane: they say where the strip goes, not what
-  // state anything is in.
-  if (from > 0) {
-    c.put(c.columns - 1, ruleY + 1, ARROW_UP, COLORS.dim)
+  // The dialog's own scrollbar, not a pair of arrows of the strip's own: two
+  // arrows said there was more and nothing about how much, or where in it the
+  // reader stood. The strip's rows are not Buttons, so the arrows here are
+  // read rather than pressed, and the hotspots the bar would hand out go
+  // nowhere.
+  if (all.length > rows) {
+    paintScrollbar(c, c.columns - 1, firstY, rows, { total: all.length, visible: rows, scroll: from }, -1, [])
   }
 
-  if (from < last) {
-    c.put(c.columns - 1, ruleY + rows, ARROW_DOWN, COLORS.dim)
-  }
+  return { y: firstY, rows, top: from, lines: all.length }
+}
 
-  return { y: ruleY + 1, rows, top: from, lines: all.length }
+/** The strip's column names. */
+const FEED_HEADS = { time: 'time', agent: 'agent', what: 'what happened' }
+
+/** The widest the strip's name column grows: room for `Review · reviewer` and most phases beside it. */
+const FEED_NAME_MAX = 26
+
+/**
+ * The mark ahead of a line's name, and the colour the name takes from it.
+ *
+ * Every line has one, for what that line says, rather than only the lines that
+ * were news. A strip whose marks stood on three lines in ten read as three
+ * lines that mattered and seven that were missing something; and the name took
+ * the colour of the agent's state *now*, so an agent that failed at the end
+ * turned every earlier line of its own red, the ones that had gone fine
+ * included.
+ *
+ * A step that simply happened is a grey dot, and its name is in the words'
+ * own tone: it is not a state. A call still open takes the spinner's first
+ * frame and holds it. The strip is drawn by a module of its own whose rows are
+ * re-sent whenever they change, so a mark that turned with the clock would
+ * re-send the whole strip every frame.
+ */
+function feedMark(mark: FeedRow['mark']): [number, Rgb] {
+  return mark === 'passed'
+    ? [0x2714, COLORS.done]
+    : mark === 'failed'
+      ? [0x2716, COLORS.failed]
+      : mark === 'running'
+        ? [spinnerAt(0), COLORS.running]
+        : [0x00b7, COLORS.dim]
 }

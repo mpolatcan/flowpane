@@ -450,7 +450,7 @@ back to:
 | `/flowpane <n>` | shows run `<n>` from that list |
 | `/flowpane horizontal` \| `vertical` \| `timeline` \| `fits` | lays the graph out |
 | `/flowpane detail <n>` | rows the detail dialog takes (5–32) |
-| `/flowpane activity <n>` \| `off` | rows the activity strip takes (0–10) |
+| `/flowpane activity <n>` \| `off` | lines the activity strip shows (0–14) |
 | `/flowpane about` | what the pane is, and what presses it — the About dialog's own lines |
 | `/flowpane theme` \| `/flowpane theme <name>` | lists the palettes, or paints in one |
 | `/flowpane help` | prints the above |

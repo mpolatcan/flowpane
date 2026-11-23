@@ -6,12 +6,13 @@ line of it whole.
 
 ```
 ──────────────────────────────────────── activity ────────────────────────────────────────
- 18m51s    Develop  The pill test failures are a mounting artifact: when the pill's root   ▴
-                    `v-if` is false it renders as a comment node, so the element does not
-                    re-point after the flip. → read AiStatusPill.test.ts
- 19m24s    Develop  edited header/AiStatusPill.test.ts
- 19m47s  ▸ Develop  All 87 pass. Let me run the full unit suite to confirm no regressions
-                    from the shared-file edits (MiddleSlot, bridge). → ran npx vitest run
+   time    agent    what happened
+ 18m51s  · Develop  The pill test failures are a mounting artifact: when the pill's root   ▴
+                    `v-if` is false it renders as a comment node, so the element does not  │
+                    re-point after the flip. → read AiStatusPill.test.ts                   ┃
+ 19m24s  · Develop  edited header/AiStatusPill.test.ts                                     ┃
+ 19m47s  ⣾ Develop  All 87 pass. Let me run the full unit suite to confirm no regressions  │
+                    from the shared-file edits (MiddleSlot, bridge). → ran npx vitest run  ▾
 ```
 
 ## Whole lines, scrolled
@@ -36,9 +37,12 @@ It is a window of `feedRows` rows over every line the run has written, following
 the newest until the reader moves it. Moved back, it stays on the lines the
 reader is reading while new ones arrive under them, and moved down to the newest
 again, it follows the run again. There is no control for following: arriving at
-the bottom is the control. A `▴` in the strip's last column says there is more
-above, a `▾` that there is more below; both are grey, like every rail on the
-pane.
+the bottom is the control. The strip's last column is the detail dialog's own
+scrollbar: an arrow at each end, lit while there is more that way, and a heavy
+thumb on a light track saying how much of the history is on screen and where.
+It replaced a lone `▴` or `▾`, which said there was more and nothing about how
+much. The strip's rows are not Buttons, so the arrows are read, not pressed; the
+keys and the wheel move the strip.
 
 It moves by:
 
@@ -141,15 +145,34 @@ anyone saw it. Each stretch of them between two lines that matter is gathered
 into one — `read 6 files`, `searched 3 times` — which says the agent was looking,
 and how hard, without saying it forty times.
 
-A line is the time into the run, a mark where the line is news — `✔` a gate that
-passed, `✖` a gate or a call that failed, `▸` a command still running — the
-agent's name in its state's colour, and what it did in grey. Colour says state
-here as it does everywhere else in the pane; the words are not coloured.
+A line is the time into the run, a mark, the agent's name, and what it did in
+grey, under a row naming the three columns — `time`, `agent`, `what happened` —
+that stands still while the lines scroll.
+
+Every line has a mark, for what that line says: `✔` a gate that passed, `✖` a
+gate or a call that failed, the spinner's first frame for a command still
+running, and a grey `·` for a step that simply happened. The name takes the
+mark's colour, and a plain step's name is in the words' own tone. The marks used
+to stand only on the lines that were news, so three lines in ten had one and the
+other seven read as missing something; and the name took the colour of the
+agent's state *now*, so an agent that failed at the end turned every one of its
+earlier lines red, the ones that went fine included. The running mark holds
+still because the strip's rows are re-sent whenever they change, and a mark
+that turned with the clock would re-send the whole strip every frame.
+
+The name is the phase and the agent, `Verify · bugs`. The card leaves the phase
+off because it stands under its phase's heading; the strip has no heading over
+it, so the same name in two phases was two agents the strip could not tell
+apart. A label that already says its phase keeps its own words. A nested run's
+phase is named without its unfold mark and without its plugin's namespace —
+`ai-review-panel · reviewer`, not `▸ code-review:ai-review-panel · reviewer` —
+and where the column is too narrow the phase gives way before the agent's own
+name does.
 
 ## How much room it takes
 
-`feedRows` rows, four unless set otherwise, and a rule with ` activity ` in the
-middle of it, as every title on the pane stands in the middle of its rule: see
+`feedRows` lines, six unless set otherwise, under its row of column names and a
+rule with ` activity ` in the middle of it, as every title on the pane stands in the middle of its rule: see
 [settings.md](settings.md). The setting is in the settings dialog as `Activity`,
 and `/flowpane activity <n>` or `/flowpane activity off` sets it.
 
@@ -157,8 +180,11 @@ None at all while nothing has happened. The strip is a band of the pane's own,
 and a band that opened empty on every run would spend four rows saying what the
 drawing already says.
 
-None on a pane that would keep fewer than sixteen rows for the drawing. The
-strip is read beside the drawing, never instead of it.
+On a pane too short for the lines asked for, as many as leave the drawing
+sixteen rows, and none when that is fewer than two. The strip is read beside
+the drawing, never instead of it. It used to be all or nothing, which was right
+while the strip asked for four lines; at six and a row of column names it would
+have taken the strip away from every pane that showed one at twenty rows.
 
 The drawing is painted as a pane that many rows shorter and the strip drawn
 under it, rather than every layout being taught to stop short of it. To the

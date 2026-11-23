@@ -90,17 +90,18 @@ function rows(
   return { canvas, lines, feed: drawn.feed }
 }
 
-test('the strip says what the run did, newest last, under a rule with its label in the middle', () => {
+test('the strip says what the run did, newest last, under a rule with its label in the middle and a row naming its columns', () => {
   const { lines } = rows(pipeline(), 100, 30, 6)
 
-  expect(lines.slice(-7)).toEqual([
+  expect(lines.slice(-8)).toEqual([
     `${'─'.repeat(45)} activity ${'─'.repeat(45)}`,
+    '  time    agent      what happened',
     '  4.0s  ✔ Preflight  passed: plan located, tools ready',
-    '  5.0s    Develop    read 2 files, searched once',
-    ' 10.0s    Develop    edited stores/config.ts',
+    '  5.0s  · Develop    read 2 files, searched once',
+    ' 10.0s  · Develop    edited stores/config.ts',
     ' 12.0s  ✖ Develop    ran the linter, which failed',
-    ' 14.0s    Develop    wrote stores/ai-status.ts',
-    ' 16.0s  ▸ Develop    ran the tests',
+    ' 14.0s  · Develop    wrote stores/ai-status.ts',
+    ' 16.0s  \u28fe Develop    ran the tests',
   ])
 })
 
@@ -109,20 +110,23 @@ function edge(line: string, arrow: string): string {
   return `${line.padEnd(99)}${arrow}`
 }
 
-test('the strip follows the newest lines, and an arrow says there is more above', () => {
-  const { lines } = rows(pipeline(), 100, 30, 2)
+test('the strip follows the newest lines under its column names, and its bar says there is more above', () => {
+  const { canvas, lines } = rows(pipeline(), 100, 30, 2)
 
-  expect(lines.slice(-2)).toEqual([
-    edge(' 14.0s    Develop    wrote stores/ai-status.ts', '\u25b4'),
-    ' 16.0s  \u25b8 Develop    ran the tests',
+  expect(lines.slice(-3)).toEqual([
+    '  time    agent      what happened',
+    edge(' 14.0s  \u00b7 Develop    wrote stores/ai-status.ts', '\u25b4'),
+    edge(' 16.0s  \u28fe Develop    ran the tests', '\u25be'),
   ])
+  // The arrow towards more is lit and the one at the end it stands at is not.
+  expect(canvas.cell(99, 28).fg).not.toEqual(canvas.cell(99, 29).fg)
 })
 
 test('scrolled back, the strip shows older lines, with an arrow either way there is more', () => {
   const { lines, feed } = rows(pipeline(), 100, 30, 2, 2)
 
   expect(lines.slice(-2)).toEqual([
-    edge(' 10.0s    Develop    edited stores/config.ts', '\u25b4'),
+    edge(' 10.0s  \u00b7 Develop    edited stores/config.ts', '\u25b4'),
     edge(' 12.0s  \u2716 Develop    ran the linter, which failed', '\u25be'),
   ])
   expect(feed).toEqual({ y: 28, rows: 2, top: 2, lines: 6 })
@@ -132,8 +136,8 @@ test('the strip cannot be scrolled past its oldest line', () => {
   const { lines, feed } = rows(pipeline(), 100, 30, 2, -5)
 
   expect(lines.slice(-2)).toEqual([
-    '  4.0s  \u2714 Preflight  passed: plan located, tools ready',
-    edge('  5.0s    Develop    read 2 files, searched once', '\u25be'),
+    edge('  4.0s  \u2714 Preflight  passed: plan located, tools ready', '\u25b4'),
+    edge('  5.0s  \u00b7 Develop    read 2 files, searched once', '\u25be'),
   ])
   expect(feed?.top).toBe(0)
 })
@@ -195,8 +199,8 @@ test('an agent that said why it made its calls is quoted, with what it did after
   // Calls one request issued share its words and one line; a call with no words
   // of its own says what its description says it is for.
   expect(lines.slice(-2)).toEqual([
-    ' 5.0s    Develop  Lint clean. Now run the affected unit tests. \u2192 read config.ts, ran the tests for stores',
-    ' 8.0s    Develop  See what changed so far \u2192 looked at the changes',
+    ' 5.0s  \u00b7 Develop  Lint clean. Now run the affected unit tests. \u2192 read config.ts, ran the tests for stores',
+    ' 8.0s  \u00b7 Develop  See what changed so far \u2192 looked at the changes',
   ])
 })
 
@@ -211,7 +215,7 @@ test('words too long for one line wrap over as many as they need, whole', () => 
   const { lines } = rows(run, 80, 30, 6)
 
   expect(lines.slice(-5)).toEqual([
-    ' 6.0s    Develop  The pill test failures are a mounting artifact: when the',
+    ' 6.0s  \u00b7 Develop  The pill test failures are a mounting artifact: when the',
     '                  root v-if is false it renders as a comment node, so the',
     '                  element does not re-point after the flip. The fix is to',
     '                  mount it inside a stable wrapper. \u2192 edited',
@@ -256,7 +260,11 @@ test('a run that failed after every agent landed closes the strip with what the 
 
   const strip = lines.slice(lines.findIndex(line => line.includes(' activity ')) + 1).filter(line => line !== '')
 
-  expect(strip).toEqual(['  5.0s    Gate  ran the tests', ' 40.0s  ✖ run   gate tests failed: 3 tests failed'])
+  expect(strip).toEqual([
+    '  time    agent  what happened',
+    '  5.0s  \u00b7 Gate   ran the tests',
+    ' 40.0s  \u2716 run    gate tests failed: 3 tests failed',
+  ])
 })
 
 test('a subagent an agent started is told by the description it was given, or bare without one', () => {
@@ -268,7 +276,10 @@ test('a subagent an agent started is told by the description it was given, or ba
   ])
   const { lines } = rows(run, 100, 30, 2)
 
-  expect(lines.slice(-2)).toEqual([' 5.0s    Develop  started a subagent: review the diff', ' 9.0s    Develop  started a subagent'])
+  expect(lines.slice(-2)).toEqual([
+    ' 5.0s  \u00b7 Develop  started a subagent: review the diff',
+    ' 9.0s  \u00b7 Develop  started a subagent',
+  ])
 })
 
 test('a row taller than the strip, followed to its newest line, still says whose row it is and when', () => {
@@ -282,9 +293,9 @@ test('a row taller than the strip, followed to its newest line, still says whose
   const { lines } = rows(run, 80, 30, 3)
 
   expect(lines.slice(-3)).toEqual([
-    ' 6.0s    Develop  element does not re-point after the flip. The fix is to      \u25b4',
-    '                  mount it inside a stable wrapper. \u2192 edited',
-    '                  AiStatusPill.test.ts',
+    ' 6.0s  \u00b7 Develop  element does not re-point after the flip. The fix is to      \u25b4',
+    '                  mount it inside a stable wrapper. \u2192 edited                   \u2503',
+    '                  AiStatusPill.test.ts                                         \u25be',
   ])
 })
 
@@ -319,4 +330,54 @@ test('a word longer than the strip’s room is broken across lines rather than r
   expect(holding.length).toBeGreaterThan(1)
   expect(holding.join('').split('x').length - 1).toBe(119)
   expect(Math.max(...strip.map(line => line.length))).toBeLessThanOrEqual(78)
+})
+
+test('an agent the card names without its phase is named on the strip with it, so the same name in two phases reads as two agents', () => {
+  const run = runOf([
+    agent('Review: bugs', 'done', [call('Bash', 'npm test', 4)], { agentId: 'review-bugs', phase: 'Review' }),
+    agent('Verify: bugs', 'done', [call('Bash', 'npm test', 6)], { agentId: 'verify-bugs', phase: 'Verify' }),
+  ])
+  const strip = rows(run, 100, 30, 6).lines.filter(line => line.includes('ran the tests'))
+
+  expect(strip).toEqual([' 4.0s  · Review · bugs  ran the tests', ' 6.0s  · Verify · bugs  ran the tests'])
+})
+
+test('a nested run’s phase is named on the strip without its unfold mark or its plugin’s namespace', () => {
+  const run = runOf([
+    agent('reviewer', 'done', [call('Bash', 'npm test', 4)], { phase: '▸ code-review:ai-review-panel' }),
+  ])
+  const strip = rows(run, 100, 30, 6).lines.filter(line => line.includes('ran the tests'))
+
+  expect(strip).toEqual([' 4.0s  · ai-review-panel · reviewer  ran the tests'])
+})
+
+test('a name too long for its column gives up its phase before its own name', () => {
+  const run = runOf([
+    agent('reviewer', 'done', [call('Bash', 'npm test', 4)], { phase: 'an-unusually-long-phase-name-from-a-script' }),
+  ])
+  const line = rows(run, 100, 30, 6).lines.find(l => l.includes('ran the tests'))!
+
+  expect(line).toContain('… · reviewer')
+  expect(line).not.toContain('reviewe…')
+})
+
+test('a line’s mark and name take the colour of what that line says, not of the state its agent ended in', () => {
+  const run = runOf([
+    agent('Develop', 'failed', [call('Bash', 'npm run lint', 4), call('Bash', 'npm test', 6, { isError: true })]),
+  ])
+  const { canvas, lines } = rows(run, 100, 30, 6)
+  const fine = lines.findIndex(line => line.includes('ran the linter'))
+  const broke = lines.findIndex(line => line.includes('which failed'))
+  const fg = (y: number, text: string) => canvas.cell(lines[y]!.indexOf(text), y).fg
+
+  expect(lines[fine]).toContain('· Develop')
+  expect(lines[broke]).toContain('✖ Develop')
+  expect(fg(fine, 'Develop')).not.toEqual(fg(broke, 'Develop'))
+})
+
+test('a pane too short for the lines asked for shows as many as leave the drawing its rows, rather than none', () => {
+  const { lines, feed } = rows(pipeline(), 100, 21, 6)
+
+  expect(lines.some(line => line.includes(' activity '))).toBe(true)
+  expect(feed?.rows).toBe(3)
 })
