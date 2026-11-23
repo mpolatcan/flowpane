@@ -1591,3 +1591,40 @@ test('the count of what a long answer left out stands in the middle of its rule'
   expect(left).toBeDefined()
   expect(Math.abs(left!.length - right!.length)).toBeLessThanOrEqual(1)
 })
+
+test('a call list longer than the dialog carries one heavy thumb on a light track at the head of its bar', () => {
+  const run = runOf()
+  const reading = run.agents.find(agent => agent.agentId === 'r1')!
+
+  reading.calls = Array.from({ length: 40 }, (_, i) => ({
+    id: `c${i}`,
+    name: 'Read',
+    input: `hooks/paint.ts, line ${i * 100}`,
+    startedMs: STARTED + 5_100 + i * 100,
+    endedMs: STARTED + 5_400 + i * 100,
+    result: 'read 200 lines',
+  }))
+
+  const canvas = new Canvas(110, 32)
+
+  paint(canvas, run, {
+    nowMs: STARTED + 20_000,
+    tick: 0,
+    orientation: 'vertical',
+    selectedId: 'r1',
+    detailRows: 14,
+    detailTab: CALLS,
+  })
+
+  const rows = rowsOf(canvas)
+  const { top, foot, right } = dialogOf(rows)
+  const up = rows.findIndex((row, y) => y > top && y < foot && row.slice(0, right).includes('▴'))
+  const column = rows[up]!.slice(0, right).lastIndexOf('▴')
+  const down = rows.findIndex((row, y) => y > up && y < foot && row[column] === '▾')
+  const track = rows
+    .slice(up + 1, down)
+    .map(row => row[column])
+    .join('')
+
+  expect(track).toMatch(/^┃+│+$/)
+})
