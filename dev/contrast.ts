@@ -13,22 +13,7 @@
  * contrast ratio catches that.
  */
 
-import { FLOOR, GRAPHIC_ROLES, hexOf, paletteOf, READ, TEXT_FLOOR, THEMES, UNLIFTED_ROLES } from '../hooks/theme'
-
-const channel = (v: number) => {
-  const s = v / 255
-
-  return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
-}
-
-const luminance = (c: number) =>
-  0.2126 * channel((c >> 16) & 0xff) + 0.7152 * channel((c >> 8) & 0xff) + 0.0722 * channel(c & 0xff)
-
-const ratio = (a: number, b: number) => {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
-
-  return (hi + 0.05) / (lo + 0.05)
-}
+import { hexOf, paletteOf, standingOf, THEMES } from '../hooks/theme'
 
 /**
  * The theme's own colour each role is taken straight from, where it is one. A
@@ -47,22 +32,10 @@ const SOURCES: Record<string, 'yellow' | 'green' | 'red' | 'fg' | 'blue' | 'purp
 let short = 0
 
 for (const theme of THEMES) {
-  const palette = paletteOf(theme)
-  const rows = Object.entries(palette)
-    .map(([role, color]) => ({ role, color, r: ratio(color as number, theme.bg) }))
-    .sort((a, b) => a.r - b.r)
-
   console.log(`\n${theme.name}  bg ${hexOf(theme.bg)}`)
 
-  for (const row of rows) {
-    const target = (UNLIFTED_ROLES as readonly string[]).includes(row.role)
-      ? 0
-      : (GRAPHIC_ROLES as readonly string[]).includes(row.role)
-        ? FLOOR
-        : row.role === 'text'
-          ? TEXT_FLOOR
-          : READ
-    const flag = row.r < target ? `  under ${target.toFixed(1)}` : ''
+  for (const row of standingOf(theme)) {
+    const flag = row.ratio < row.floor ? `  under ${row.floor.toFixed(1)}` : ''
 
     short += flag ? 1 : 0
 
@@ -70,7 +43,7 @@ for (const theme of THEMES) {
     const own = source === undefined ? undefined : theme[source]
     const moved = own === undefined || own === row.color ? '' : `  from ${hexOf(own)}`
 
-    console.log(`  ${row.role.padEnd(9)} ${hexOf(row.color as number)}  ${row.r.toFixed(2)}${flag}${moved}`)
+    console.log(`  ${row.role.padEnd(9)} ${hexOf(row.color)}  ${row.ratio.toFixed(2)}${flag}${moved}`)
   }
 }
 

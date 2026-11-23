@@ -574,6 +574,37 @@ function derive(theme: Theme): Palette {
   }
 }
 
+/** One role of a palette, measured against the floor it is held to. */
+export type Standing = { role: keyof Palette; color: Rgb; ratio: number; floor: number }
+
+/**
+ * Every role of a theme's palette, with its ratio against the ground and the
+ * floor it is held to, weakest first.
+ *
+ * `dev/contrast.ts` prints this and exits non-zero when a role falls short. The
+ * check lives here rather than in the script because the plugin's test runner
+ * cannot start a process: a floor the suite could only reach by running the
+ * script would be a floor nothing tests.
+ */
+export function standingOf(theme: Theme): Standing[] {
+  const palette = paletteOf(theme)
+
+  return (Object.keys(palette) as (keyof Palette)[])
+    .map(role => {
+      const color = palette[role]
+      const floor = (UNLIFTED_ROLES as readonly string[]).includes(role)
+        ? 0
+        : (GRAPHIC_ROLES as readonly string[]).includes(role)
+          ? FLOOR
+          : role === 'text'
+            ? TEXT_FLOOR
+            : READ
+
+      return { role, color, ratio: apart(color, theme.bg), floor }
+    })
+    .sort((a, b) => a.ratio - b.ratio)
+}
+
 export function hexOf(color: Rgb): string {
   return `#${(color & 0xffffff).toString(16).padStart(6, '0')}`
 }

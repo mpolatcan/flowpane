@@ -84,12 +84,13 @@ test('a card frame is carried most of the way to its state', () => {
   // The hue has to survive being drawn one cell wide in a line glyph, which is
   // a fraction of the ink the same colour puts down as a word. Just over half
   // was the first setting and it did not: on a dark ground `done` landed on a
-  // muted teal and `running` on an olive. Seven tenths is the floor.
+  // muted teal and `running` on an olive. The frame is carried nine
+  // tenths of the way now, and the floor sits just under that.
   for (const theme of THEMES) {
     useTheme(theme.name)
 
     for (const state of STATES) {
-      expect(`${theme.name} ${state} ${carried(state, theme) >= 0.7}`).toBe(`${theme.name} ${state} true`)
+      expect(`${theme.name} ${state} ${carried(state, theme) >= 0.85}`).toBe(`${theme.name} ${state} true`)
     }
   }
 

@@ -44,10 +44,13 @@ the states also have to stand apart in hue, below, and on gruvbox and the two
 solarized palettes that moves the theme's own green. A palette picked by name is
 that palette wherever it already reads, and changed only where it would not.
 
-Five palettes come through untouched: catppuccin, dracula, vscode-dark,
-github-light and insider-one-light. The others give up a role or two — most
-often the failed red, lifted for contrast — and `bun dev/contrast.ts` prints
-every role beside the theme's own colour it came from.
+Four palettes come through untouched: catppuccin, dracula, vscode-dark and
+github-light. Five give up one or two roles to contrast, most often the failed
+red: tokyo-night, nord, monokai, insider-one and insider-one-light. Three move
+further. gruvbox has its green turned and its red lifted. solarized gives up
+five roles and solarized-light seven, since the theme's own grey and its accents
+sit close to its ground on both. `bun dev/contrast.ts` prints every role beside
+the theme's own colour it came from.
 
 Along its own lightness, so the hue and the saturation stay. The lift used to be
 a mix — first toward the theme's foreground, which on solarized-light dragged
