@@ -169,7 +169,11 @@ test and wrong in a terminal.
 
 - **Colour says one of two things: what state a node is in, or that a line is a
   wire.** Structure is grey. The one border allowed to carry a state is a
-  card's own frame, which encloses exactly one agent — see `frameOf`.
+  card's own frame, which encloses exactly one agent — see `frameOf`. The one
+  exception is inside an opened call's argument and output, where a field's
+  name, a string and a number take the palette's three syntax roles and a diff's
+  lines sit on a tinted ground; nowhere else on the pane draws them. See
+  `syntaxKey` in `theme.ts` and `docs/detail.md`.
 - **No line crosses a word.** `canvas.line()` refuses to overwrite a port, and
   `dev/lines.ts` checks the whole corpus: every line lands on a blank cell,
   every arrowhead has a stem, every arm reaches something.

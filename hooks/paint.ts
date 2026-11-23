@@ -141,6 +141,17 @@ function quoteOf(ground: Rgb): Rgb {
 }
 
 /**
+ * The ground of a diff line: the block's own, carried a fifth of the way to
+ * the done or failed tone. Enough to tell the two apart down a column, and not
+ * so much that the words on it lose the contrast they have on the block.
+ */
+function tintOf(tint: 'added' | 'removed', ground: Rgb): Rgb {
+  const base = ground === DEFAULT_COLOR ? COLORS.track : ground
+
+  return mix(base, tint === 'added' ? COLORS.done : COLORS.failed, 0.2)
+}
+
+/**
  * How a repeat is written wherever one is shown: on the node that made it, and
  * on the caption of the phase that looped.
  *
@@ -7051,12 +7062,19 @@ type DetailLine = {
    * command's own name, its flags and its quoted strings are one line of shell,
    * not three facts about it.
    *
-   * Tone and not hue. Colour in this pane says what state a node is in or that a
-   * line is a wire, and a third meaning would cost the first two their meaning —
-   * so the runs are the quoted block's own grey at three weights, and the reader
-   * who ignores them reads exactly what they read before.
+   * Mostly tone: the quoted block's own grey at three weights, so a reader who
+   * ignores them reads exactly what they read before. The one place they carry
+   * hue is an opened call's argument and output, where a field's name, a string
+   * and a number take the palette's syntax roles; see `syntaxKey` in theme.ts
+   * for why there and nowhere else.
    */
   runs?: Field[]
+  /**
+   * A diff line's ground: tinted toward the done or failed tone behind the
+   * whole row, decided when the block is painted, since only then is the ground
+   * under it known.
+   */
+  tint?: 'added' | 'removed'
   fields?: Field[]
   right?: Field[]
   /**
@@ -7529,7 +7547,8 @@ function folded(line: string, width: number, color: Rgb): DetailLine[] {
  * scrolling because it is the one line in view that is a different colour.
  *
  * That is the whole of the styling. Marking quotes, code spans and emphasis as
- * well would be a syntax highlighter in a pane that is not an editor.
+ * well would be a syntax highlighter over somebody's sentences; the syntax hues
+ * are for a call's argument and output, which are code and data.
  *
  * The line length is capped short of the block. Prose set the full width of a
  * two-hundred-column pane is prose a reader loses their place in between one
@@ -8567,12 +8586,16 @@ function paintCall(
 /**
  * One line of a call's text, as the coloured runs it reads in.
  *
- * Tone and not hue, and three weights at most. Colour in this pane says what
- * state a node is in or that a line is a wire; a third meaning taken on here
- * would cost the first two theirs. So a line is the block's own grey, lifted
- * for the part that identifies the line and dropped for the punctuation holding
- * it together — and a reader who does not notice reads exactly the text that
- * was there before, in the weight it was in.
+ * Three weights of the block's own grey, lifted for the part that identifies
+ * the line and dropped for the punctuation holding it together, and the three
+ * syntax hues for a field's name, a quoted string and a number. Colour on the
+ * rest of the pane says what state a node is in or that a line is a wire; the
+ * hues stay inside an opened call, where neither of those is drawn, and come
+ * from roles no state uses.
+ *
+ * It used to be tone alone. A JSON answer forty lines long was forty lines of
+ * one grey with its keys a shade lighter, and a reader looking for one field
+ * read every line to find it.
  */
 type Lighter = (line: string, width: number, tone: Rgb) => DetailLine[]
 
@@ -8672,6 +8695,39 @@ function pathRuns(text: string, weights: ReturnType<typeof weightsOf>): Field[] 
       ]
 }
 
+/** One piece of a line of a call's text, as the tokenizer read it. */
+type Token = { kind: 'comment' | 'string' | 'op' | 'punct' | 'space' | 'number' | 'word' | 'other'; text: string }
+
+/**
+ * Every piece of a line, in one pass, quoted strings first.
+ *
+ * One matcher for every reading — shell, JSON, a payload's values — rather than
+ * a pass per kind of thing. A pass that coloured numbers after a pass that
+ * coloured strings coloured the digits inside a string; consuming the strings
+ * first and moving on means nothing inside one is read again. Every
+ * alternative is a positive class, and the last takes any one character, so
+ * the walk always reaches the end of the line.
+ *
+ * A comment starts at a `#` that begins the line or follows a space, so the
+ * `#` in `a#b` or in a URL's fragment stays part of its word. A number stands
+ * alone: `abc123` and `v2.1` are words, and `-20` is a flag.
+ */
+const TOKEN =
+  /(?<comment>(?<=^|\s)#.*$)|(?<string>"(?:\\.|.)*?"|'.*?')|(?<op>[|&;<>]+)|(?<punct>[{}[\],:])|(?<space>\s+)|(?<number>(?<![\w.-])\d+(?:\.\d+)?(?![\w.]))|(?<word>[\p{L}\p{N}\p{M}_./@%+=~^$!?*#()\\`-]+)|(?<other>.)/gu
+
+function piecesOf(text: string): Token[] {
+  const out: Token[] = []
+
+  for (const match of text.matchAll(TOKEN)) {
+    const groups = match.groups ?? {}
+    const kind = (Object.keys(groups) as Token['kind'][]).find(name => groups[name] !== undefined) ?? 'other'
+
+    out.push({ kind, text: match[0] })
+  }
+
+  return out
+}
+
 /**
  * A shell line as its parts: what runs, what it is told, and what joins them.
  *
@@ -8679,8 +8735,9 @@ function pathRuns(text: string, weights: ReturnType<typeof weightsOf>): Field[] 
  * run and stands a weight up; the operators and redirections that join them drop
  * a weight, since they are the sentence's punctuation and a reader scanning for
  * what ran is scanning past them. A quoted string is one thing however many
- * words are inside it, so it keeps its own weight all through rather than having
- * its first word lifted as a command.
+ * words are inside it, so it is one run in the string hue rather than having its
+ * first word lifted as a command; a number that stands alone takes the number
+ * hue, and a comment drops back with the punctuation.
  */
 function shellRuns(text: string, weights: ReturnType<typeof weightsOf>): Field[] {
   const out: Field[] = []
@@ -8688,40 +8745,129 @@ function shellRuns(text: string, weights: ReturnType<typeof weightsOf>): Field[]
   // off. `git status && git diff` runs two things and names both.
   let heads = true
 
-  for (const [piece] of text.matchAll(/"[^"]*"|'[^']*'|[|&;<>]+|\s+|[^\s|&;<>]+/g)) {
-    if (/^\s+$/.test(piece)) {
-      out.push({ text: piece, color: weights.base })
-
-      continue
+  for (const token of piecesOf(text)) {
+    switch (token.kind) {
+      case 'space':
+        out.push({ text: token.text, color: weights.base })
+        break
+      case 'op':
+        out.push({ text: token.text, color: weights.drop })
+        heads = true
+        break
+      case 'comment':
+        out.push({ text: token.text, color: weights.drop })
+        break
+      case 'string':
+        out.push({ text: token.text, color: COLORS.syntaxString })
+        heads = false
+        break
+      case 'number':
+        out.push({ text: token.text, color: heads ? weights.lift : COLORS.syntaxNumber })
+        heads = false
+        break
+      default:
+        if (heads) {
+          out.push({ text: token.text, color: weights.lift })
+          heads = false
+        } else {
+          // A flag is the one part of an argument list that is the tool's own
+          // word rather than the caller's, so it reads with the punctuation.
+          out.push({ text: token.text, color: /^-/.test(token.text) ? weights.drop : weights.base })
+        }
     }
-
-    if (/^[|&;<>]+$/.test(piece)) {
-      out.push({ text: piece, color: weights.drop })
-      heads = true
-
-      continue
-    }
-
-    if (/^["']/.test(piece)) {
-      out.push({ text: piece, color: weights.base })
-      heads = false
-
-      continue
-    }
-
-    if (heads) {
-      out.push({ text: piece, color: weights.lift })
-      heads = false
-
-      continue
-    }
-
-    // A flag is the one part of an argument list that is the tool's own word
-    // rather than the caller's, so it reads with the punctuation.
-    out.push({ text: piece, color: /^-/.test(piece) ? weights.drop : weights.base })
   }
 
   return out.length > 0 ? out : [{ text, color: weights.base }]
+}
+
+/**
+ * A line of JSON: a field's name, its value, and the brackets holding them.
+ *
+ * Only for text that parsed as JSON whole — see `isJson` — so a line of prose
+ * that happens to hold a colon and a quote is never read as an object.
+ */
+function jsonRuns(text: string, weights: ReturnType<typeof weightsOf>): Field[] {
+  const tokens = piecesOf(text)
+
+  return tokens.map((token, i) => {
+    if (token.kind === 'string') {
+      const next = tokens.slice(i + 1).find(t => t.kind !== 'space')
+
+      return { text: token.text, color: next?.kind === 'punct' && next.text === ':' ? COLORS.syntaxKey : COLORS.syntaxString }
+    }
+
+    if (token.kind === 'number' || /^(?:-?\d|true$|false$|null$)/.test(token.text)) {
+      return { text: token.text, color: token.kind === 'space' ? weights.base : COLORS.syntaxNumber }
+    }
+
+    return { text: token.text, color: token.kind === 'punct' ? weights.drop : weights.base }
+  })
+}
+
+/**
+ * Whether a value is JSON: an object or an array that parses, whole.
+ *
+ * Parsing is the test rather than a look at the first character. A tool answer
+ * that starts with `{` and goes on to prose is prose, and a reading that
+ * coloured it as an object would colour the wrong half of every line.
+ */
+function isJson(text: string): boolean {
+  const trimmed = text.trim()
+
+  if (!/^[[{]/.test(trimmed)) {
+    return false
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(trimmed)
+
+    return typeof parsed === 'object' && parsed !== null
+  } catch {
+    return false
+  }
+}
+
+/** A JSON value's lines. */
+function jsonLines(line: string, width: number, tone: Rgb): DetailLine[] {
+  return litLines(jsonRuns(line, weightsOf(tone)), width, tone)
+}
+
+/**
+ * A line of a unified diff: what it added or took away, on a ground tinted
+ * for which.
+ *
+ * The tint is behind the line rather than in its letters. Set in the state
+ * green and red, an added line read as a call that passed and a removed one as
+ * a call that failed; a ground leaves the words in the block's own tone and
+ * says the same thing a reviewer's diff view says.
+ */
+function diffLines(line: string, width: number, tone: Rgb): DetailLine[] {
+  const weights = weightsOf(tone)
+
+  if (/^(?:diff --git |index |--- |\+\+\+ )/.test(line)) {
+    return litLines([{ text: line, color: weights.drop }], width, tone)
+  }
+
+  if (line.startsWith('@@')) {
+    return litLines([{ text: line, color: COLORS.syntaxKey }], width, tone)
+  }
+
+  const tint = line.startsWith('+') ? 'added' : line.startsWith('-') ? 'removed' : undefined
+  const lines = litLines(
+    [
+      { text: line.slice(0, 1), color: weights.lift },
+      { text: line.slice(1), color: weights.base },
+    ],
+    width,
+    tone,
+  )
+
+  return tint ? lines.map(l => ({ ...l, tint })) : lines
+}
+
+/** Whether a tool's answer is a unified diff, by the header one always carries. */
+function isDiff(text: string): boolean {
+  return /^(?:diff --git |@@ )/m.test(text)
 }
 
 /**
@@ -8737,14 +8883,16 @@ function payloadLines(line: string, width: number, tone: Rgb): DetailLine[] {
   const keyed = /^(\s*)([A-Za-z_][\w.]*):\s(.*)$/.exec(line)
 
   if (!keyed) {
-    return litLines(valueRuns(line, weights), width, tone)
+    return litLines(isJson(line) ? jsonRuns(line, weights) : valueRuns(line, weights), width, tone)
   }
 
   const [, lead, key, value] = keyed as unknown as [string, string, string, string]
 
   return litLines(
     [
-      { text: `${lead}${key}: `, color: weights.drop },
+      { text: lead, color: weights.base },
+      { text: key, color: COLORS.syntaxKey },
+      { text: ': ', color: weights.drop },
       ...valueRuns(value, weights, key),
     ],
     width,
@@ -8760,6 +8908,16 @@ function valueRuns(value: string, weights: ReturnType<typeof weightsOf>, key?: s
 
   if (value.startsWith('/') || /path$/.test(key ?? '')) {
     return pathRuns(value, weights)
+  }
+
+  // A value the payload wrote as JSON — an array or an object passed as one
+  // argument — and a bare number or flag. Anything else is somebody's words.
+  if (isJson(value)) {
+    return jsonRuns(value, weights)
+  }
+
+  if (key !== undefined && /^(?:-?\d+(?:\.\d+)?|true|false|null)$/.test(value)) {
+    return [{ text: value, color: COLORS.syntaxNumber }]
   }
 
   return [{ text: value, color: weights.base }]
@@ -8903,14 +9061,91 @@ function sectionWord(call: ToolCall): string {
   return /^command:/.test(call.input) ? 'command' : 'argument'
 }
 
+/**
+ * The fields of an Edit, and which of them is the text it took out and which
+ * the text it put in. A line of either that begins `name: ` is still that
+ * field's text unless the name is one of these.
+ */
+const EDIT_FIELDS: Record<string, 'removed' | 'added' | undefined> = {
+  file_path: undefined,
+  old_string: 'removed',
+  new_string: 'added',
+  replace_all: undefined,
+}
+
+/**
+ * An Edit's payload, its old text on a ground tinted as removed and its new
+ * text as added.
+ *
+ * An Edit is a diff the payload does not write as one: two fields, the text
+ * before and the text after. Read field by field it is two paragraphs of code a
+ * reader has to compare by eye; tinted, the two read as the change they are.
+ */
+function editLighter(): Lighter {
+  let inside: 'removed' | 'added' | undefined
+
+  return (line, width, tone) => {
+    const keyed = /^([a-z_]+): /.exec(line)
+
+    if (keyed && keyed[1]! in EDIT_FIELDS) {
+      inside = EDIT_FIELDS[keyed[1]!]
+    }
+
+    const lines = payloadLines(line, width, tone)
+    const tint = inside
+
+    return tint ? lines.map(l => ({ ...l, tint })) : lines
+  }
+}
+
+/**
+ * The lines of a call's two readings, kept for as long as the call, the width
+ * and the theme are the same.
+ *
+ * The tokenizer walks every character of a value, and the dialog is painted
+ * every frame while it is open; an answer a few thousand lines long would be
+ * read again on every one of them.
+ */
+const CALL_LINES = new WeakMap<ToolCall, { arg?: Kept; out?: Kept }>()
+
+type Kept = { text: string; width: number; colors: Palette; lines: DetailLine[] }
+
+function kept(call: ToolCall, half: 'arg' | 'out', text: string, width: number, build: () => DetailLine[]): DetailLine[] {
+  const entry = CALL_LINES.get(call) ?? {}
+  const held = entry[half]
+
+  if (held && held.text === text && held.width === width && held.colors === COLORS) {
+    return held.lines
+  }
+
+  const lines = build()
+
+  entry[half] = { text, width, colors: COLORS, lines }
+  CALL_LINES.set(call, entry)
+
+  return lines
+}
+
 /** The lines of what a call was passed. */
 function callArgLines(call: ToolCall, width: number): DetailLine[] {
-  return valueLines(call.input, width, quietOf(COLORS.text), payloadLines)
+  return kept(call, 'arg', call.input, width, () => {
+    const tone = quietOf(COLORS.text)
+
+    if (isJson(call.input)) {
+      return valueLines(call.input, width, tone, jsonLines)
+    }
+
+    return valueLines(call.input, width, tone, call.name === 'Edit' ? editLighter() : payloadLines)
+  })
 }
 
 /** The lines of what it answered. */
 function callOutLines(call: ToolCall, width: number): DetailLine[] {
-  return valueLines(call.result ?? '', width, quietOf(COLORS.text), outputLines)
+  const text = call.result ?? ''
+
+  return kept(call, 'out', text, width, () =>
+    valueLines(text, width, quietOf(COLORS.text), isJson(text) ? jsonLines : isDiff(text) ? diffLines : outputLines),
+  )
 }
 
 /**
@@ -9139,6 +9374,13 @@ function paintTabBody(
   lines.slice(first, first + rect.h).forEach((line, row) => {
     const y = rect.y + row
     const at = rect.x + 1
+
+    if (line.tint) {
+      const tinted = tintOf(line.tint, section.plain === true ? c.background : quoteOf(c.background))
+
+      c.fill(rect.x, y, text + 2, 1, tinted)
+      line = { ...line, bg: tinted }
+    }
 
     if (line.press && line.press.w > 0) {
       hotspots.push({ agentId: line.press.key, x: at + line.press.at, y, w: Math.min(line.press.w, text - line.press.at) })

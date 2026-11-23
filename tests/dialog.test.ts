@@ -571,23 +571,103 @@ test('a long answer keeps both its ends and counts what it left out', () => {
   expect(rows[at + 1]).toMatch(/line \d+ =+/)
 })
 
-test('a call sets what it ran apart from what it ran on, in weight alone', () => {
+test('a call sets what it ran apart from what it ran on, and names its fields in a hue of their own', () => {
   const canvas = opened({ id: 'lit', input: 'command: git status --porcelain' })
   const rows = rowsOf(canvas)
   // Past the sentence at the top, which names the command too: this reads the
   // dialog's own row.
   const y = rows.findIndex((row, i) => i > 0 && row.includes('git status'))
   const toneAt = (text: string) => canvas.cell(rows[y]!.indexOf(text), y).fg
+  const [key, ran, on, flag] = [toneAt('command'), toneAt('git'), toneAt('status'), toneAt('--porcelain')]
 
-  // Three weights of the block's own grey and no fourth colour: colour in this
-  // pane already says what state a node is in and that a line is a wire, and a
-  // third meaning taken on here would cost the first two theirs.
-  const [key, ran, on, flag] = [toneAt('command:'), toneAt('git'), toneAt('status'), toneAt('--porcelain')]
+  expect(ran).not.toEqual(on)
+  expect(flag).not.toEqual(on)
+  expect(new Set([key, ran, on, flag].map(c => JSON.stringify(c))).size).toBe(4)
+})
 
-  expect(ran).not.toBe(on)
-  expect(key).not.toBe(on)
-  expect(flag).toBe(key)
-  expect(new Set([key, ran, on]).size).toBe(3)
+/** The colour of the first cell on the dialog's row holding `text`, past the sentence at the top. */
+function hueOf(canvas: Canvas, text: string): unknown {
+  const rows = rowsOf(canvas)
+  const y = rows.findIndex((row, i) => i > 0 && row.includes(text))
+
+  return JSON.stringify(canvas.cell(rows[y]!.indexOf(text), y).fg)
+}
+
+test('a JSON answer names its fields in one hue, its strings in another and its numbers in a third', () => {
+  const result = JSON.stringify({ status: 'merged', count: 42, ok: true }, null, 2)
+  const canvas = opened({ id: 'json', input: 'command: gh pr view 5 --json state', result })
+  const [key, text, number, literal] = [hueOf(canvas, '"status"'), hueOf(canvas, '"merged"'), hueOf(canvas, '42'), hueOf(canvas, 'true')]
+
+  expect(new Set([key, text, number]).size).toBe(3)
+  expect(literal).toBe(number)
+})
+
+test('an answer that only starts like JSON is read as the prose it is', () => {
+  const canvas = opened({ id: 'prose', input: 'command: cat notes', result: '{ not json: "quoted" and 42 }' })
+
+  // It did not parse, so nothing in it is a field, a string or a number.
+  expect(new Set([hueOf(canvas, 'not json'), hueOf(canvas, '"quoted"'), hueOf(canvas, '42')]).size).toBe(1)
+})
+
+test('a quoted string in a command is one run, digits and all', () => {
+  const canvas = opened({ id: 'quoted', input: 'command: git commit -m "fix 42 things"' })
+
+  expect(hueOf(canvas, '42 things')).toBe(hueOf(canvas, '"fix'))
+  expect(hueOf(canvas, '"fix')).not.toBe(hueOf(canvas, 'commit'))
+})
+
+/** The ground under the first cell of the dialog's row holding `text`. */
+function groundOf(canvas: Canvas, text: string): unknown {
+  const rows = rowsOf(canvas)
+  const y = rows.findIndex((row, i) => i > 0 && row.includes(text))
+
+  return JSON.stringify(canvas.cell(rows[y]!.indexOf(text), y).bg)
+}
+
+test('a diff answer sets its added and removed lines on grounds of their own, in the block’s own letters', () => {
+  const result = ['diff --git a/x.ts b/x.ts', '@@ -1,2 +1,2 @@', ' kept line', '-gone line', '+new line'].join('\n')
+  const canvas = opened({ id: 'diff', input: 'command: git diff', result })
+  const grounds = [groundOf(canvas, 'kept line'), groundOf(canvas, 'gone line'), groundOf(canvas, 'new line')]
+
+  expect(new Set(grounds).size).toBe(3)
+  expect(hueOf(canvas, 'gone line')).toBe(hueOf(canvas, 'new line'))
+})
+
+test('an Edit reads as the change it makes: the old text on the removed ground, the new on the added', () => {
+  const input = ['file_path: /wt/src/a.ts', 'old_string: const a = 1', 'return a', 'new_string: const a = 2', 'return a + 1', 'replace_all: false'].join('\n')
+  const canvas = opened({ id: 'edit', name: 'Edit', input })
+  const [path, old, carried, fresh, flag] = [
+    groundOf(canvas, '/wt/src'),
+    groundOf(canvas, 'const a = 1'),
+    groundOf(canvas, 'return a'),
+    groundOf(canvas, 'const a = 2'),
+    groundOf(canvas, 'replace_all'),
+  ]
+
+  expect(old).not.toBe(path)
+  expect(carried).toBe(old)
+  expect(fresh).not.toBe(old)
+  expect(fresh).not.toBe(path)
+  expect(flag).toBe(path)
+})
+
+test('the syntax hues stay inside the opened call', () => {
+  const canvas = opened({ id: 'json', input: 'command: gh pr view', result: JSON.stringify({ status: 'merged' }) })
+  const run = runOf()
+  const plain = new Canvas(127, 34)
+
+  paint(plain, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical' })
+
+  const used = new Set<string>()
+
+  for (let y = 0; y < plain.rows; y++) {
+    for (let x = 0; x < plain.columns; x++) {
+      used.add(JSON.stringify(plain.cell(x, y).fg))
+    }
+  }
+
+  expect(used.has(hueOf(canvas, '"status"') as string)).toBe(false)
+  expect(used.has(hueOf(canvas, '"merged"') as string)).toBe(false)
 })
 
 /** One agent whose calls all name files by their full path, in a long prompt. */
