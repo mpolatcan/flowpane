@@ -2967,18 +2967,20 @@ function paintSections(
   }
 
   if (view.orientation === 'horizontal') {
-    // From the header's rule to the foot of the body, so the phases divide the
-    // whole pane into columns and a column's heading stands over a section
-    // rather than over a few rows of cards.
+    // As tall as the drawing, not as tall as the pane. A boundary divides the
+    // cards from each other, and a run of four phases of one agent draws four
+    // cards twelve rows deep in a body of thirty-four: run to the foot, the
+    // boundaries were four full-height vertical lines with a band of cards
+    // somewhere in the middle of them, and most of the ink on the pane was
+    // furniture around a drawing a fifth its size. A reader looking at that
+    // said they could not read the graph, and the lines they were reading were
+    // these.
     //
-    // It was as tall as the drawing once, on the grounds that four full-height
-    // lines around a band of cards a fifth of the body's height spent most of
-    // the pane's ink on furniture. But that drawing was moved down into the
-    // middle of the body, and the boundaries stopping a row under its cards
-    // left the headings floating over a short stub of line with blank rows
-    // above and below: a reader saw lines that had not been finished. The
-    // drawing starts at the top now (see `liftOf`), and the boundaries run on
-    // past it to the foot, where the spare rows are the columns' own.
+    // The drawing used to stand in the middle of the body as well, which left
+    // the headings over a short stub of boundary with blank rows above them, and
+    // a reader saw lines that had not been finished. It starts under the header
+    // now (see `liftOf`), so the boundaries run unbroken from the header's rule
+    // to the row under the last card, and the spare rows are all below.
     const nodes = view.lanes.flatMap(lane => lane.nodes)
 
     if (nodes.length === 0) {
@@ -2989,7 +2991,7 @@ function paintSections(
     // tee that says a section begins here. Starting it beside the topmost card
     // instead left that tee as a stub with nothing under it.
     const bandTop = view.headerRows
-    const bandBottom = bottom
+    const bandBottom = Math.min(bottom, Math.max(...nodes.map(n => n.y + n.h)) + 1)
 
     bordersOf(view.lanes, view.orientation).forEach(x => {
       if (x < 0) {
@@ -4506,11 +4508,11 @@ function paintAhead(
     y++
   }
 
-  // To the foot of the body, as the boundaries between the phases beside it
-  // run. It stopped at whichever was longer, the cards or the list, while those
-  // stopped at the cards too; with them running the full height, a seam that
-  // stopped short was the one column on the pane left unfinished.
-  const foot = bottom
+  // The boundary runs as far as whichever is longer, the cards or the list,
+  // and no further: run to the foot of the body it was a line twenty rows long
+  // beside one name.
+  const cardsFoot = Math.max(first, ...view.lanes.flatMap(l => l.nodes.map(n => n.y + n.h)))
+  const foot = Math.min(bottom, Math.max(cardsFoot, y) + 1)
 
   for (let row = Math.max(0, view.headerRows); row < foot; row++) {
     if (c.at(strip.x, row) === 0x20) {
