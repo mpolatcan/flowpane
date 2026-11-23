@@ -119,6 +119,11 @@ export type Layout = {
    * with.
    */
   list?: boolean
+  /**
+   * Rows the whole drawing was moved down to stand in the middle of a body
+   * taller than it. Across, the phase headings move with it.
+   */
+  lift?: number
 }
 
 /** A phase and what ran in it, numbered by where it falls in the run. */
@@ -557,6 +562,9 @@ function flowLayout(
   // a phase of two beside a phase of four put a source on the same row as a
   // card it does not feed, and its wire ran straight through the trunk into
   // that card.
+  //
+  // Where the body is taller than the drawing, `paint` moves the headings and
+  // the block down together: see `liftOf`.
   const blockTop = headerRows + 1
 
   lanes.forEach((lane, place) => {
@@ -891,6 +899,49 @@ export function extentOf(view: Layout): { w: number; h: number } {
     // a long run is scrolling to see what is still to come.
     w: Math.max(0, ...boxes.map(b => b.x + b.w), view.ahead ? view.ahead.x + view.ahead.w : 0),
     h: Math.max(0, ...boxes.map(b => b.y + b.h)) + (view.aheadRows ? view.aheadRows + 1 : 0),
+  }
+}
+
+/**
+ * Rows to move a drawing down so it stands in the middle of a body that ends at
+ * `foot`, headings and all.
+ *
+ * Every layout used to start at the top and leave whatever the body did not
+ * need under the drawing, which on a tall pane put a run of three phases at
+ * the top of thirty blank rows: a drawing that ran out rather than one placed.
+ * Centring the cards alone, under headings that stayed put, was tried across
+ * and put the blank rows between each heading and its cards; moving the whole
+ * drawing keeps them together. A drawing taller than the body is not moved: it
+ * starts at the top and scrolls.
+ */
+export function liftOf(view: Layout, foot: number): number {
+  const boxes = view.lanes.flatMap(lane => [...lane.nodes, ...(lane.ghost ? [lane.ghost] : [])])
+
+  if (boxes.length === 0) {
+    return 0
+  }
+
+  // The row under the last card carries its exit point and the `↰` marks, and
+  // the phases named under the drawing stand a row of air below that.
+  const bottom = Math.max(...boxes.map(b => b.y + b.h)) + 1 + (view.aheadRows ? view.aheadRows + 1 : 0)
+
+  return Math.max(0, Math.floor((foot - bottom) / 2))
+}
+
+/** The same drawing moved down by `lift`, with the headings across moved too. */
+export function lifted(view: Layout, lift: number): Layout {
+  if (lift <= 0) {
+    return view
+  }
+
+  const moved = scrolled(view, 0, lift)
+  const across = view.orientation === 'horizontal'
+
+  return {
+    ...moved,
+    lift,
+    headerRows: across ? view.headerRows + lift : view.headerRows,
+    lanes: across ? moved.lanes.map(lane => ({ ...lane, h: Math.max(1, lane.h - lift) })) : moved.lanes,
   }
 }
 

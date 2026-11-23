@@ -633,6 +633,16 @@ centre in the body, which on a tall pane put a well of blank rows between the
 headings and the first card of every column; before that it sat two rows under
 the header whatever the height.
 
+Where the body is taller than the drawing, the whole drawing stands in the
+middle of it — headings, cards, wires, and the phases named under it — in every
+layout, the timeline's ruler included. Every layout used to start at the top and
+leave what the body did not need under the drawing, so a run of two phases on a
+tall pane sat over thirty blank rows: a drawing that had run out rather than one
+placed. Moving the headings with the cards keeps the two together, which
+centring the cards alone did not. A live run is centred too, so the drawing
+moves up as it grows; a drawing taller than the body is not moved at all, starts
+at the top and scrolls, and the window still follows the phase at work.
+
 The cards of a column stand one row apart, and two where the column hands work
 down itself — between the last card of one wave and the first of the next —
 because the hop there is a point under the one card and an arrowhead over the
