@@ -292,7 +292,7 @@ not.
 The dialog carries them all, on a shelf of its own above the tabs:
 
 ```
-╭───────────────────────────── ✔ Develop ──────────────────────────── ✕ ─╮
+╭───────────────────────────── ✔ Develop ────────────────────────────╴✕╶─╮
 ├── ↻10 ── ✔ 1 ─── ✔ 2 ─━┫ ✔ 3 ┣━─ ✔ 4 ─── ✔ 5 ─── ✔ 6 ─── ✔ 7 ─── … ───┤
 ├── Prompt ─━┫ Tool Calls (67) ┣━─ Response ────────────────────────────┤
 │ ✔  regex_search   applyStatus|useEmailTemplateApplier|aiTe…  ⧖ 6.1s    │
@@ -343,7 +343,7 @@ answers, with nothing on the dialog saying the other thirteen existed.
 So the name opens the run:
 
 ```
-╭──────────────────── ⊘ ai-review-agentic ───────────────────── ✕ ─╮
+╭──────────────────── ⊘ ai-review-agentic ─────────────────────╴✕╶─╮
 │ ✔  context     {"review_started_at_ms":1783614481936,"rep…  ⧖ 4m43s  ∑ 139.9k tkns │
 │ ✔  reviewer    **Verdict**: `request_changes`               ⧖ 4m06s  ∑ 172.1k tkns │
 │ ✔  native      ## Review Summary                            ⧖ 3m17s  ∑ 105.1k tkns │
@@ -382,7 +382,7 @@ run that called it.
 A row of the Tool Calls list is a press, and what it opens is the call:
 
 ```
-╭─ ◂ Back ─────────────── ✔ Bash ──────────────────── ✕ ─╮
+╭╴◂ Back╶─────────────── ✔ Bash ────────────────────╴✕╶─╮
 ├── command ──────────────────────────────────────────────┤
 │ command: git add -A src/ && git status --short && echo ▴│
 │   "=== staged diffstat ===" && git diff --staged --sta ┃│
@@ -454,8 +454,9 @@ What gets a hue is decided by what the text is, not by how it looks:
 - **JSON** is read as JSON only when the whole value parses, an object or an
   array. An answer that starts with `{` and goes on in prose stays prose.
 - **A diff** is a tool's answer that carries a `diff --git` or `@@` header, or
-  an Edit's payload. Its added and removed lines are set on a ground tinted a
-  fifth of the way to the done and failed tones, in the block's own letters.
+  an Edit's payload. Its added and removed lines are set on a ground tinted
+  15% of the way to the done and failed tones, in the block's own letters,
+  with no hue on them: on a tinted ground the hues fell under 3.0.
   In the state green and red, an added line read as a call that passed.
 - **Everything else** — a prompt, a file's contents, a tool's prose — keeps the
   weights alone.

@@ -136,19 +136,21 @@ export function quietOf(ground: Rgb): Rgb {
  * announces itself is a second frame around text that already has a heading
  * and a rule.
  */
-function quoteOf(ground: Rgb): Rgb {
+export function quoteOf(ground: Rgb): Rgb {
   return mix(ground === DEFAULT_COLOR ? COLORS.track : ground, COLORS.track, 0.6)
 }
 
 /**
- * The ground of a diff line: the block's own, carried a fifth of the way to
- * the done or failed tone. Enough to tell the two apart down a column, and not
- * so much that the words on it lose the contrast they have on the block.
+ * The ground of a diff line: the block's own, carried 15% of the way to the
+ * done or failed tone. Enough to tell the two apart down a column once a
+ * Raster has rounded them, in every theme; at a fifth, the block's own text
+ * fell to 4.0 against catppuccin's added ground, and at an eighth nord's two
+ * tints rounded to the same colour.
  */
-function tintOf(tint: 'added' | 'removed', ground: Rgb): Rgb {
+export function tintOf(tint: 'added' | 'removed', ground: Rgb): Rgb {
   const base = ground === DEFAULT_COLOR ? COLORS.track : ground
 
-  return mix(base, tint === 'added' ? COLORS.done : COLORS.failed, 0.2)
+  return mix(base, tint === 'added' ? COLORS.done : COLORS.failed, 0.15)
 }
 
 /**
@@ -8617,7 +8619,7 @@ function paintCall(
  * one grey with its keys a shade lighter, and a reader looking for one field
  * read every line to find it.
  */
-type Lighter = (line: string, width: number, tone: Rgb) => DetailLine[]
+type Lighter = (line: string, width: number, tone: Rgb, at: number) => DetailLine[]
 
 /**
  * The three weights a call's text is set in, off whatever tone it is given.
@@ -8728,12 +8730,17 @@ type Token = { kind: 'comment' | 'string' | 'op' | 'punct' | 'space' | 'number' 
  * alternative is a positive class, and the last takes any one character, so
  * the walk always reaches the end of the line.
  *
+ * A double-quoted string steps over an escape as one piece and over anything
+ * else but a quote or a backslash as another, so no character can be read two
+ * ways and an unclosed quote fails in one pass rather than in every way of
+ * splitting the backslashes after it.
+ *
  * A comment starts at a `#` that begins the line or follows a space, so the
  * `#` in `a#b` or in a URL's fragment stays part of its word. A number stands
  * alone: `abc123` and `v2.1` are words, and `-20` is a flag.
  */
 const TOKEN =
-  /(?<comment>(?<=^|\s)#.*$)|(?<string>"(?:\\.|.)*?"|'.*?')|(?<op>[|&;<>]+)|(?<punct>[{}[\],:])|(?<space>\s+)|(?<number>(?<![\w.-])\d+(?:\.\d+)?(?![\w.]))|(?<word>[\p{L}\p{N}\p{M}_./@%+=~^$!?*#()\\`-]+)|(?<other>.)/gu
+  /(?<comment>(?<=^|\s)#.*$)|(?<string>"(?:\\.|(?![\\"]).)*"|'.*?')|(?<op>[|&;<>]+)|(?<punct>[{}[\],:])|(?<space>\s+)|(?<number>(?<![\w.-])\d+(?:\.\d+)?(?![\w.]))|(?<word>[\p{L}\p{N}\p{M}_./@%+=~^$!?*#()\\`-]+)|(?<other>.)/gu
 
 function piecesOf(text: string): Token[] {
   const out: Token[] = []
@@ -9019,10 +9026,18 @@ function sectionRule(word: string, width: number, tone: Rgb): DetailLine {
  */
 function valueLines(text: string, width: number, tone: Rgb, lit?: Lighter): DetailLine[] {
   const keep = width * KEEP_ROWS
-  const draw = (part: string): DetailLine[] => {
+  // `from` is where the part starts in the whole value, so a lighter that reads
+  // a line by what comes before it reads the same after the cut as it would
+  // have with nothing cut.
+  const draw = (part: string, from: number): DetailLine[] => {
     const out: DetailLine[] = []
+    let at = from
 
     for (const line of part.split('\n')) {
+      const start = at
+
+      at += line.length + 1
+
       if (!line.trim()) {
         if (out.length > 0) {
           out.push({ text: '', color: tone })
@@ -9031,14 +9046,14 @@ function valueLines(text: string, width: number, tone: Rgb, lit?: Lighter): Deta
         continue
       }
 
-      out.push(...(lit ? lit(line, width, tone) : folded(line, width, tone)))
+      out.push(...(lit ? lit(line, width, tone, start) : folded(line, width, tone)))
     }
 
     return out
   }
 
   if (text.length <= keep * 2) {
-    return draw(text)
+    return draw(text, 0)
   }
 
   // Cut where the value already breaks. A slice taken at the character lands
@@ -9049,9 +9064,9 @@ function valueLines(text: string, width: number, tone: Rgb, lit?: Lighter): Deta
   const gone = foot - head
 
   return [
-    ...draw(text.slice(0, head)),
+    ...draw(text.slice(0, head), 0),
     sectionRule(`\u2026 ${tokens(gone)} characters not shown \u2026`, width, tone),
-    ...draw(text.slice(foot)),
+    ...draw(text.slice(foot), foot),
   ]
 }
 
@@ -9101,20 +9116,33 @@ const EDIT_FIELDS: Record<string, 'removed' | 'added' | undefined> = {
  * before and the text after. Read field by field it is two paragraphs of code a
  * reader has to compare by eye; tinted, the two read as the change they are.
  */
-function editLighter(): Lighter {
-  let inside: 'removed' | 'added' | undefined
+function editLighter(input: string): Lighter {
+  // Where each field starts, read off the whole payload once. A line's field is
+  // the last one started at or before it, which holds across the middle of a
+  // long value left out: carried line to line instead, the new text after a cut
+  // that took its `new_string:` line was tinted as the old.
+  const starts: { at: number; tint: 'removed' | 'added' | undefined }[] = []
 
-  return (line, width, tone) => {
-    const keyed = /^([a-z_]+): /.exec(line)
+  for (const match of input.matchAll(/^([a-z_]+): /gm)) {
+    if (match[1]! in EDIT_FIELDS) {
+      starts.push({ at: match.index ?? 0, tint: EDIT_FIELDS[match[1]!] })
+    }
+  }
 
-    if (keyed && keyed[1]! in EDIT_FIELDS) {
-      inside = EDIT_FIELDS[keyed[1]!]
+  return (line, width, tone, at) => {
+    const tint = starts.filter(start => start.at <= at).at(-1)?.tint
+    const lines = payloadLines(line, width, tone)
+
+    if (!tint) {
+      return lines
     }
 
-    const lines = payloadLines(line, width, tone)
-    const tint = inside
+    // No hue on a tinted ground: against the done and failed tints the syntax
+    // roles fell under 3.0 in four themes, and the tint already says what the
+    // line is. The weights stay.
+    const hues = new Set([COLORS.syntaxKey, COLORS.syntaxString, COLORS.syntaxNumber])
 
-    return tint ? lines.map(l => ({ ...l, tint })) : lines
+    return lines.map(l => ({ ...l, tint, runs: l.runs?.map(r => (hues.has(r.color) ? { ...r, color: tone } : r)) }))
   }
 }
 
@@ -9155,7 +9183,7 @@ function callArgLines(call: ToolCall, width: number): DetailLine[] {
       return valueLines(call.input, width, tone, jsonLines)
     }
 
-    return valueLines(call.input, width, tone, call.name === 'Edit' ? editLighter() : payloadLines)
+    return valueLines(call.input, width, tone, call.name === 'Edit' ? editLighter(call.input) : payloadLines)
   })
 }
 

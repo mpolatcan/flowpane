@@ -553,6 +553,9 @@ export function paletteOf(theme: Theme): Palette {
 
 function derive(theme: Theme): Palette {
   const lift = (color: Rgb, floor = FLOOR) => readable(color, theme.bg, floor)
+  // The ground of a quoted block in the detail dialog, as `quoteOf` in paint.ts
+  // mixes it: the pane's ground carried most of the way to the track.
+  const quoted = mix(theme.bg, theme.surface, 0.6)
 
   return {
     running: lift(theme.yellow, READ),
@@ -586,9 +589,14 @@ function derive(theme: Theme): Palette {
     // gruvbox's is a grey-green — it left every line between two phases the
     // same grey as the boundaries, so a drawing that was all joins read as flat.
     wire: lift(edgeOf(theme)),
-    syntaxKey: lift(mix(theme.blue, theme.fg, 0.25), READ),
-    syntaxString: lift(mix(theme.cyan, theme.fg, 0.2), READ),
-    syntaxNumber: lift(mix(theme.purple, theme.fg, 0.2), READ),
+    // Lifted against the call block's own ground, a step up from the pane's,
+    // since that is the only ground they are drawn on: measured against the
+    // pane's they cleared 4.5 there and fell to 4.0 in the block. Half a step
+    // over the bar, because a Raster rounds every channel to four bits and the
+    // rounding of a hue and its ground together cost nord's numbers 0.4.
+    syntaxKey: readable(mix(theme.blue, theme.fg, 0.25), quoted, READ + 0.5),
+    syntaxString: readable(mix(theme.cyan, theme.fg, 0.2), quoted, READ + 0.5),
+    syntaxNumber: readable(mix(theme.purple, theme.fg, 0.2), quoted, READ + 0.5),
   }
 }
 

@@ -11,7 +11,8 @@
 
 import { expect, test } from 'claude-code/testing'
 
-import { mix } from '../hooks/canvas'
+import { cellColor, mix } from '../hooks/canvas'
+import { quietOf, quoteOf, tintOf, useTheme } from '../hooks/paint'
 import { FLOOR, paletteOf, READ, standingOf, TEXT_FLOOR, THEMES } from '../hooks/theme'
 
 function hsl(color: number): [number, number, number] {
@@ -138,4 +139,40 @@ test('every role of every theme clears the floor it is held to, the text at seve
       })
     }
   }
+})
+
+/** WCAG's contrast ratio, as `apart` in theme.ts measures it. */
+function ratio(a: number, b: number): number {
+  const channel = (v: number) => {
+    const s = v / 255
+
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+  }
+  const light = (c: number) => 0.2126 * channel((c >> 16) & 0xff) + 0.7152 * channel((c >> 8) & 0xff) + 0.0722 * channel(c & 0xff)
+  const [hi, lo] = [light(a), light(b)].sort((x, y) => y - x)
+
+  return (hi! + 0.05) / (lo! + 0.05)
+}
+
+test('a call’s hues read on its block, and a diff’s two tints stay apart and keep its text readable, as a Raster draws them', () => {
+  for (const theme of THEMES) {
+    useTheme(theme.name)
+
+    const palette = paletteOf(theme)
+    const quote = cellColor(quoteOf(theme.bg))
+    const added = cellColor(tintOf('added', quoteOf(theme.bg)))
+    const removed = cellColor(tintOf('removed', quoteOf(theme.bg)))
+    const text = cellColor(quietOf(palette.text))
+
+    expect(new Set([quote, added, removed]).size).toBe(3)
+
+    for (const hue of [palette.syntaxKey, palette.syntaxString, palette.syntaxNumber]) {
+      expect(ratio(cellColor(hue), quote)).toBeGreaterThanOrEqual(4.5)
+    }
+
+    expect(ratio(text, added)).toBeGreaterThanOrEqual(4)
+    expect(ratio(text, removed)).toBeGreaterThanOrEqual(4)
+  }
+
+  useTheme('tokyo-night')
 })

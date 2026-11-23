@@ -656,7 +656,12 @@ test('the syntax hues stay inside the opened call', () => {
   const run = runOf()
   const plain = new Canvas(127, 34)
 
-  paint(plain, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical' })
+  run.agents[2].calls = [{ id: 'json', name: 'Bash', input: 'command: gh pr view', result: JSON.stringify({ status: 'merged' }), startedMs: STARTED + 5_000, endedMs: STARTED + 5_100 }]
+  // The agent's dialog open on its Tool Calls list, the call in it unopened:
+  // the list shows the same command, and it is not the call's own reading.
+  paint(plain, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical', selectedId: 'r1', detailRows: 24, detailTab: CALLS })
+
+  expect(rowsOf(plain).join('\n')).toContain('gh pr view')
 
   const used = new Set<string>()
 
@@ -1724,4 +1729,30 @@ test('the ways out of a dialog are bracketed alike, a half-stroke each side', ()
 
   expect(text).toContain('╴◂ Back╶')
   expect(text).toContain(`╴${CLOSE_MARK}╶`)
+})
+
+test('an Edit cut in the middle still tints its new text as added after the cut', () => {
+  const old = Array.from({ length: 120 }, (_, i) => `old line ${i} ${'x'.repeat(30)}`).join('\n')
+  const fresh = Array.from({ length: 120 }, (_, i) => `new line ${i} ${'y'.repeat(30)}`).join('\n')
+  const input = ['file_path: /wt/src/a.ts', `old_string: ${old}`, `new_string: ${fresh}`, 'replace_all: false'].join('\n')
+  const top = opened({ id: 'cut', name: 'Edit', input }, 127, 40)
+  // Scrolled to the end of the argument, past the count of what was left out.
+  const end = opened({ id: 'cut', name: 'Edit', input }, 127, 40, { arg: 999 })
+
+  // The cut takes the end of the old text and the start of the new, its
+  // `new_string:` line with them; what stands after it is all new text.
+  const after = rowsOf(end).join('\n')
+
+  expect(after).not.toContain('new_string')
+  expect(after).not.toContain('old line 119')
+  expect(groundOf(end, 'new line 119')).not.toBe(groundOf(top, 'old line 0 '))
+  expect(groundOf(end, 'new line 119')).not.toBe(groundOf(top, '/wt/src'))
+})
+
+test('an unclosed quote followed by a run of backslashes is read in one pass', () => {
+  const started = Date.now()
+
+  opened({ id: 'slashes', input: `command: echo "${'\\'.repeat(60)}x` })
+
+  expect(Date.now() - started).toBeLessThan(500)
 })
