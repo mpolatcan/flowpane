@@ -8,7 +8,7 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | --- | --- |
 | A node's label | opens that agent's detail dialog; click again to close |
 | ⚙ Settings | opens the settings dialog over the drawing |
-| `FlowPane 0.13.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
+| `FlowPane 0.14.0` | the name at the right-hand end of the bottom row: opens what the pane is, what presses it, and where it reads from |
 | A setting's value | unrolls that setting's list where it stands; press it again to roll the list up |
 | The graph, with any dialog open | takes no presses — it is pushed back behind the dialog until the dialog shuts |
 | Layout | horizontal, vertical, timeline, list, or fits the shape — picked by name |
@@ -186,7 +186,7 @@ them.
 
 ```
 ────────────────────────────────────────────────────────────────────────────────────────────────
-⚙ Settings │ fits │ tokyo-night │ 24 rows       3 running │ 3 runs this session  FlowPane 0.13.0
+⚙ Settings │ fits │ tokyo-night │ 24 rows       3 running │ 3 runs this session  FlowPane 0.14.0
 ```
 
 A line divides it from the drawing. Everything above the line is one canvas and
@@ -249,11 +249,11 @@ most.
 The same pane at 96, 88, 72, 44, 30 and 22 columns:
 
 ```
-⚙ Settings │ fits │ tokyo-night │ 24 rows       3 running │ 3 runs this session  FlowPane 0.13.0
-⚙ Settings │ fits │ tokyo-night │ 24 rows                                FlowPane 0.13.0
-⚙ Settings │ fits │ tokyo-night │ 24 rows                FlowPane 0.13.0
-⚙ Settings │ fits            FlowPane 0.13.0
-⚙ Settings     FlowPane 0.13.0
+⚙ Settings │ fits │ tokyo-night │ 24 rows       3 running │ 3 runs this session  FlowPane 0.14.0
+⚙ Settings │ fits │ tokyo-night │ 24 rows                                FlowPane 0.14.0
+⚙ Settings │ fits │ tokyo-night │ 24 rows                FlowPane 0.14.0
+⚙ Settings │ fits            FlowPane 0.14.0
+⚙ Settings     FlowPane 0.14.0
 ⚙ Settings │ fits     
 ```
 
@@ -279,7 +279,7 @@ reader presses to find out what this is, is what it is called.
 ## What the pane is
 
 ```
-╭─────────────────── FlowPane 0.13.0 ─────────────────────╴✕╶─╮
+╭─────────────────── FlowPane 0.14.0 ─────────────────────╴✕╶─╮
 │                                                            │
 │ A live picture of the agents a workflow runs: what each    │
 │ one is doing, what it has spent, and what it answered.     │

@@ -53,7 +53,7 @@ export const RELEASED = '23-11-2026'
  * failed, which is the only case where the two can still disagree, and
  * `dev/checkmeta.ts` keeps it honest for that case.
  */
-export const VERSION = '0.13.0'
+export const VERSION = '0.14.0'
 
 /** What the manifest said, once a session has read it. */
 let shipped: string | undefined
