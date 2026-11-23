@@ -18,7 +18,7 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | ✕ (in a dialog) | closes it, from the dialog's own top corner |
 | A tab in the detail dialog | shows that pane across the dialog's whole width. Which tab is open is kept as the reader moves from node to node |
 | A pass number on a node's row | opens that attempt's detail: `✔ 1  ✔ 2  ✖ 3` is one row and three presses |
-| A trip number on the detail dialog's own strip | shows that trip of a phase the run entered more than once, in the tab already open. `↻10 ✔ 1 ✔ 2 ┤ ✔ 3 ├ …` — the open one bracketed, the rest a press each. Where the strip is too narrow for all of them, ◂ and ▸ at its ends step to the trip just outside the window |
+| A trip number on the detail dialog's own strip | shows that trip of a phase the run entered more than once, in the tab already open. `↻10 ✔ 1 ✔ 2 ┫ ✔ 3 ┣ …` — the open one bracketed, the rest a press each. Where the strip is too narrow for all of them, ◂ and ▸ at its ends step to the trip just outside the window |
 | A nested run's own name, on its row or its card | opens the run as the list of every agent it ran: state, name, what it answered, what it took and spent, one row each. The row stands for a whole workflow and has no agent of its own, so this used to open the one agent whose figures the row was drawn from. Pressing a row of the list opens that agent in full |
 | `◂ Back`, in an agent's dialog | returns to the nested run's list it was opened from, at the row it was left on. Offered only where there is a list behind: an agent pressed in the drawing has the drawing behind it |
 | The `▸ 23 agents` handle after a nested run's caption | unfolds that run into every agent it ran, each one a press of its own, and folds it back once it is open, when it reads `▾ 23 agents`. It is on the band's rule — the column head across, the band rule down the pane and along the timeline — which is the one row of the drawing that is about the run rather than about the agents in it. One control, the same shape in both states, and the only one. The name used to open with a `▸` of its own that did the same, and two marks on one heading read as two controls that did different things; the name is the name now, and pressing it opens the run's list of agents as it always did. The node used to carry the count as a way in as well, on a row and on a card, and overlapped both. The handle gives way to `▸ 23` and then to `▸`, and the heading's name gives way before the handle's last rung does |
@@ -279,7 +279,7 @@ reader presses to find out what this is, is what it is called.
 ## What the pane is
 
 ```
-╭─────────────────── FlowPane 0.13.0 ───────────────────── ✕ ─╮
+╭─────────────────── FlowPane 0.13.0 ─────────────────────╴✕╶─╮
 │                                                            │
 │ A live picture of the agents a workflow runs: what each    │
 │ one is doing, what it has spent, and what it answered.     │
@@ -330,7 +330,7 @@ line a reader comes back for later. It draws down to 26 columns.
 ## The settings dialog
 
 ```
-╭────────── ⚙ Settings ─────── ✕ ─╮
+╭────────── ⚙ Settings ───────╴✕╶─╮
 │                                 │
 │ Layout          [horizontal  ▾] │
 │ Theme       ▮▮▮ [tokyo-night ▾] │

@@ -82,7 +82,7 @@ dialog shows **one pane at a time**, across its whole width, and a strip of tabs
 under the title says which panes there are and which is open:
 
 ```
-├── Prompt ──┤ Tool Calls (20) ├── Thinking ─── Response ───────────────────────┤
+├── Prompt ─━┫ Tool Calls (20) ┣━─ Thinking ─── Response ───────────────────────┤
 ```
 
 The panes are the same four they always were:
@@ -293,8 +293,8 @@ The dialog carries them all, on a shelf of its own above the tabs:
 
 ```
 ╭───────────────────────────── ✔ Develop ──────────────────────────── ✕ ─╮
-├── ↻10 ── ✔ 1 ─── ✔ 2 ──┤ ✔ 3 ├── ✔ 4 ─── ✔ 5 ─── ✔ 6 ─── ✔ 7 ─── … ───┤
-├── Prompt ──┤ Tool Calls (67) ├── Response ────────────────────────────┤
+├── ↻10 ── ✔ 1 ─── ✔ 2 ─━┫ ✔ 3 ┣━─ ✔ 4 ─── ✔ 5 ─── ✔ 6 ─── ✔ 7 ─── … ───┤
+├── Prompt ─━┫ Tool Calls (67) ┣━─ Response ────────────────────────────┤
 │ ✔  regex_search   applyStatus|useEmailTemplateApplier|aiTe…  ⧖ 6.1s    │
 ```
 
@@ -304,7 +304,7 @@ counting before reading one of them. Each trip is its own press, and the press
 is the number: its state mark stands a cell clear of it, because a press target
 is drawn as a `Button` and a `Button` throws away every colour painted into its
 cells — see [engine.md](engine.md). For the same reason the open trip is
-bracketed rather than coloured, `┤ ✔ 3 ├`, in the brackets the tabs mark their
+bracketed rather than coloured, `┫ ✔ 3 ┣`, in the brackets the tabs mark their
 open one with.
 
 Two strips, and they answer different questions: which trip, then which part of
@@ -319,7 +319,7 @@ Where the strip is too narrow for every trip it shows a window around the open
 one, with an arrow at either end that steps to the trip just outside it:
 
 ```
-├── ↻10 ─ ◂ ─ ✔ 4 ──┤ ✔ 5 ├── ✔ 6 ─────── ▸ ┤
+├── ↻10 ─ ◂ ─ ✔ 4 ─━┫ ✔ 5 ┣━─ ✔ 6 ─────── ▸ ┤
 ```
 
 The window grows outward from the trip being read, the later trips first: a loop
@@ -574,8 +574,19 @@ every time made them press twice per node. Out of range for the agent now open
 back which tab it settled on.
 
 Every tab keeps the cells it had whether it is open or not: the open one is
-bracketed, `┤ Tool Calls (20) ├`, rather than widened, so the strip never shifts
-under the pointer and the tab a reader meant to press is the one they press.
+bracketed, `━┫ Tool Calls (20) ┣━`, rather than widened, so the strip never
+shifts under the pointer and the tab a reader meant to press is the one they
+press. The brackets are heavy strokes in the accent, with a cell of heavy rule
+leading into each, and the closed tabs are their names alone on the light rule.
+The bracket used to be light, `┤ … ├`: one cell each side in a colour the eye had
+to find along a grey rule. Heavy, it is the one weighted thing on the row. A
+loop's strip of trips frames the trip being read the same way.
+
+The ways out of a dialog, `◂ Back` and `✕`, are set into its top rule between
+half-strokes, `╴◂ Back╶` and `╴✕╶`. They were set in gaps of blank cells, and a
+gap in a rule reads as the rule broken off rather than as something placed in
+it; ending the rule a half-stroke short each side brackets both alike, so the two
+ways out read as one kind of thing and are told from a title by their ends.
 
 Squeezed, the strip goes down a ladder of its own, the same shape the header's
 groups and the token units go down. `Tool Calls (20)` first; then the count,
@@ -611,7 +622,7 @@ characters a node's tail needs, and it is set out the way it would be written in
 a file, one field to a line, with the block scrolling through it:
 
 ```
-├── Prompt ─── Tool Calls (20) ──┤ Response ├───────────────────────┤
+├── Prompt ─── Tool Calls (20) ─━┫ Response ┣━──────────────────────┤
 │ {                                                                 ▴│
 │   "lines": 2096,                                                  ┃│
 │   "kind": "code",                                                 ┃│
@@ -640,7 +651,7 @@ down the dialog's right edge: the ▴ above the first line, the ▾ under the la
 and the thumb between them.
 
 ```
-├── Prompt ──┤ Tool Calls (20) ├── Thinking ─── Response ───────────────────────┤
+├── Prompt ─━┫ Tool Calls (20) ┣━─ Thinking ─── Response ───────────────────────┤
 │ ✔  Bash   git rev-parse --abbrev-ref HEAD                ⧖ 40ms  ∑ 5.4k tkns ▴│
 │ ✔  Bash   set -e bun test --reporter junit bunx tsc --n…  ⧖ 1.7s  ∑ 210 tkns ┃│
 │ ✔  Read   file_path: hooks/paint.ts offset: 5900 limit:… ⧖ 120ms  ∑ 1.1k tkns││
