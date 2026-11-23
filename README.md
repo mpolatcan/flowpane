@@ -103,7 +103,12 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | ✕ (in a dialog) | closes it, from the dialog's own top corner |
 | A tab in the detail dialog | shows that pane across the dialog's whole width; which tab is open is kept from node to node |
 | A pass number on a node's row | opens that attempt's detail: `✔ 1  ✔ 2  ✖ 3` is one row and three presses |
-| The ▸ on a nested run's name, or its `▸ 23 agents` | unfolds that run into its own agents, each one pressable — in any layout. The count on the run's own card takes the same press as the mark on its band. The mark turns ▾ while it is open |
+| A trip number on the detail dialog's own strip | shows that trip of a phase the run entered more than once, in the tab already open |
+| The ▸ on a nested run's name, or its `▸ 23 agents` | unfolds that run into its own agents, each one pressable — in any layout. The mark turns ▾ while it is open |
+| A nested run's own name, on its row or its card | opens the run as a list of every agent it ran, one row each; pressing a row opens that agent in full |
+| `◂ Back`, in an agent's dialog | returns to the nested run's list it was opened from, at the row it was left on |
+| The `▾ 6 agents` on a step of an opened nested run | folds the rows that ran at once in that step into one row saying how many; press it again to stand them out |
+| A row of the Tool Calls list | opens that call in a dialog of its own: what it was passed and what came back. `◂ Back` returns to the list |
 | ▴ / ▾ (in a dialog) | scrolls the open pane three lines. Grey at either end |
 | ▴ / ▾ ◂ / ▸ (at the pane's edges) | scrolls the drawing, where it is larger than the pane. A live run is drawn with the window on the phase it is working in, so scrolling away is a peek: it goes back when the run enters a new phase |
 | The wheel, over the pane | moves the drawing, or the open dialog while one is open |
@@ -122,7 +127,7 @@ Everything sits under the drawing. Click a button, or Tab to it and press Enter.
 | `detailRows` | 5–32 (default 24) | Rows the detail dialog takes when a node is selected, capped at what the pane can inset. |
 | `feedRows` | 0–10 (default 4; 0 = off) | Rows of the activity strip at the foot of the pane: the newest file changes, commands and gate verdicts. See [docs/activity.md](docs/activity.md). |
 | `paneRows` | 6–80 (0 = let the surface decide) | Rows the pane asks for. A dock beside the transcript usually picks its own height. |
-| `theme` | `tokyo-night` (default), `catppuccin`, `gruvbox`, `nord`, `dracula`, `solarized`, `monokai`, `vscode-dark`, `insider-one`, `github-light`, `solarized-light`, `insider-one-light` | The palette everything is drawn in, its ground included. The pane always paints on that ground, footer and all, so the drawing reads the same in every terminal rather than against whatever the terminal happens to be; the ground stops at the drawing's own right edge — see the note under the tree below. |
+| `theme` | `tokyo-night` (default), `catppuccin`, `gruvbox`, `nord`, `dracula`, `solarized`, `monokai`, `vscode-dark`, `insider-one`, `github-light`, `solarized-light`, `insider-one-light` | The palette everything is drawn in, its ground included. The pane always paints on that ground, footer and all, so the drawing reads the same in every terminal rather than against whatever the terminal happens to be; the ground stops at the drawing's own right edge. |
 
 ## The demo workflow
 
@@ -164,11 +169,12 @@ it changed:
 | --- | --- |
 | [docs/pane.md](docs/pane.md) | Which seat the pane takes, and the idle pane |
 | [docs/controls.md](docs/controls.md) | Every control, the bottom row, and the dialogs |
-| [docs/settings.md](docs/settings.md) | The four settings, and how a theme becomes a palette |
+| [docs/settings.md](docs/settings.md) | The five settings, and how a theme becomes a palette |
 | [docs/header.md](docs/header.md) | The run line, the phase names, and what moves |
 | [docs/nodes.md](docs/nodes.md) | What a node says, and the four states |
 | [docs/graph.md](docs/graph.md) | What the files state, what the pane infers, and how each is drawn |
 | [docs/detail.md](docs/detail.md) | The dialog a node opens |
+| [docs/activity.md](docs/activity.md) | The strip at the foot: what the run did, newest last |
 | [docs/data.md](docs/data.md) | The files a run writes, and recovering a run already going |
 | [docs/demo-workflow.md](docs/demo-workflow.md) | The audit run under dev/ |
 | [docs/engine.md](docs/engine.md) | What the function-hooks API allows, and what it does not |
@@ -177,7 +183,7 @@ it changed:
 ## Status
 
 Loads and runs on **Claude Code 2.1.272**: hooks register, `/flowpane` lists, the launch
-hook fires and reads the journal. 361 tests run over the engine with `claude
+hook fires and reads the journal. 427 tests run over the engine with `claude
 plugin test .`; `dev/lines.ts` checks every line of every run on disk at twelve
 widths and ten heights. Nothing the pane reads leaves the machine.
 
