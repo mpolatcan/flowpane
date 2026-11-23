@@ -7,7 +7,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { Canvas, rgb } from '../hooks/canvas'
-import { bandsOf, pictureOf, stripLines, type RowElements } from '../hooks/tree'
+import { bandsOf, pictureOf, rowsOf, stripLines, type RowElements } from '../hooks/tree'
 
 const elements: RowElements = {
   Box: props => props,
@@ -72,4 +72,26 @@ test('the strip’s lines carry each run of cells in its colours, as hex', () =>
     ],
     [],
   ])
+})
+
+test('a quiet control is a Button dim at rest that lights under the pointer, and a node’s label is not', () => {
+  const canvas = new Canvas(40, 2)
+
+  canvas.text(2, 0, 'Prompt', rgb(0x80, 0x80, 0x80))
+  canvas.text(12, 0, 'Develop', rgb(0xff, 0xff, 0xff))
+
+  const hotspots = [
+    { agentId: '@tab:0', x: 2, y: 0, w: 6, quiet: rgb(0x7a, 0xa2, 0xf7) },
+    { agentId: 'develop', x: 12, y: 0, w: 7 },
+  ]
+  const [row] = rowsOf(canvas, elements, hotspots, () => {}, 0, 1) as { children: Record<string, unknown>[] }[]
+  const buttons = row!.children.filter(child => typeof child.onPress === 'function')
+  const tab = buttons.find(b => b.label === 'Prompt')!
+  const node = buttons.find(b => b.label === 'Develop')!
+
+  expect(tab.dimColor).toBe(true)
+  // The colour is rounded to what a Raster would draw, as every element's is.
+  expect(tab.hover).toEqual({ scope: 'flowpane:@tab:0', dimColor: false, color: expect.stringMatching(/^#[0-9a-f]{6}$/), bold: true })
+  expect(node.dimColor).toBeUndefined()
+  expect(node.hover).toBeUndefined()
 })
