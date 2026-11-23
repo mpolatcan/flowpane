@@ -136,6 +136,23 @@ export type Band = {
   key?: string
   from: number
   rows: number
+  /** Set on the activity strip's rows where they are a `Client` of their own. */
+  client?: true
+}
+
+/**
+ * Rows at the foot of the canvas handed to a `Client` rather than to a Raster.
+ *
+ * The activity strip is dragged, and a drag reaches only a `Client`: pointer
+ * down, move and up are a surface module's events, and a Raster takes none.
+ * A `Client` cannot hold a Raster either, so the strip's own rows are cut out of
+ * the drawing's and drawn by the module from the cells the paint put there.
+ */
+export type Held = {
+  from: number
+  rows: number
+  /** The `Client` element, built where its module path is written. */
+  element: unknown
 }
 
 /**
@@ -146,7 +163,11 @@ export type Band = {
  * the last render used — hence a function of its own rather than a local in the
  * tree builder.
  */
-export function bandsOf(rows: number, hotspots: Hotspot[]): Band[] {
+export function bandsOf(rows: number, hotspots: Hotspot[], held?: { from: number; rows: number }): Band[] {
+  if (held && held.from > 0 && held.from + held.rows <= rows) {
+    return [...bandsOf(held.from, hotspots), { from: held.from, rows: held.rows, client: true }]
+  }
+
   const pressable = [...new Set(hotspots.map(h => h.y))].filter(y => y >= 0 && y < rows).sort((a, b) => a - b)
 
   // The same one Raster `pictureOf` mounts when there is nothing to press, under
@@ -185,11 +206,30 @@ export function pictureOf(
   elements: RowElements,
   hotspots: Hotspot[] = [],
   onNode?: (agentId: string) => void,
+  held?: Held,
 ): Picture {
   const { Raster } = elements
 
   if (!Raster) {
     return { children: rowsOf(canvas, elements, hotspots, onNode), bands: [] }
+  }
+
+  if (held && held.from > 0 && held.from + held.rows <= canvas.rows) {
+    const bands = bandsOf(canvas.rows, hotspots, held)
+    const above = new Canvas(canvas.columns, held.from, canvas.background)
+
+    for (let y = 0; y < held.from; y++) {
+      for (let x = 0; x < canvas.columns; x++) {
+        const cell = canvas.cell(x, y)
+
+        above.put(x, y, cell.code, cell.fg, cell.bg)
+      }
+    }
+
+    return {
+      children: [...pictureOf(above, elements, hotspots, onNode).children, held.element],
+      bands,
+    }
   }
 
   const raster = (from: number, rows: number, key: string) =>
@@ -277,4 +317,32 @@ export function rowsOf(
   }
 
   return rows
+}
+
+/** One run of same-coloured cells as a `Client` takes it: plain data, colours as hex. */
+export type StripSpan = { t: string; fg?: string; bg?: string }
+
+/**
+ * Canvas rows as the props of the strip's `Client`: each row its runs of
+ * colour, the trailing blanks dropped, in the shape `hooks/feed.ts` draws.
+ */
+export function stripLines(canvas: Canvas, from: number, rows: number): StripSpan[][] {
+  const lines: StripSpan[][] = []
+
+  for (let y = from; y < from + rows && y < canvas.rows; y++) {
+    lines.push(
+      segmentsOf(canvas, y).map(s => ({
+        t: s.text,
+        ...(hex(s.fg) ? { fg: hex(s.fg) } : {}),
+        ...(hex(s.bg) ? { bg: hex(s.bg) } : {}),
+      })),
+    )
+  }
+
+  return lines
+}
+
+/** The canvas ground as a hex colour, for the strip's rows to sit on. */
+export function groundOf(canvas: Canvas): string | undefined {
+  return hex(canvas.background)
 }

@@ -525,9 +525,13 @@ way for that row, so every band's heading stands exactly over its cards.
 
 The same heading stands over each column across the pane and in the gutter of a
 timeline, so a reader who crosses layouts meets one device. The timeline and
-the list set it flush left, having no cards to stand over. In the flat list it
-stands two cells in, over the marks of the rows under it, leaving the first two
-columns to the rails and forks the list draws there.
+the list have no cards to stand over, and centre it on its rule instead. They
+used to set it flush left, over the marks of the rows under it, and a pane whose
+headings stood in the middle in two layouts and at the edge in the other two
+read as having two kinds of heading. A phase not yet entered is centred the same
+way; the one heading still flush left is the strip naming the phases still
+ahead, which is a heading followed by a list of names and has no middle to
+stand in.
 
 **The wire gives way, and the heading stands where it is.** A heading set into a
 rule clears the cells it stands in, so a wire crossing there simply loses this

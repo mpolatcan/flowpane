@@ -236,7 +236,10 @@ test('a phase the run passed over keeps its place, drawn as its heading alone', 
   // The heading says what the phase was for where a count would be, in the
   // dashed stroke the pane draws for work that is not this run's own, and the
   // band under it is a row of air rather than a band of blank rows.
-  expect(lines[at]).toMatch(/^ \u2298 Escalate {2}only what survived as blocking \u254c+/)
+  // It stands in the middle of its rule, as a heading over cards does.
+  expect(lines[at]).toMatch(/^\u254c+ \u2298 Escalate {2}only what survived as blocking \u254c+$/)
+  const [left, right] = lines[at]!.split(/ \u2298 .* /).map(side => side.length)
+  expect(Math.abs(left! - right!)).toBeLessThanOrEqual(2)
   expect(lines.filter(line => line.includes('Escalate')).length).toBe(1)
   expect(lines[at + 1]?.trim()).toBe('')
   expect(lines[at + 2]).toMatch(/ \u2714 Report /)
@@ -266,9 +269,9 @@ test('the phases the run has not reached close the drawing, a dashed heading eac
   // script wrote about the phase where a count would be. There is no caption
   // row over them: each heading says what it is.
   expect(lines.slice(at, at + 3).map(line => line.trimEnd())).toEqual([
-    expect.stringMatching(/^ \u25cb Verify {2}confirm each finding against the diff \u254c+$/),
-    expect.stringMatching(/^ \u25cb Escalate \u254c+$/),
-    expect.stringMatching(/^ \u25cb Report \u254c+$/),
+    expect.stringMatching(/^\u254c+ \u25cb Verify {2}confirm each finding against the diff \u254c+$/),
+    expect.stringMatching(/^\u254c+ \u25cb Escalate \u254c+$/),
+    expect.stringMatching(/^\u254c+ \u25cb Report \u254c+$/),
   ])
   expect(lines.join('\n')).not.toContain('Ahead')
 
@@ -333,9 +336,9 @@ test('down a timeline the phases still ahead close it, a dashed heading each', (
   // for any of them: a rule with an empty row under it reads as a band that
   // failed to draw.
   expect(named.map(line => line.trimEnd())).toEqual([
-    expect.stringMatching(/^ \u25cb Verify \u254c+$/),
-    expect.stringMatching(/^ \u25cb Escalate \u254c+$/),
-    expect.stringMatching(/^ \u25cb Report \u254c+$/),
+    expect.stringMatching(/^\u254c+ \u25cb Verify \u254c+$/),
+    expect.stringMatching(/^\u254c+ \u25cb Escalate \u254c+$/),
+    expect.stringMatching(/^\u254c+ \u25cb Report \u254c+$/),
   ])
   expect(lines.slice(at, at + 3)).toEqual(named)
 
@@ -1191,14 +1194,14 @@ test('down the pane, more phases ahead than the band has rows close on a heading
 
   const headings = rowsOf(canvas)
     .map(line => line.trimEnd())
-    .filter(line => /^ ○ /.test(line))
+    .filter(line => /^╌+ ○ /.test(line))
 
   expect(headings).toEqual([
-    expect.stringMatching(/^ ○ Verify ╌+$/),
-    expect.stringMatching(/^ ○ Escalate ╌+$/),
-    expect.stringMatching(/^ ○ Report ╌+$/),
-    expect.stringMatching(/^ ○ Publish ╌+$/),
-    expect.stringMatching(/^ ○ 2 more ╌+$/),
+    expect.stringMatching(/^╌+ ○ Verify ╌+$/),
+    expect.stringMatching(/^╌+ ○ Escalate ╌+$/),
+    expect.stringMatching(/^╌+ ○ Report ╌+$/),
+    expect.stringMatching(/^╌+ ○ Publish ╌+$/),
+    expect.stringMatching(/^╌+ ○ 2 more ╌+$/),
   ])
 })
 

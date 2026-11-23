@@ -26,7 +26,7 @@ const MARK = { running: '\u25b8', completed: '\u2714', failed: '\u2716', stopped
 // says where the group starts.
 // The rule stops where the clocks do, so on a list tall enough to scroll the
 // bar's own column stands after it.
-const HEADING = /^\s*([\u25b8\u2714\u2716\u2298]) (Running|Done|Failed|Stopped) \u2500+[\s\u2502\u2588\u25b4\u25be]*$/
+const HEADING = /^\s*([\u25b8\u2714\u2716\u2298]) (Running|Done|Failed|Stopped) \u2500+[\s\u2502\u2503\u25b4\u25be]*$/
 
 /** The state names on the list, in the order the list stacks them. */
 function captionsOf(lines: string[]): string[] {
@@ -342,8 +342,8 @@ test('the thumb stands at the head of an unscrolled list and at its foot once it
 
   // Where in the list the reader is standing is the one thing the bar is there
   // to say, and a thumb that sits in the same place at both ends says nothing.
-  expect(trackOf(idleOf(many, 60, 10, 0).lines)).toMatch(/^█+│*$/)
-  expect(trackOf(idleOf(many, 60, 10, 99).lines)).toMatch(/^│*█+$/)
+  expect(trackOf(idleOf(many, 60, 10, 0).lines)).toMatch(/^┃+│*$/)
+  expect(trackOf(idleOf(many, 60, 10, 99).lines)).toMatch(/^│*┃+$/)
 })
 
 test('a menu opened on a run deep in the list seats that run in the middle of the window', () => {
@@ -405,7 +405,7 @@ test('the thumb stands mid-track on a list scrolled to its middle', () => {
   expect(runList?.total).toBe(40)
   expect(runList?.visible).toBe(13)
   expect(runList?.scroll).toBe(14)
-  expect(trackOf(lines)).toBe('││││████│││')
+  expect(trackOf(lines)).toBe('││││┃┃┃┃│││')
 })
 
 test('a list far longer than its window still shows a thumb', () => {
@@ -415,7 +415,7 @@ test('a list far longer than its window still shows a thumb', () => {
   // nothing is a track with nothing in it: the bar keeps one cell, so the
   // reader is still somewhere.
   expect(runList?.visible).toBe(13)
-  expect(trackOf(lines)).toBe('█││││││││││')
+  expect(trackOf(lines)).toBe('┃││││││││││')
 })
 
 test('the menu stops growing with the pane, and the run it was opened from is still drawn under it', () => {
