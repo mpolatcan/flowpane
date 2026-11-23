@@ -35,7 +35,6 @@ const STARTED = 1_700_000_000_000
 const ARROW_DOWN = '▾'
 const ARROW_RIGHT = '▸'
 const DASH_V = '┆'
-const DASH_H = '┄'
 const LINE_V = '│'
 // Where a carry leaves the run it shares: a fork, drawn as the arms that meet
 // there. Allowed only on the line a card's own point stands on, because that is
@@ -493,7 +492,7 @@ test('the word in front of a written source gives way before the name does', () 
   expect(saidIn('Gather the evidence')).toContain('from Gather the evidence')
 
   // Too long for both. The name comes through whole and the word goes.
-  const long = 'Gather the evidence in full across every source on file'
+  const long = 'Gather the evidence in full across every source on file and the logs'
   const tight = saidIn(long)
 
   expect(tight).toContain(long)
@@ -637,7 +636,10 @@ test('down the pane, they turn in one row', () => {
   const turns = new Set<number>()
 
   for (let y = band.start; y < band.end; y++) {
-    if (columnsOf(rows[y] as string, [DASH_H]).length > 0) {
+    // A turn is where a carry bends, and a bend is a corner: a run across is the
+    // same stroke as the rule the next band hangs from, so the run alone does not
+    // say which row it is.
+    if (columnsOf(rows[y] as string, CORNERS).length > 0) {
       turns.add(y)
     }
   }
@@ -674,7 +676,7 @@ test('down the pane, they turn in one row', () => {
 })
 
 
-test("a band's name stands flush left, and the wire gives way for it", () => {
+test("a band's name stands over its cards, and the wire gives way for it", () => {
   // Narrow enough that the band runs off the right edge from the left margin,
   // so the first card's wire comes down under the caption.
   const { rows, view } = drawn(abreast(), 64, 34, 'vertical')
@@ -706,10 +708,8 @@ test("a band's name stands flush left, and the wire gives way for it", () => {
     to++
   }
 
-  // Flush left, opening on the phase's state mark: the headings of a stack
-  // read down one column, the way the cards' own marks do.
-  expect(from).toBeLessThanOrEqual(1)
-  expect(rule.trimStart()[0]).toBe('\u2714')
+  // Opening on the phase's state mark, over the cards it heads.
+  expect(rule[from + 1]).toBe('\u2714')
 
   const behind = crossings.filter(x => x >= from && x <= to)
 
@@ -1323,4 +1323,34 @@ test('across, the cards of one wave stand a row apart and the next wave stands t
   expect(top('r3') - top('r2')).toBe(CARD_H + 1)
   expect(top('r1') - top('r0')).toBe(CARD_H + 2)
   expect(top('r4') - top('r3')).toBe(CARD_H + 2)
+})
+
+test('a carry the files record is drawn heavy, and a guessed one light, neither dashed', () => {
+  // The guessed carry was dashed, and nearly every carry is guessed, so nearly
+  // every wire on the pane was a dotted line in the register the pane keeps for
+  // work that is not this run's own. Both are whole lines now, and the weight
+  // is what tells them apart.
+  const run = runOf('audit', ['Gather', 'Fix'], [
+    { ...agentOf('g1', 'gather:paint', 'Gather', 0, 900), result: FOUND },
+    agentOf('g2', 'gather:layout', 'Gather', 0, 900),
+    { ...agentOf('f1', 'fix:paint', 'Fix', 2_000, 900), prompt: `Fix what was found. ${FOUND}` },
+    agentOf('f2', 'fix:layout', 'Fix', 2_000, 900),
+  ])
+  const edges = edgesOf(run)
+
+  expect(edges.find(e => e.toId === 'f1')?.confirmed).toBe(true)
+  expect(edges.find(e => e.toId === 'f2')?.confirmed).toBeUndefined()
+
+  const { rows, view } = drawn(run, 160, 30, 'horizontal')
+  const [recorded, guessed] = view.lanes.find(l => l.phase === 'Fix')?.nodes ?? []
+  const arriving = (node: typeof recorded) => {
+    const into = entryOf(node!, 'horizontal')
+
+    return (rows[into.y] as string).slice(0, into.x)
+  }
+
+  expect(arriving(recorded)).toContain('\u2501')
+  expect(arriving(guessed)).not.toContain('\u2501')
+  expect(arriving(guessed)).toContain('\u2500')
+  expect(rows.join('\n')).not.toMatch(/[\u2504\u2506]/)
 })

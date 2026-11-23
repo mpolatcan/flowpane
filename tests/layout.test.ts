@@ -239,7 +239,7 @@ test('a phase the run passed over keeps its place, drawn as its heading alone', 
   expect(lines[at]).toMatch(/^ \u2298 Escalate {2}only what survived as blocking \u254c+/)
   expect(lines.filter(line => line.includes('Escalate')).length).toBe(1)
   expect(lines[at + 1]?.trim()).toBe('')
-  expect(lines[at + 2]).toMatch(/^ \u2714 Report /)
+  expect(lines[at + 2]).toMatch(/ \u2714 Report /)
 })
 
 test('the phases the run has not reached close the drawing, a dashed heading each', () => {
@@ -1023,21 +1023,28 @@ test('a band is one row deep whatever it holds, and the pane is as wide as it ne
   expect(extentOf(wide).w).toBeGreaterThan(extentOf(narrow).w)
 })
 
-test('the gap between two nodes of a band is two cells, whatever the band holds', () => {
+test('a band spreads its cards across the pane, never closer than two cells nor further than a card', () => {
   const nine = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
-  const gapOf = (names: string[]) => {
-    const [first, second] = layout(bandOf(names), 110, 34, 'vertical').lanes[0].nodes
+  const gapsOf = (names: string[], columns: number) => {
+    const nodes = layout(bandOf(names), columns, 34, 'vertical').lanes[0].nodes
 
-    return second.x - (first.x + first.w)
+    return nodes.slice(1).map((node, i) => node.x - (nodes[i].x + nodes[i].w))
   }
 
-  // The gap used to fall back to one cell where two left the band too narrow to
-  // name its nodes, which was the gap paying for a width the nodes no longer
-  // give up. An edge that has to pass a band needs a clear column to run down,
-  // and with a single one there is none: it falls out to the margin and draws
-  // three sides of a rectangle round the band instead.
-  expect(gapOf(nine)).toBe(2)
-  expect(gapOf(['one', 'two'])).toBe(2)
+  // A band wider than the pane keeps two cells between its cards: an edge that
+  // has to pass a band needs a clear column to run down, and with a single one
+  // there is none.
+  expect(new Set(gapsOf(nine, 110))).toEqual(new Set([2]))
+
+  // A band with room to spare puts it between its cards and either side of
+  // them, so three cards in a wide pane are not a clump in its middle.
+  const three = gapsOf(['one', 'two', 'three'], 160)
+
+  expect(three[0]).toBeGreaterThan(2)
+  expect(three[0]).toBe(three[1])
+
+  // Up to a card's width: two cards in a very wide pane stay a pair.
+  expect(gapsOf(['one', 'two'], 400)[0]).toBe(28)
 })
 
 /** How many nodes stand on each of a band's rows, top row first. */

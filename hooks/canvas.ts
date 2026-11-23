@@ -412,6 +412,11 @@ const ARMS: Record<number, number> = {
   [V]: UP | DOWN,
   0x2504: LEFT | RIGHT,
   0x2506: UP | DOWN,
+  // The heavy straights a recorded carry runs in. Only the straights: where one
+  // meets another line the junction is drawn light, since a heavy junction
+  // would say the line it joins is recorded too.
+  0x2501: LEFT | RIGHT,
+  0x2503: UP | DOWN,
   [ROUND.tl]: RIGHT | DOWN,
   [ROUND.tr]: LEFT | DOWN,
   [ROUND.br]: UP | LEFT,
@@ -427,9 +432,9 @@ const ARMS: Record<number, number> = {
 /** The character for a set of arms, for every set worth more than one piece. */
 const JOINED = new Map<number, number>(
   Object.entries(ARMS)
-    // A dashed piece has the arms of its solid twin, and the solid one is the
-    // answer: the entries are read in order, so the solid pieces come first and
-    // the dashed ones do not displace them.
+    // A dashed or heavy piece has the arms of its light twin, and the light one
+    // is the answer: the entries are read in order, so the light pieces come
+    // first and the others do not displace them.
     .map(([code, arms]) => [arms, Number(code)] as const)
     .filter(([arms]) => arms !== (LEFT | RIGHT) && arms !== (UP | DOWN))
     .concat([
@@ -525,15 +530,17 @@ export function edge(
   y1: number,
   from: Rgb,
   to: Rgb,
-  /** True for an edge read off labels, which is drawn in the dashed register. */
-  dashed = false,
+  /**
+   * True for an edge read off labels, which is drawn light; one the run's files
+   * record is drawn heavy.
+   */
+  guessed = false,
 ): { x: number; y: number }[] {
   const points: { x: number; y: number; code: number }[] = []
   const midX = x1 - 2 <= x0 ? x0 + 1 : Math.max(x0 + 1, x1 - Math.floor((x1 - x0) / 2))
-  // The corners stay solid either way. A dashed corner is one cell with one
-  // dash in it, which reads as a gap in the line rather than as a turn.
-  const across = dashed ? 0x2504 : H
-  const down = dashed ? 0x2506 : V
+  // The corners stay light either way, so the turn joins whatever it meets.
+  const across = guessed ? H : 0x2501
+  const down = guessed ? V : 0x2503
 
   for (let x = x0; x < midX; x++) {
     points.push({ x, y: y0, code: across })

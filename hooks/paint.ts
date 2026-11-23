@@ -2074,8 +2074,6 @@ function paintBarrier(
   right: NodeBox[],
   busAt: number,
   orientation: 'horizontal' | 'vertical',
-  /** True where the bus stands for carries read off labels, not for a barrier. */
-  inferred = false,
   tick = -1,
 ): void {
   if (left.length === 0 || right.length === 0) {
@@ -2097,8 +2095,12 @@ function paintBarrier(
   // greened as its phase landed put a state on a line, and the phase's own rule
   // already fills with exactly that fact, in the layer meant to carry it.
   const color = COLORS.wire
-  const spine = orientation === 'horizontal' ? (inferred ? DASH_V : 0x2502) : inferred ? DASH_H : 0x2500
-  const feeder = orientation === 'horizontal' ? (inferred ? DASH_H : 0x2500) : inferred ? DASH_V : 0x2502
+  // Light whether stated or bundled. A bundle stands for carries that were
+  // inferred, and an inferred carry is a light line; a barrier the journal
+  // states is light too, because its junctions are, and a heavy spine broken
+  // by a light tee at every card it feeds reads as a line in pieces.
+  const spine = orientation === 'horizontal' ? 0x2502 : 0x2500
+  const feeder = orientation === 'horizontal' ? 0x2500 : 0x2502
 
   for (let at = from; at <= to; at++) {
     if (orientation === 'horizontal') {
@@ -3056,6 +3058,14 @@ facts.total > 0 && facts.landed < facts.total ? Math.round((facts.landed / facts
     // In the list the heading stands in from the gutter the rails and forks
     // take, so its mark sits over the marks of the rows under it and the stem
     // a fan forks from keeps its cell on the rule: see `lead` above.
+    const cards = view.orientation === 'vertical' ? lane.nodes : []
+    const span =
+      cards.length === 0
+        ? undefined
+        : {
+            x: Math.min(...cards.map(n => n.x)),
+            w: Math.max(...cards.map(n => n.x + n.w)) - Math.min(...cards.map(n => n.x)),
+          }
     const label = paintPhaseLabel(
       c,
       lead,
@@ -3064,6 +3074,7 @@ facts.total > 0 && facts.landed < facts.total ? Math.round((facts.landed / facts
       facts,
       2,
       handle.length > 0 ? HANDLE_GAP + handle.length + 1 : 0,
+      span,
     )
 
     c.put(label.x - 1, y, 0x20, tone)
@@ -3670,7 +3681,6 @@ function paintPane(c: Canvas, run: RunState, options: PaintOptions): PaintResult
         pick(crossing.map(e => e.toId)),
         right.busAt,
         view.orientation,
-        true,
         tick,
       )
     }
@@ -3732,7 +3742,6 @@ function paintPane(c: Canvas, run: RunState, options: PaintOptions): PaintResult
         ends(waves[i], group => group[0], right.nodes),
         right.busAt,
         view.orientation,
-        false,
         tick,
       )
     } else if (wants) {
@@ -3978,8 +3987,14 @@ function paintPane(c: Canvas, run: RunState, options: PaintOptions): PaintResult
     const end = entryOf(to, view.orientation)
     // Every carry is drawn in the one colour a carry is drawn in, whatever it
     // joins, so a line reads as a line and a frame as a frame. Proven and
-    // inferred stay apart by stroke alone — solid and full against dashed —
-    // which is a difference between two edges, not between an edge and a card.
+    // inferred stay apart by stroke alone — heavy against light — which is a
+    // difference between two edges, not between an edge and a card.
+    //
+    // The inferred one was dashed. Nearly every carry in a run is inferred, so
+    // nearly every wire on the pane was a dotted line, and the dashed stroke is
+    // the register for work that is not this run's own: the phases skipped,
+    // the ones still ahead, a nested run. A guessed carry is this run's work,
+    // so it is a whole line, and the one the files record is the heavier one.
     //
     // The inferred one used to be dimmed toward the ground as well. Two tones
     // for two kinds of carry, plus a third for the barrier and a fourth for the
@@ -3991,20 +4006,9 @@ function paintPane(c: Canvas, run: RunState, options: PaintOptions): PaintResult
     const solid = carry.confirmed === true
     const stroke = tone
 
-    const across = solid ? 0x2500 : DASH_H
-    const down = solid ? 0x2502 : DASH_V
+    const across = solid ? 0x2501 : 0x2500
+    const down = solid ? 0x2503 : 0x2502
 
-    /**
-     * The point of the wire, and the cell it grows out of.
-     *
-     * A dashed run ends on a gap as often as on a dash, and a filled triangle
-     * hung off a gap reads as a mark dropped beside the card rather than as a
-     * line arriving at it — which is what the head looked like against a card's
-     * own border. The cell before the point is drawn whole, so the point grows
-     * out of a stem. Only that cell, and only where the run itself put a dash
-     * there: a corner in it is a corner, and squaring it off would give the
-     * turn an arm it does not have.
-     */
     /** The cell a wire leaves by, marked, with the run starting past it. */
     const portAt = (x: number, y: number) => {
       c.put(x, y, PORT, tone)
@@ -4029,13 +4033,8 @@ function paintPane(c: Canvas, run: RunState, options: PaintOptions): PaintResult
       cross(c, x, y, across, stroke)
     }
 
+    /** The point of the wire, on the cell the run arrives at. */
     const tipAt = (x: number, y: number, downward: boolean) => {
-      const before = downward ? { x, y: y - 1 } : { x: x - 1, y }
-
-      if (c.at(before.x, before.y) === (downward ? DASH_V : DASH_H)) {
-        c.put(before.x, before.y, downward ? 0x2502 : 0x2500, stroke)
-      }
-
       c.put(x, y, downward ? ARROW_DOWN : ARROW_RIGHT, tone)
       arrows.push({ x, y })
     }
@@ -4063,7 +4062,10 @@ function paintPane(c: Canvas, run: RunState, options: PaintOptions): PaintResult
           : node.x < to.x && node.x + node.w > from.x + from.w && at >= node.y && at < node.y + node.h),
       )
 
-      if (abreast && !between && gap >= 1 && gap <= 3) {
+      // Down the pane the gap between two cards of a band widens with the pane,
+      // up to a card's width, so the hop reaches as far: capped at three it
+      // vanished from every band with room to spread.
+      if (abreast && !between && gap >= 1 && gap <= (flow ? 3 : from.w)) {
         const head = flow ? to.y - 1 : to.x - 1
         const route: { x: number; y: number }[] = []
 
@@ -9834,8 +9836,16 @@ function phaseTook(agents: AgentRow[], active: boolean, nowMs: number): string {
 }
 
 /**
- * A phase's heading, set flush left: its state mark, its name, how many of its
- * agents have landed, and how long it has taken.
+ * A phase's heading: its state mark, its name, how many of its agents have
+ * landed, and how long it has taken. Set flush left, or in the middle of `over`
+ * — the cards it heads — where the caller gives one.
+ *
+ * Across and down it stands over its cards. Flush left at the head of a column
+ * it sat over the first cell of a card and left the rest of the column's width
+ * blank to its right, so in a drawing whose cards spread across the pane the
+ * names read as a list down the left edge, detached from the work under them.
+ * The timeline, the list and the strip of phases still ahead keep it flush
+ * left, since none of them has a column of cards to stand over.
  *
  * It used to be the name alone, centred on its rule with the count trailing
  * it. Centred, a stack of bands put every name in the middle of a rule that
@@ -9863,6 +9873,8 @@ function paintPhaseLabel(
    * run's handle. Taken from the time and the count before the name.
    */
   extra = 0,
+  /** The span the heading stands in the middle of, where it has room to. */
+  over?: { x: number; w: number },
 ): { x: number; w: number; used: number; nameX: number } {
   const tags: Field[] = [
     ...(facts.count ? [{ text: facts.count, color: COLORS.dim }] : []),
@@ -9882,8 +9894,13 @@ function paintPhaseLabel(
     { text: runName(facts.name, Math.max(1, room - widthOf(kept, PHASE_GAP) - (kept.length > 0 ? PHASE_GAP : 0))), color: facts.tone },
     ...kept,
   ]
-  const at = x + (inset > 0 ? 1 : 0)
   const used = 2 + Math.min(room, widthOf(fields, PHASE_GAP))
+  const first = x + (inset > 0 ? 1 : 0)
+  const last = first + Math.max(0, width - inset - used - extra)
+  const at =
+    over === undefined
+      ? first
+      : Math.max(first, Math.min(last, over.x + Math.floor((over.w - used - extra) / 2)))
 
   // A label set into a rule clears the cells it stands in, its own gaps
   // included: a stroke showing through between the name and the count joins
@@ -10221,6 +10238,7 @@ function paintHeader(
       facts,
       0,
       handle.length > 0 ? HANDLE_GAP + handle.length + 1 : 0,
+      { x: lane.x, w: lane.w },
     )
 
     if (fold?.nested && hotspots) {

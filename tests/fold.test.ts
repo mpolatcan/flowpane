@@ -808,10 +808,9 @@ test('a nested run carries one handle, the same shape open and shut', () => {
     // gap and by a different amount on every band.
     expect(rule).toContain(`${name}  3/3`)
 
-    // Flush left: the heading opens on the band's state mark in the second
-    // column, and the rule runs from the handle to the edge.
-    expect(rule.trimStart().startsWith(`\u2714 ${name}`)).toBe(true)
-    expect(at).toBe(3)
+    // The heading opens on the band's state mark, with a blank cell between
+    // it and the rule.
+    expect(rule).toContain(` \u2714 ${name}`)
   }
 })
 

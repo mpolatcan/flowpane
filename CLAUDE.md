@@ -203,16 +203,23 @@ test and wrong in a terminal.
   other and drawing nothing says nothing at all. It is grey, like every
   boundary, and it is kept from every wire: see `KEPT` in `canvas.ts`, which
   holds it and a card's own exit point.
-- **A phase heading is flush left and leads with its state.** Mark, name,
-  landed count, loop and time, two cells apart, set into the rule a cell in from
-  its left edge — the same device across, down and in the timeline's gutter.
+- **A phase heading stands over its cards and leads with its state.** Mark,
+  name, landed count, loop and time, two cells apart — over the middle of its
+  column across, set into the band's rule over the middle of its cards down,
+  and flush left in the timeline's gutter and the list, which have no cards to
+  stand over.
   The time goes first, then the count; the name goes last. A phase nothing
   entered is its heading alone — `○` ahead, `⊘` skipped — with the line its
   script declared where the count goes, on a dashed rule. See
   `paintPhaseLabel`, `paintGhostHeading` and `docs/header.md`.
 - **The dashed stroke means *not this run's own work*.** The phases it skipped,
   the strip naming the ones still ahead, and a nested run's rule and gutter —
-  three things, one register, in every layout.
+  three things, one register, in every layout. A wire is never dashed: a carry
+  the files record is heavy, one read off labels is light.
+- **A band's spare width goes between its cards.** Down the pane the room a
+  band does not need is shared between its cards and either side of them, up
+  to a card's width apiece, so the cards span the pane rather than clumping in
+  its middle. See the vertical layout in `layout.ts`.
 - **Time is drawn to one scale, and everything on it reads that scale from one
   place.** The timeline's axis has a width of its own — as many cells as the
   shortest bar in the run needs, up to four panes' — and the pane is a window on

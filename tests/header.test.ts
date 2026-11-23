@@ -132,7 +132,7 @@ test('the bar is a rule, the run line, and a rule', () => {
   expect(rowsOf(narrow)[0]).not.toContain('FlowPane')
 })
 
-test('each phase heading starts where its column does, on its state mark', () => {
+test('each phase heading stands over the middle of its column, on its state mark', () => {
   const run = loaded()
   const canvas = new Canvas(100, 26)
 
@@ -153,34 +153,51 @@ test('each phase heading starts where its column does, on its state mark', () =>
 
     expect(over).toContain(lane.phase)
 
-    // Flush left over the column, so the heading and the cards under it start
-    // on one column. Centred, a heading moved by half of whatever it carried,
-    // and the column a reader scanned down for the start of a phase wandered.
-    expect(over[0]).toMatch(/[\u2714\u2716\u2298\u25cb\u2800-\u28ff]/)
-    expect(over.slice(2).startsWith(lane.phase)).toBe(true)
+    // Over the middle of the cards it heads. Flush left it sat over the first
+    // cell of a card and left the rest of the column blank to its right, so in
+    // a pane whose phases spread across it the names read as a list down the
+    // left edge rather than as the heads of the columns under them.
+    const start = over.search(/\S/)
+    const end = over.trimEnd().length
+
+    expect(over[start]).toMatch(/[\u2714\u2716\u2298\u25cb\u2800-\u28ff]/)
+    expect(over.slice(start + 2).startsWith(lane.phase)).toBe(true)
+    expect(Math.abs(start - (lane.w - end))).toBeLessThanOrEqual(1)
   }
 })
 
-test('a stacked band carries its heading flush left in its own rule', () => {
+test('a stacked band carries its heading in its own rule, over the middle of its cards', () => {
   const run = loaded()
   const canvas = new Canvas(80, 30)
 
   paint(canvas, run, { nowMs: STARTED + 20_000, tick: 0, orientation: 'vertical' })
 
+  const view = layout(run, canvas.columns, canvas.rows, 'vertical', 0)
+  const cards = view.lanes[0]!.nodes
   const rule = rowsOf(canvas).find(row => row.includes(PHASES[0]!)) ?? ''
   // The state mark, the name, how many landed and how long it took, two cells
-  // apart, set into the rule a cell in from the edge.
-  const found = /^ (\S) (\S+) {2}(\d+\/\d+) {2}(\S+) /.exec(rule)
+  // apart, set into the rule with a blank cell either side.
+  const found = / (\S) (\S+) {2}(\d+\/\d+) {2}(\S+) /.exec(rule)
 
   expect(found).not.toBeNull()
   expect(found?.[2]).toBe(PHASES[0])
 
-  // After it, rule and nothing else to the edge: the band's own border, filled
-  // to the fraction of the phase that has landed.
-  expect(rule.slice(found?.[0].length ?? 0)).toMatch(/^[\u2501\u2500]+$/)
+  // Rule either side of it, to both edges: the band's own border, filled to
+  // the fraction of the phase that has landed.
+  const at = found?.index ?? 0
+
+  expect(rule.slice(0, at)).toMatch(/^[\u2501\u2500\u2502]+$/)
+  expect(rule.slice(at + (found?.[0].length ?? 0))).toMatch(/^[\u2501\u2500\u2502]+$/)
+
+  // And the heading's middle is the middle of the cards it heads.
+  const left = Math.min(...cards.map(n => n.x))
+  const right = Math.max(...cards.map(n => n.x + n.w))
+  const middle = at + 1 + Math.floor((found?.[0].length ?? 2) - 2) / 2
+
+  expect(Math.abs(middle - (left + right) / 2)).toBeLessThanOrEqual(1)
 })
 
-test('a band rule stops at the scroll rail, and its heading stays flush left', () => {
+test('a band rule stops at the scroll rail, and its heading keeps clear of it', () => {
   const run = loaded()
   // Short enough that the stack runs past the foot, which is what puts the
   // scroll rail down the right edge.
@@ -191,9 +208,10 @@ test('a band rule stops at the scroll rail, and its heading stays flush left', (
   const rows = rowsOf(canvas)
   const rule = rows.find(row => row.includes(PHASES[0]!)) ?? ''
 
-  // The rail is there, and it has taken the last of the row.
+  // The rail is there, and it has taken the last of the row; the rule runs on
+  // past the heading to meet it.
   expect(rule.slice(-2)).not.toMatch(/[\u2501\u2500]/)
-  expect(rule.indexOf(PHASES[0]!)).toBe(3)
+  expect(rule.indexOf(PHASES[0]!)).toBeGreaterThan(3)
   expect(rule.slice(-4, -2)).toMatch(/^[\u2501\u2500]+$/)
 })
 
